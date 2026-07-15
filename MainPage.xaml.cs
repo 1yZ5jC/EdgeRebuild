@@ -47,6 +47,7 @@ namespace EdgeRebuild
         private const int MaxTabWidth = 120;
         private const int AdditionalMargin = 30;
         private const int MinDragWidth = 20;
+        private const int ButtonBaseOffset = 50;
         private double _rightReserved;
 
         private Point _dragStartPoint;
@@ -120,18 +121,42 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
+        // 强制更新右侧按钮组的边距，确保它不被挤出
+        private void UpdateRightPanelMargin()
+        {
+            RightSidePanel.UpdateLayout();
+            double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
+            double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible
+                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
+                : 0;
+            double contentWidth = TabBarBorder.ActualWidth - _rightReserved;
+
+            double requiredForDrag = rightFixed + MinDragWidth;
+            double extraOffset = Math.Max(0, requiredForDrag - (contentWidth - leftFixed));
+
+            RightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset + extraOffset, 0);
+            RightSidePanel.UpdateLayout();
+        }
+
         private void UpdateTabLayout()
         {
             if (!_isLoaded || _tabViews.Count == 0) return;
 
             TabBarBorder.UpdateLayout();
 
+            // 先重置按钮边距为默认，获得准确的测量值
+            RightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset, 0);
+            RightSidePanel.UpdateLayout();
+
+            // 初步调整按钮位置，避免立即溢出
+            UpdateRightPanelMargin();
+
             double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible
                 ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
                 : 0;
             double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
-            double totalWidth = TabBarBorder.ActualWidth - _rightReserved;
-            double availableWidth = Math.Max(0, totalWidth - leftFixed - rightFixed - MinDragWidth);
+            double contentWidth = TabBarBorder.ActualWidth - _rightReserved;
+            double availableWidth = Math.Max(0, contentWidth - leftFixed - rightFixed - MinDragWidth);
 
             double idealTotal = _tabViews.Count * MaxTabWidth;
             double minTotal = _tabViews.Count * MinTabWidth;
@@ -153,14 +178,7 @@ namespace EdgeRebuild
                 needScroll = true;
             }
 
-            foreach (var item in _tabViews)
-            {
-                item.Container.Width = targetTabWidth;
-                double reserved = 60;
-                item.TitleText.MaxWidth = Math.Max(0, targetTabWidth - reserved);
-            }
-
-            TabScrollViewer.MaxWidth = availableWidth;
+            // 设置滚动模式
             if (!needScroll)
             {
                 TabScrollViewer.HorizontalScrollMode = ScrollMode.Disabled;
@@ -173,6 +191,39 @@ namespace EdgeRebuild
                 ScrollLeftBtn.Visibility = Visibility.Visible;
                 ScrollRightBtn.Visibility = Visibility.Visible;
             }
+
+            // 滚动箭头显隐可能影响左侧固定宽度，必须重新调整按钮偏移
+            UpdateRightPanelMargin();
+
+            // 重新计算右侧固定宽度和可用宽度
+            rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
+            leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible
+                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
+                : 0;
+            availableWidth = Math.Max(0, contentWidth - leftFixed - rightFixed - MinDragWidth);
+
+            // 如果因为箭头出现导致可用宽度变化，需要重新计算是否滚动和标签宽度
+            if (needScroll)
+            {
+                // 保持滚动状态，但可用宽度可能因按钮左移而变大，可以适当放宽标签宽度
+                idealTotal = _tabViews.Count * MaxTabWidth;
+                minTotal = _tabViews.Count * MinTabWidth;
+                if (idealTotal <= availableWidth)
+                    targetTabWidth = MaxTabWidth;
+                else if (minTotal <= availableWidth)
+                    targetTabWidth = availableWidth / _tabViews.Count;
+                else
+                    targetTabWidth = MinTabWidth;
+            }
+
+            foreach (var item in _tabViews)
+            {
+                item.Container.Width = targetTabWidth;
+                double reserved = 60;
+                item.TitleText.MaxWidth = Math.Max(0, targetTabWidth - reserved);
+            }
+
+            TabScrollViewer.MaxWidth = availableWidth;
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
