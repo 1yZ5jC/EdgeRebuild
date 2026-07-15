@@ -10,19 +10,22 @@ namespace EdgeRebuild.Core
     {
         private WebView2 _webView;
         private Task _initTask;
+        private string _faviconUri = "";
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
         public bool CanGoBack => _webView.CoreWebView2?.CanGoBack ?? false;
         public bool CanGoForward => _webView.CoreWebView2?.CanGoForward ?? false;
         public string CurrentUrl => _webView.Source?.ToString() ?? "";
+        public EngineType Engine => EngineType.WebView2;
+        public string EngineIcon => "🧬";
+        public string FaviconUri => _faviconUri;
 
         public event Action<string> TitleChanged;
         public event Action<string> UrlChanged;
         public event Action<bool> CanGoBackChanged;
         public event Action<bool> CanGoForwardChanged;
-        public EngineType Engine => EngineType.WebView2;
-        public string EngineIcon => "🧬";
+        public event Action<string> FaviconChanged;
 
         public WebView2Tab()
         {
@@ -59,6 +62,7 @@ namespace EdgeRebuild.Core
             UrlChanged?.Invoke(sender.Source?.ToString() ?? "");
             TitleChanged?.Invoke(_webView.CoreWebView2?.DocumentTitle);
             CheckNavigationState();
+            ExtractFavicon();
         }
 
         private void OnDocumentTitleChanged(object sender, object e) =>
@@ -75,7 +79,48 @@ namespace EdgeRebuild.Core
             }
         }
 
-        // 安全的异步导航
+        private async void ExtractFavicon()
+        {
+            if (_webView.CoreWebView2 == null || _webView.Source?.AbsoluteUri == "about:blank")
+                return;
+
+            try
+            {
+                var script = @"
+(function() {
+    var links = document.querySelectorAll('link[rel*=""icon""]');
+    if (links.length > 0) {
+        var href = links[0].href;
+        if (href.startsWith('http')) return href;
+        var baseUrl = location.protocol + '//' + location.host;
+        return baseUrl + (href.startsWith('/') ? href : '/' + href);
+    }
+    return location.protocol + '//' + location.host + '/favicon.ico';
+})()";
+                var result = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                if (!string.IsNullOrEmpty(result))
+                {
+                    result = result.Trim('"');
+                    ProcessFaviconUrl(result);
+                }
+            }
+            catch { }
+        }
+
+        private void ProcessFaviconUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return;
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == "http" || uri.Scheme == "https"))
+            {
+                if (url != _faviconUri)
+                {
+                    _faviconUri = url;
+                    FaviconChanged?.Invoke(url);
+                }
+            }
+        }
+
         public async void Navigate(string url)
         {
             try
