@@ -21,7 +21,6 @@
         <SolidColorBrush x:Key="Foreground" Color="#000000"/>
         <SolidColorBrush x:Key="MutedForeground" Color="#666666"/>
 
-        <!-- 增强按钮样式：悬停时背景变亮、边框发光，按下时背景加深 -->
         <Style x:Key="ToolButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
@@ -35,9 +34,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid Background="{TemplateBinding Background}"
-                              BorderBrush="{TemplateBinding BorderBrush}"
-                              BorderThickness="{TemplateBinding BorderThickness}">
+                        <Grid>
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
@@ -97,7 +94,7 @@
             <!-- 内容区 -->
         </Grid.RowDefinitions>
 
-        <!-- 标签栏：四列布局，通过 Padding 预留安全区，拖拽区无 Margin -->
+        <!-- 标签栏：四列布局，拖拽区独立且可交互，按钮组左移50px（向右调整30px） -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -107,9 +104,9 @@
                     <ColumnDefinition Width="Auto"/>
                     <!-- 标签滚动区 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 右箭头 + 新建按钮 -->
+                    <!-- 右箭头 + 新建按钮（左移50px） -->
                     <ColumnDefinition Width="*"/>
-                    <!-- 拖拽区 -->
+                    <!-- 拖拽区（标题栏） -->
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
@@ -132,9 +129,10 @@
                                 VerticalAlignment="Stretch" Background="Transparent" />
                 </ScrollViewer>
 
+                <!-- 右侧按钮组：Margin="0,0,50,0" 表示向右移动了30px（原80px左移减少30px） -->
                 <StackPanel x:Name="RightSidePanel" Grid.Column="2"
                             Orientation="Horizontal" VerticalAlignment="Center"
-                            Background="Transparent" Margin="0,0,0,0">
+                            Background="Transparent" Margin="0,0,50,0">
                     <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
                             Style="{StaticResource ToolButtonStyle}"
                             Width="24" Height="24"
@@ -150,6 +148,7 @@
                             Margin="0,0,0,0"/>
                 </StackPanel>
 
+                <!-- 拖拽区域（标题栏） -->
                 <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
                            Grid.Column="3" VerticalAlignment="Stretch"/>
             </Grid>
