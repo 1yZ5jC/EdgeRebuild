@@ -51,9 +51,12 @@ namespace EdgeRebuild
         private const int ButtonBaseOffset = 50;
         private double _rightReserved;
 
-        // Manipulation 拖拽状态
+        // 拖拽状态
         private TabViewItem _dragItem;
-        private int _dragStartIndex;
+        private Point _dragOffset;
+        private bool _isDragging;
+        private bool _dragOut;
+        private TranslateTransform _dragTransform;
 
         public MainPage()
         {
@@ -222,8 +225,7 @@ namespace EdgeRebuild
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(4, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Width = MaxTabWidth,
-                ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateY
+                Width = MaxTabWidth
             };
 
             var tabPanel = new StackPanel
@@ -308,18 +310,18 @@ namespace EdgeRebuild
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
             titleText.Tapped += (s, ev) => SwitchToTab(viewItem);
 
-            // Manipulation 事件
-            tabBorder.ManipulationStarted += OnTabManipulationStarted;
-            tabBorder.ManipulationDelta += OnTabManipulationDelta;
-            tabBorder.ManipulationCompleted += OnTabManipulationCompleted;
+            tabBorder.PointerPressed += OnTabPointerPressed;
+            tabBorder.PointerMoved += OnTabPointerMoved;
+            tabBorder.PointerReleased += OnTabPointerReleased;
+            tabBorder.PointerCanceled += OnTabPointerReleased;
 
             tabBorder.PointerEntered += (s, ev) =>
             {
-                if (_currentTab != tab) tabBorder.Background = _hoverBrush;
+                if (_currentTab != tab && !_isDragging) tabBorder.Background = _hoverBrush;
             };
             tabBorder.PointerExited += (s, ev) =>
             {
-                if (_currentTab != tab) tabBorder.Background = _unselectedBrush;
+                if (_currentTab != tab && !_isDragging) tabBorder.Background = _unselectedBrush;
             };
 
             tab.TitleChanged += (title) =>
@@ -352,8 +354,8 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
-        // ==================== Manipulation 拖拽实现 ====================
-        private void OnTabManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
+        // ==================== 拖拽结束排序方案 ====================
+        private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var border = sender as Border;
             if (border == null) return;
@@ -361,68 +363,93 @@ namespace EdgeRebuild
             if (viewItem == null) return;
 
             _dragItem = viewItem;
-            _dragStartIndex = _tabViews.IndexOf(viewItem);
+            _dragOffset = e.GetCurrentPoint(viewItem.Container).Position;
+            _isDragging = false;
+            _dragOut = false;
+            _dragTransform = new TranslateTransform();
+            viewItem.Container.RenderTransform = _dragTransform;
             viewItem.Container.Opacity = 0.9;
+            border.CapturePointer(e.Pointer);
             e.Handled = true;
         }
 
-        private void OnTabManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+        private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
         {
-            if (_dragItem == null) return;
+            if (_dragItem == null || sender != _dragItem.Container) return;
 
-            double totalX = e.Cumulative.Translation.X;
-            double totalY = e.Cumulative.Translation.Y;
+            var currentPoint = e.GetCurrentPoint(_dragItem.Container);
+            double dx = currentPoint.Position.X - _dragOffset.X;
+            double dy = currentPoint.Position.Y - _dragOffset.Y;
 
-            // 垂直拖出窗口（阈值 30px）
-            if (Math.Abs(totalY) > 30 && Math.Abs(totalY) > Math.Abs(totalX))
+            if (!_isDragging && !_dragOut && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
             {
-                var item = _dragItem;
-                _dragItem = null;
-                item.Container.RenderTransform = null;
-                item.Container.Opacity = 1.0;
-                MoveTabToNewWindow(item);
-                e.Complete();
-                return;
+                if (Math.Abs(dy) > 30)
+                {
+                    _dragOut = true;
+                    _dragItem.Container.ReleasePointerCapture(e.Pointer);
+                    _dragItem.Container.RenderTransform = null;
+                    _dragItem.Container.Opacity = 1.0;
+                    MoveTabToNewWindow(_dragItem);
+                    _dragItem = null;
+                    return;
+                }
+                else
+                {
+                    _isDragging = true;
+                }
             }
 
-            // 水平拖拽排序
-            _dragItem.Container.RenderTransform = new TranslateTransform { X = totalX };
-
-            int currentIndex = _tabViews.IndexOf(_dragItem);
-            if (currentIndex < 0) return;
-
-            double itemWidth = _dragItem.Container.ActualWidth;
-            if (itemWidth <= 0) itemWidth = MaxTabWidth;
-
-            int newIndex = currentIndex;
-            if (totalX > itemWidth * 0.5 && currentIndex < _tabViews.Count - 1)
-                newIndex = currentIndex + 1;
-            else if (totalX < -itemWidth * 0.5 && currentIndex > 0)
-                newIndex = currentIndex - 1;
-
-            if (newIndex != currentIndex)
+            if (_isDragging)
             {
-                SwapTabs(currentIndex, newIndex);
-                _dragItem.Container.RenderTransform = null;
-                _dragStartIndex = newIndex;
-                e.Complete();
+                _dragTransform.X = dx;
             }
             e.Handled = true;
         }
 
-        private void OnTabManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+        private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
         {
-            if (_dragItem != null)
+            if (_dragItem != null && sender == _dragItem.Container)
             {
+                _dragItem.Container.ReleasePointerCapture(e.Pointer);
+
+                if (_isDragging)
+                {
+                    var container = _dragItem.Container;
+                    var transform = container.TransformToVisual(TabBarPanel);
+                    var pointInPanel = transform.TransformPoint(new Point(container.ActualWidth / 2, container.ActualHeight / 2));
+                    double centerX = pointInPanel.X + (_dragTransform?.X ?? 0);
+
+                    int targetIndex = 0;
+                    foreach (var item in _tabViews)
+                    {
+                        if (item == _dragItem) continue;
+                        var itemTransform = item.Container.TransformToVisual(TabBarPanel);
+                        var itemCenterX = itemTransform.TransformPoint(new Point(item.Container.ActualWidth / 2, 0)).X;
+                        if (centerX > itemCenterX)
+                            targetIndex = _tabViews.IndexOf(item) + 1;
+                        else
+                            break;
+                    }
+                    if (targetIndex > _tabViews.Count - 1) targetIndex = _tabViews.Count - 1;
+
+                    int currentIndex = _tabViews.IndexOf(_dragItem);
+                    if (targetIndex != currentIndex)
+                    {
+                        MoveTabToIndex(currentIndex, targetIndex);
+                    }
+                }
+
                 _dragItem.Container.RenderTransform = null;
                 _dragItem.Container.Opacity = 1.0;
                 _dragItem = null;
             }
+            _isDragging = false;
+            _dragOut = false;
             UpdateTabLayout();
             e.Handled = true;
         }
 
-        private void SwapTabs(int oldIndex, int newIndex)
+        private void MoveTabToIndex(int oldIndex, int newIndex)
         {
             if (oldIndex == newIndex) return;
             var item = _tabViews[oldIndex];
@@ -687,16 +714,12 @@ namespace EdgeRebuild
             RefreshDownloadsPanel();
         }
 
-        // ==================== 滚动箭头 ====================
         private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) =>
             TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset - 100, null, null);
-
         private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) =>
             TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset + 100, null, null);
-
         private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
 
-        // ==================== Favicon 更新 ====================
         private async void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
         {
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
@@ -726,7 +749,6 @@ namespace EdgeRebuild
             });
         }
 
-        // ==================== 其他按钮事件 ====================
         private void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
             var engine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
