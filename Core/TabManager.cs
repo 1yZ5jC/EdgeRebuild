@@ -1,13 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Collections.ObjectModel;
 
 namespace EdgeRebuild.Core
 {
-
     public class TabManager
     {
         private IBrowserTab _currentTab;
@@ -29,7 +24,6 @@ namespace EdgeRebuild.Core
 
         public IBrowserTab AddTab(IBrowserTab tab)
         {
-            if (tab == null) throw new ArgumentNullException(nameof(tab));
             Tabs.Add(tab);
             CurrentTab = tab;
             return tab;
@@ -43,12 +37,11 @@ namespace EdgeRebuild.Core
 
             if (CurrentTab == tab)
             {
-                // 切换到相邻标签
                 IBrowserTab newTab = null;
                 if (Tabs.Count > 1)
                 {
                     if (index > 0) newTab = Tabs[index - 1];
-                    else newTab = Tabs[1]; // 移除第一个后，原来的第二个变为新第一个
+                    else newTab = Tabs[1];
                 }
                 CurrentTab = newTab;
             }

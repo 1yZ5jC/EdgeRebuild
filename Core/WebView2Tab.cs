@@ -11,6 +11,7 @@ namespace EdgeRebuild.Core
         private WebView2 _webView;
         private Task _initTask;
         private string _faviconUri = "";
+        private string _title = "";
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
@@ -19,6 +20,7 @@ namespace EdgeRebuild.Core
         public string CurrentUrl => _webView.Source?.ToString() ?? "";
         public EngineType Engine => EngineType.WebView2;
         public string EngineIcon => "🧬";
+        public string Title => _title;
         public string FaviconUri => _faviconUri;
 
         public event Action<string> TitleChanged;
@@ -33,40 +35,42 @@ namespace EdgeRebuild.Core
             _webView.NavigationCompleted += OnNavigationCompleted;
         }
 
-        // 公开初始化方法，供外部调用
         public async Task EnsureInitializedAsync()
         {
-            if (_webView == null || _webView.CoreWebView2 != null) return;
+            if (_webView.CoreWebView2 != null) return;
+            if (_initTask == null)
+                _initTask = _webView.EnsureCoreWebView2Async().AsTask();
+            await _initTask;
 
-            try
-            {
-                if (_initTask == null)
-                    _initTask = _webView.EnsureCoreWebView2Async().AsTask();
-                await _initTask;
-
-                _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
-                _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
-                CheckNavigationState();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"WebView2 init failed: {ex.Message}");
-                // 初始化失败时，_initTask 应重置以便允许重试
-                _initTask = null;
-                throw; // 重新抛出，让 Navigate 的 catch 捕获
-            }
+            _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
+            _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
+            CheckNavigationState();
         }
 
         private void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             UrlChanged?.Invoke(sender.Source?.ToString() ?? "");
-            TitleChanged?.Invoke(_webView.CoreWebView2?.DocumentTitle);
+            UpdateTitleFromDocument();
             CheckNavigationState();
             ExtractFavicon();
         }
 
-        private void OnDocumentTitleChanged(object sender, object e) =>
-            TitleChanged?.Invoke(_webView.CoreWebView2?.DocumentTitle);
+        private void OnDocumentTitleChanged(object sender, object e)
+        {
+            UpdateTitleFromDocument();
+        }
+
+        private void UpdateTitleFromDocument()
+        {
+            string newTitle = _webView.CoreWebView2?.DocumentTitle ?? "";
+            if (string.IsNullOrWhiteSpace(newTitle))
+                newTitle = _webView.Source?.Host ?? "新标签页";
+            if (newTitle != _title)
+            {
+                _title = newTitle;
+                TitleChanged?.Invoke(_title);
+            }
+        }
 
         private void OnHistoryChanged(object sender, object e) => CheckNavigationState();
 
@@ -125,21 +129,23 @@ namespace EdgeRebuild.Core
         {
             try
             {
-                if (_webView == null) return; // 标签已销毁
-
+                if (_webView == null) return;
                 await EnsureInitializedAsync();
-
                 if (_webView.CoreWebView2 == null) return;
-
                 if (string.IsNullOrWhiteSpace(url)) return;
-                if (!url.StartsWith("http://") && !url.StartsWith("https://"))
+                if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                    !url.StartsWith("about:", StringComparison.OrdinalIgnoreCase) &&
+                    !url.StartsWith("edge:", StringComparison.OrdinalIgnoreCase) &&
+                    !url.Contains("://"))
+                {
                     url = "https://" + url;
-
-                _webView.CoreWebView2.Navigate(url);
+                }
+                if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                    _webView.CoreWebView2.Navigate(url);
             }
             catch (Exception ex)
             {
-                // 记录异常但不让应用崩溃
                 System.Diagnostics.Debug.WriteLine($"WebView2Tab Navigate error: {ex.Message}");
             }
         }

@@ -8,6 +8,7 @@ namespace EdgeRebuild.Core
     {
         private WebView _webView;
         private string _faviconUri = "";
+        private string _title = "";
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
@@ -16,6 +17,7 @@ namespace EdgeRebuild.Core
         public string CurrentUrl => _webView.Source?.ToString() ?? "";
         public EngineType Engine => EngineType.EdgeHtml;
         public string EngineIcon => "🌐";
+        public string Title => _title;
         public string FaviconUri => _faviconUri;
 
         public event Action<string> TitleChanged;
@@ -32,16 +34,22 @@ namespace EdgeRebuild.Core
             _webView.NavigationFailed += OnNavigationFailed;
         }
 
-        // 使用 WebView 自带的 DocumentTitle 获取标题，更可靠
         private void UpdateTitle()
         {
             try
             {
-                string title = _webView.DocumentTitle ?? "";
-                if (string.IsNullOrWhiteSpace(title))
-                    title = _webView.Source?.Host ?? "空白页";
-                System.Diagnostics.Debug.WriteLine($"EdgeHtmlTab Title: '{title}'");
-                TitleChanged?.Invoke(title);
+                string docTitle = _webView.DocumentTitle;
+                if (string.IsNullOrWhiteSpace(docTitle))
+                {
+                    // 使用域名作为后备
+                    string host = _webView.Source?.Host;
+                    _title = string.IsNullOrEmpty(host) ? "新标签页" : host;
+                }
+                else
+                {
+                    _title = docTitle;
+                }
+                TitleChanged?.Invoke(_title);
             }
             catch (Exception ex)
             {
@@ -79,7 +87,6 @@ namespace EdgeRebuild.Core
             if (_webView?.Source == null || _webView.Source.AbsoluteUri == "about:blank")
                 return;
 
-            // 方法1：尝试读取 <link> 标签
             string script = @"
 (function() {
     var links = document.querySelectorAll('link[rel*=""icon""]');
@@ -102,7 +109,6 @@ namespace EdgeRebuild.Core
             }
             catch { }
 
-            // 方法2：默认使用 /favicon.ico
             string defaultFavicon = $"{_webView.Source.Scheme}://{_webView.Source.Host}/favicon.ico";
             SetFaviconUri(defaultFavicon);
         }

@@ -12,6 +12,7 @@ namespace EdgeRebuild.Core
         string CurrentUrl { get; }
         EngineType Engine { get; }
         string EngineIcon { get; }
+        string Title { get; }
         string FaviconUri { get; }
 
         void Navigate(string url);
