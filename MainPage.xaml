@@ -3,28 +3,59 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:EdgeRebuild"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-    
-    <Grid>
-        <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+    xmlns:core="using:EdgeRebuild.Core"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
 
-            <!-- 控制栏 -->
-            <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="8">
-                <TextBox x:Name="UrlTextBox" Width="400" PlaceholderText="输入网址..."
-                 KeyDown="UrlTextBox_KeyDown"/>
-                <Button x:Name="BtnEdgeHtml" Content="EdgeHTML" Click="BtnEdgeHtml_Click" Margin="8,0"/>
-                <Button x:Name="BtnWebView2" Content="WebView2" Click="BtnWebView2_Click"/>
-            </StackPanel>
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-            <!-- WebView 容器 -->
-            <Border x:Name="WebViewContainer" Grid.Row="1" Margin="8"/>
-        </Grid>
+        <!-- 标签栏 -->
+        <ListView x:Name="TabListView" Grid.Row="0" 
+                  ItemsSource="{x:Bind TabManager.Tabs}"
+                  SelectedItem="{x:Bind TabManager.CurrentTab, Mode=TwoWay}"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                  Height="36">
+            <ListView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+            </ListView.ItemsPanel>
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="core:IBrowserTab">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📑" VerticalAlignment="Center"/>
+                            <TextBlock Text="{x:Bind Id}" FontSize="12" Width="80"
+                                       TextTrimming="CharacterEllipsis" Margin="4,0"/>
+                            <Button Content="✕" FontSize="10" Padding="0" 
+                                    Click="CloseTabButton_Click"
+                                    Tag="{x:Bind}"/>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!-- 地址栏和操作按钮 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="4">
+            <Button x:Name="BackButton" Content="◀" Click="BackButton_Click" Width="30" IsEnabled="False"/>
+            <Button x:Name="ForwardButton" Content="▶" Click="ForwardButton_Click" Width="30" IsEnabled="False"/>
+            <Button Content="↻" Click="RefreshButton_Click" Width="30"/>
+            <TextBox x:Name="UrlTextBox" Width="400" PlaceholderText="输入网址或搜索"
+                     KeyDown="UrlTextBox_KeyDown"/>
+            <Button Content="+ 新标签" Click="NewTabButton_Click"/>
+            <ComboBox x:Name="EngineComboBox" Width="100" SelectedIndex="0">
+                <ComboBoxItem Content="EdgeHTML"/>
+                <ComboBoxItem Content="WebView2"/>
+            </ComboBox>
+        </StackPanel>
+
+        <!-- 内容区域 -->
+        <Border x:Name="ContentContainer" Grid.Row="2" Margin="4"/>
     </Grid>
 </Page>

@@ -1,87 +1,123 @@
-﻿using Microsoft.UI.Xaml.Controls;
+﻿using EdgeRebuild.Core;
+using Microsoft.UI.Xaml.Controls;
 using System;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
-
 namespace EdgeRebuild
 {
     public sealed partial class MainPage : Page
     {
-        // EdgeHTML WebView (UWP 原生)
-        private Windows.UI.Xaml.Controls.WebView _edgeHtmlView;
-        // WebView2 (WinUI 2)
-        private WebView2 _webView2;
+        private IBrowserTab _previousTab;
+        public TabManager TabManager { get; } = new TabManager();
 
         public MainPage()
         {
             this.InitializeComponent();
-            // 默认加载 EdgeHTML
-            ShowEdgeHtml();
+            TabManager.CurrentTabChanged += OnCurrentTabChanged;
+
+            // 创建初始标签（默认 EdgeHTML）
+            var firstTab = CreateTab(EngineType.EdgeHtml);
+            TabManager.AddTab(firstTab);
+            firstTab.Navigate("about:blank"); // 第一个标签直接导航（此时已设为当前标签）
         }
 
-        private void ShowEdgeHtml()
+        private async void OnCurrentTabChanged(IBrowserTab tab)
         {
-            // 清除容器
-            WebViewContainer.Child = null;
-
-            // 如果还未创建则创建 EdgeHTML WebView
-            if (_edgeHtmlView == null)
+            // 取消旧标签的事件订阅
+            if (_previousTab != null)
             {
-                _edgeHtmlView = new Windows.UI.Xaml.Controls.WebView();
-                _edgeHtmlView.NavigationCompleted += (s, e) =>
-                {
-                    UrlTextBox.Text = e.Uri?.ToString();
-                };
+                _previousTab.CanGoBackChanged -= OnCanGoBackChanged;
+                _previousTab.CanGoForwardChanged -= OnCanGoForwardChanged;
             }
+            _previousTab = tab;
 
-            WebViewContainer.Child = _edgeHtmlView;
-        }
-
-        private async void ShowWebView2()
-        {
-            WebViewContainer.Child = null;
-
-            if (_webView2 == null)
+            if (tab != null)
             {
-                _webView2 = new WebView2();
-                await _webView2.EnsureCoreWebView2Async();
-                _webView2.NavigationCompleted += (s, e) =>
-                {
-                    UrlTextBox.Text = _webView2.Source?.ToString();
-                };
+                tab.CanGoBackChanged += OnCanGoBackChanged;
+                tab.CanGoForwardChanged += OnCanGoForwardChanged;
+
+                ContentContainer.Child = tab.ViewElement;
+
+                // 如果切换到 WebView2 标签，确保其内核已初始化
+                if (tab is WebView2Tab wv2Tab)
+                    await wv2Tab.EnsureInitializedAsync();
+
+                UrlTextBox.Text = tab.CurrentUrl;
+                BackButton.IsEnabled = tab.CanGoBack;
+                ForwardButton.IsEnabled = tab.CanGoForward;
             }
-
-            WebViewContainer.Child = _webView2;
+            else
+            {
+                ContentContainer.Child = null;
+                UrlTextBox.Text = "";
+                BackButton.IsEnabled = false;
+                ForwardButton.IsEnabled = false;
+            }
         }
 
-        private void BtnEdgeHtml_Click(object sender, RoutedEventArgs e)
+        private async void OnCanGoBackChanged(bool canGoBack)
         {
-            ShowEdgeHtml();
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => BackButton.IsEnabled = canGoBack);
         }
 
-        private void BtnWebView2_Click(object sender, RoutedEventArgs e)
+        private async void OnCanGoForwardChanged(bool canGoForward)
         {
-            ShowWebView2();
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => ForwardButton.IsEnabled = canGoForward);
+        }
+
+        private IBrowserTab CreateTab(EngineType engine)
+        {
+            IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
+            tab.UrlChanged += (url) =>
+            {
+                if (TabManager.CurrentTab == tab)
+                    UrlTextBox.Text = url;
+            };
+            return tab;
+        }
+
+        private void NewTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            EngineType engine = EngineComboBox.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
+            var newTab = CreateTab(engine);
+            TabManager.AddTab(newTab);     // 这会触发 CurrentTabChanged，在 OnCurrentTabChanged 中完成了初始化
+
+            // 安全导航：如果已经是 WebView2 且 CoreWebView2 可能未就绪，则使用 async void 无碍
+            newTab.Navigate("about:blank");
+        }
+
+        private void CloseTabButton_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as Button)?.Tag is IBrowserTab tab)
+                TabManager.CloseTab(tab);
         }
 
         private void UrlTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key == Windows.System.VirtualKey.Enter)
-            {
-                string url = UrlTextBox.Text;
-                if (!url.StartsWith("http"))
-                    url = "https://" + url;
-
-                if (WebViewContainer.Child is Windows.UI.Xaml.Controls.WebView edgeView)
-                {
-                    edgeView.Navigate(new Uri(url));
-                }
-                else if (WebViewContainer.Child is WebView2 wv2)
-                {
-                    wv2.CoreWebView2.Navigate(url);
-                }
-            }
+                TabManager.CurrentTab?.Navigate(UrlTextBox.Text);
         }
+
+        private void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (TabManager.CurrentTab?.CanGoBack == true)
+                TabManager.CurrentTab.GoBack();
+        }
+
+        private void ForwardButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (TabManager.CurrentTab?.CanGoForward == true)
+                TabManager.CurrentTab.GoForward();
+        }
+
+        private void RefreshButton_Click(object sender, RoutedEventArgs e) => TabManager.CurrentTab?.Refresh();
+    }
+
+    public enum EngineType
+    {
+        EdgeHtml,
+        WebView2
     }
 }
