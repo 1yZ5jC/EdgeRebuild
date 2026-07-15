@@ -45,7 +45,8 @@ namespace EdgeRebuild
 
         private const int MinTabWidth = 44;
         private const int MaxTabWidth = 120;
-        private const int MinRightPadding = 40;
+        private const int AdditionalMargin = 30; // 系统按钮区外的额外间距
+        private double _rightReserved;
 
         private Point _dragStartPoint;
         private TabViewItem _dragItem;
@@ -72,7 +73,9 @@ namespace EdgeRebuild
             titleBar.ButtonForegroundColor = Colors.Black;
 
             SetDragAreaMargin();
-            UpdateScrollButtonsVisibility();
+            UpdateTabLayout();
+
+            Window.Current.SizeChanged += OnWindowSizeChanged;
 
             if (_tabViews.Count == 0)
             {
@@ -88,37 +91,90 @@ namespace EdgeRebuild
             }
         }
 
+        private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
+        {
+            SetDragAreaMargin();
+            UpdateTabLayout();
+        }
+
         private void SetDragAreaMargin()
         {
-            double rightInset = 120;
+            double systemOverlay = 100; // 默认值
+
             try
             {
+                // 使用 VisibleBounds 计算系统按钮区宽度（兼容所有版本）
                 var bounds = ApplicationView.GetForCurrentView().VisibleBounds;
                 var windowBounds = Window.Current.Bounds;
-                rightInset = windowBounds.Width - bounds.Width;
-                if (rightInset <= 0) rightInset = 120;
+                systemOverlay = windowBounds.Width - bounds.Width;
             }
             catch { }
-            TitleBarDragArea.Margin = new Thickness(0, 0, rightInset + MinRightPadding, 0);
+
+            if (systemOverlay <= 0) systemOverlay = 100;
+
+            // 安全区 = 系统按钮区 + 30px
+            _rightReserved = systemOverlay + AdditionalMargin;
+            TitleBarDragArea.Margin = new Thickness(0, 0, _rightReserved, 0);
         }
 
         private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
         {
             SetDragAreaMargin();
-            AdjustTabWidths();
+            UpdateTabLayout();
         }
 
-        private void UpdateScrollButtonsVisibility()
+        private void UpdateTabLayout()
         {
-            if (TabScrollViewer.ScrollableWidth > 0)
+            if (!_isLoaded || _tabViews.Count == 0) return;
+
+            TabBarBorder.UpdateLayout();
+
+            double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible
+                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
+                : 0;
+            double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
+            double totalWidth = TabBarBorder.ActualWidth;
+            double availableWidth = Math.Max(0, totalWidth - leftFixed - rightFixed - _rightReserved);
+
+            double idealTotal = _tabViews.Count * MaxTabWidth;
+            double minTotal = _tabViews.Count * MinTabWidth;
+
+            bool needScroll = false;
+            double targetTabWidth = MaxTabWidth;
+
+            if (idealTotal <= availableWidth)
             {
-                ScrollLeftBtn.Visibility = Visibility.Visible;
-                ScrollRightBtn.Visibility = Visibility.Visible;
+                targetTabWidth = MaxTabWidth;
+            }
+            else if (minTotal <= availableWidth)
+            {
+                targetTabWidth = availableWidth / _tabViews.Count;
             }
             else
             {
+                targetTabWidth = MinTabWidth;
+                needScroll = true;
+            }
+
+            foreach (var item in _tabViews)
+            {
+                item.Container.Width = targetTabWidth;
+                double reserved = 60;
+                item.TitleText.MaxWidth = Math.Max(0, targetTabWidth - reserved);
+            }
+
+            TabScrollViewer.MaxWidth = availableWidth;
+            if (!needScroll)
+            {
+                TabScrollViewer.HorizontalScrollMode = ScrollMode.Disabled;
                 ScrollLeftBtn.Visibility = Visibility.Collapsed;
                 ScrollRightBtn.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                TabScrollViewer.HorizontalScrollMode = ScrollMode.Enabled;
+                ScrollLeftBtn.Visibility = Visibility.Visible;
+                ScrollRightBtn.Visibility = Visibility.Visible;
             }
         }
 
@@ -128,28 +184,6 @@ namespace EdgeRebuild
             if (e.Parameter is string url)
             {
                 _pendingUrl = url;
-            }
-        }
-
-        private void AdjustTabWidths()
-        {
-            if (_tabViews.Count == 0) return;
-
-            double availableWidth = TabScrollViewer.ViewportWidth;
-            if (availableWidth <= 0) return;
-
-            double totalIdeal = _tabViews.Count * MaxTabWidth;
-            double tabWidth = MaxTabWidth;
-            if (totalIdeal > availableWidth)
-            {
-                tabWidth = Math.Max(MinTabWidth, availableWidth / _tabViews.Count);
-            }
-
-            foreach (var item in _tabViews)
-            {
-                item.Container.Width = tabWidth;
-                double reserved = 60;
-                item.TitleText.MaxWidth = Math.Max(0, tabWidth - reserved);
             }
         }
 
@@ -292,8 +326,7 @@ namespace EdgeRebuild
             if (!string.IsNullOrEmpty(url))
                 tab.Navigate(url);
 
-            AdjustTabWidths();
-            UpdateScrollButtonsVisibility();
+            UpdateTabLayout();
         }
 
         private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) =>
@@ -302,14 +335,12 @@ namespace EdgeRebuild
         private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) =>
             TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset + 100, null, null);
 
-        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) =>
-            UpdateScrollButtonsVisibility();
+        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
 
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var border = sender as Border;
             if (border == null) return;
-
             var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
             if (viewItem == null) return;
 
@@ -327,7 +358,6 @@ namespace EdgeRebuild
         private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
         {
             if (_dragItem == null || sender != _dragItem.Container) return;
-
             var currentPoint = e.GetCurrentPoint(_dragItem.Container);
             double dx = currentPoint.Position.X - _dragStartPoint.X;
             double dy = currentPoint.Position.Y - _dragStartPoint.Y;
@@ -352,19 +382,14 @@ namespace EdgeRebuild
             if (_isSorting)
             {
                 _dragTransform.X = dx;
-
                 int currentIndex = _tabViews.IndexOf(_dragItem);
                 if (currentIndex < 0) return;
-
                 double itemWidth = _dragItem.Container.ActualWidth;
                 int offset = (int)(dx / itemWidth);
                 int newIndex = _dragStartIndex + offset;
                 newIndex = Math.Max(0, Math.Min(newIndex, _tabViews.Count - 1));
-
                 if (newIndex != currentIndex)
-                {
                     SwapTabs(currentIndex, newIndex);
-                }
             }
             e.Handled = true;
         }
@@ -372,11 +397,9 @@ namespace EdgeRebuild
         private void SwapTabs(int oldIndex, int newIndex)
         {
             if (oldIndex == newIndex) return;
-
             var item = _tabViews[oldIndex];
             _tabViews.RemoveAt(oldIndex);
             _tabViews.Insert(newIndex, item);
-
             TabBarPanel.Children.RemoveAt(oldIndex);
             TabBarPanel.Children.Insert(newIndex, item.Container);
         }
@@ -386,10 +409,7 @@ namespace EdgeRebuild
             if (_dragItem != null && sender == _dragItem.Container)
             {
                 _dragItem.Container.ReleasePointerCapture(e.Pointer);
-                if (_isSorting)
-                {
-                    _dragItem.Container.RenderTransform = null;
-                }
+                if (_isSorting) _dragItem.Container.RenderTransform = null;
                 _dragItem = null;
             }
             _isDragging = false;
@@ -400,7 +420,6 @@ namespace EdgeRebuild
         private async void MoveTabToNewWindow(TabViewItem item)
         {
             string url = item.Tab.CurrentUrl;
-
             CloseTab(item);
             if (_tabViews.Count == 0)
                 CreateNewTab(EngineType.EdgeHtml, "about:blank");
@@ -415,7 +434,6 @@ namespace EdgeRebuild
                 Window.Current.Activate();
                 newViewId = ApplicationView.GetForCurrentView().Id;
             });
-
             await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
         }
 
@@ -432,7 +450,6 @@ namespace EdgeRebuild
                     viewItem.FaviconImage.Source = null;
                     return;
                 }
-
                 try
                 {
                     var bitmap = new BitmapImage();
@@ -452,7 +469,6 @@ namespace EdgeRebuild
         private async void SwitchToTab(TabViewItem viewItem)
         {
             if (!_isLoaded || _currentTab == viewItem.Tab) return;
-
             ContentContainer.Child = null;
             _currentTab = viewItem.Tab;
             ContentContainer.Child = _currentTab.ViewElement;
@@ -476,9 +492,7 @@ namespace EdgeRebuild
             }
 
             foreach (var t in _tabViews)
-            {
                 t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
-            }
 
             UpdateStarButton();
         }
@@ -486,62 +500,45 @@ namespace EdgeRebuild
         private void CloseTab(TabViewItem viewItem)
         {
             if (!_isLoaded) return;
-
             int index = _tabViews.IndexOf(viewItem);
             if (index < 0) return;
 
             TabViewItem nextTab = null;
             if (_tabViews.Count > 1)
-            {
                 nextTab = (index > 0) ? _tabViews[index - 1] : _tabViews[1];
-            }
 
             TabBarPanel.Children.Remove(viewItem.Container);
             _tabViews.RemoveAt(index);
 
             if (_currentTab == viewItem.Tab)
             {
-                if (nextTab != null)
-                    SwitchToTab(nextTab);
-                else
-                    _currentTab = null;
+                if (nextTab != null) SwitchToTab(nextTab);
+                else _currentTab = null;
             }
-
             viewItem.Tab.Dispose();
 
             if (_tabViews.Count == 0)
                 CreateNewTab(EngineType.EdgeHtml, "about:blank");
             else
-                AdjustTabWidths();
-            UpdateScrollButtonsVisibility();
+                UpdateTabLayout();
         }
 
         private void UpdateStarButton()
         {
             if (_currentTab == null) return;
             bool exists = FavoritesManager.Instance.ContainsUrl(_currentTab.CurrentUrl);
-            if (exists)
-            {
-                AddFavBtn.Content = "\xE735";
-                AddFavBtn.Foreground = _starYellowBrush;
-            }
-            else
-            {
-                AddFavBtn.Content = "\xE734";
-                AddFavBtn.Foreground = _starGrayBrush;
-            }
+            AddFavBtn.Content = exists ? "\xE735" : "\xE734";
+            AddFavBtn.Foreground = exists ? _starYellowBrush : _starGrayBrush;
         }
 
         private void AddFavBtn_Click(object sender, RoutedEventArgs e)
         {
             if (_currentTab == null || string.IsNullOrEmpty(_currentTab.CurrentUrl)) return;
-
             string url = _currentTab.CurrentUrl;
             if (FavoritesManager.Instance.ContainsUrl(url))
             {
                 var item = FavoritesManager.Instance.Favorites.FirstOrDefault(f => f.Url == url);
-                if (item != null)
-                    FavoritesManager.Instance.Remove(item);
+                if (item != null) FavoritesManager.Instance.Remove(item);
             }
             else
             {
@@ -549,15 +546,13 @@ namespace EdgeRebuild
                 FavoritesManager.Instance.Add(title, url);
             }
             UpdateStarButton();
-            if (HubSplitView.IsPaneOpen)
-                RefreshHubPanel();
+            if (HubSplitView.IsPaneOpen) RefreshHubPanel();
         }
 
         private void HubBtn_Click(object sender, RoutedEventArgs e)
         {
             HubSplitView.IsPaneOpen = !HubSplitView.IsPaneOpen;
-            if (HubSplitView.IsPaneOpen)
-                RefreshHubPanel();
+            if (HubSplitView.IsPaneOpen) RefreshHubPanel();
         }
 
         private void CloseHubBtn_Click(object sender, RoutedEventArgs e) => HubSplitView.IsPaneOpen = false;
@@ -565,8 +560,7 @@ namespace EdgeRebuild
         private void RefreshHubPanel()
         {
             HubFavStackPanel.Children.Clear();
-            var favorites = FavoritesManager.Instance.Favorites;
-            foreach (var fav in favorites)
+            foreach (var fav in FavoritesManager.Instance.Favorites)
             {
                 var stack = new StackPanel
                 {
@@ -575,49 +569,23 @@ namespace EdgeRebuild
                     Background = new SolidColorBrush(Colors.Transparent),
                     Tag = fav
                 };
-
                 stack.PointerEntered += (s, e) => stack.Background = new SolidColorBrush(Colors.LightGray);
                 stack.PointerExited += (s, e) => stack.Background = new SolidColorBrush(Colors.Transparent);
-
-                stack.Children.Add(new TextBlock
-                {
-                    Text = fav.Title,
-                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
-                    FontSize = 14,
-                    Foreground = new SolidColorBrush(Colors.Black)
-                });
-                stack.Children.Add(new TextBlock
-                {
-                    Text = fav.Url,
-                    FontSize = 12,
-                    Foreground = new SolidColorBrush(Colors.DimGray),
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                });
+                stack.Children.Add(new TextBlock { Text = fav.Title, FontWeight = Windows.UI.Text.FontWeights.SemiBold, FontSize = 14, Foreground = new SolidColorBrush(Colors.Black) });
+                stack.Children.Add(new TextBlock { Text = fav.Url, FontSize = 12, Foreground = new SolidColorBrush(Colors.DimGray), TextTrimming = TextTrimming.CharacterEllipsis });
 
                 stack.RightTapped += (sender, e) =>
                 {
                     var flyout = new MenuFlyout();
                     var editItem = new MenuFlyoutItem { Text = "编辑" };
                     var deleteItem = new MenuFlyoutItem { Text = "删除" };
-
                     editItem.Click += async (s, args) =>
                     {
                         var titleBox = new TextBox { Text = fav.Title, PlaceholderText = "标题" };
                         var urlBox = new TextBox { Text = fav.Url, PlaceholderText = "网址" };
-                        var panel = new StackPanel();
-                        panel.Children.Add(titleBox);
-                        panel.Children.Add(urlBox);
-
-                        var dialog = new ContentDialog
-                        {
-                            Title = "编辑收藏",
-                            Content = panel,
-                            PrimaryButtonText = "保存",
-                            SecondaryButtonText = "取消"
-                        };
-
-                        var result = await dialog.ShowAsync();
-                        if (result == ContentDialogResult.Primary)
+                        var panel = new StackPanel(); panel.Children.Add(titleBox); panel.Children.Add(urlBox);
+                        var dialog = new ContentDialog { Title = "编辑收藏", Content = panel, PrimaryButtonText = "保存", SecondaryButtonText = "取消" };
+                        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                         {
                             fav.Title = titleBox.Text;
                             fav.Url = urlBox.Text;
@@ -625,16 +593,13 @@ namespace EdgeRebuild
                             UpdateStarButton();
                         }
                     };
-
                     deleteItem.Click += (s, args) =>
                     {
                         FavoritesManager.Instance.Remove(fav);
                         RefreshHubPanel();
                         UpdateStarButton();
                     };
-
-                    flyout.Items.Add(editItem);
-                    flyout.Items.Add(deleteItem);
+                    flyout.Items.Add(editItem); flyout.Items.Add(deleteItem);
                     flyout.ShowAt(stack);
                 };
 
@@ -647,7 +612,6 @@ namespace EdgeRebuild
                         HubSplitView.IsPaneOpen = false;
                     }
                 };
-
                 HubFavStackPanel.Children.Add(stack);
             }
         }
@@ -658,16 +622,8 @@ namespace EdgeRebuild
             CreateNewTab(engine, "about:blank");
         }
 
-        private void BackBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_currentTab?.CanGoBack == true) _currentTab.GoBack();
-        }
-
-        private void ForwardBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_currentTab?.CanGoForward == true) _currentTab.GoForward();
-        }
-
+        private void BackBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab?.CanGoBack == true) _currentTab.GoBack(); }
+        private void ForwardBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab?.CanGoForward == true) _currentTab.GoForward(); }
         private void RefreshBtn_Click(object sender, RoutedEventArgs e) => _currentTab?.Refresh();
 
         private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -682,9 +638,7 @@ namespace EdgeRebuild
                         !input.StartsWith("about:", StringComparison.OrdinalIgnoreCase) &&
                         !input.StartsWith("edge:", StringComparison.OrdinalIgnoreCase) &&
                         !input.Contains("://"))
-                    {
                         input = "https://" + input;
-                    }
                 }
                 _currentTab?.Navigate(input);
             }
@@ -692,7 +646,6 @@ namespace EdgeRebuild
 
         private void UrlBox_GotFocus(object sender, RoutedEventArgs e) =>
             UrlBox.BorderBrush = new SolidColorBrush(Colors.DodgerBlue);
-
         private void UrlBox_LostFocus(object sender, RoutedEventArgs e) =>
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
     }
