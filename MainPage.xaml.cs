@@ -51,12 +51,9 @@ namespace EdgeRebuild
         private const int ButtonBaseOffset = 50;
         private double _rightReserved;
 
-        private Point _dragStartPoint;
+        // Manipulation 拖拽状态
         private TabViewItem _dragItem;
         private int _dragStartIndex;
-        private bool _isDragging;
-        private bool _isSorting;
-        private TranslateTransform _dragTransform;
 
         public MainPage()
         {
@@ -225,7 +222,8 @@ namespace EdgeRebuild
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(4, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Width = MaxTabWidth
+                Width = MaxTabWidth,
+                ManipulationMode = ManipulationModes.TranslateX | ManipulationModes.TranslateY
             };
 
             var tabPanel = new StackPanel
@@ -310,17 +308,18 @@ namespace EdgeRebuild
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
             titleText.Tapped += (s, ev) => SwitchToTab(viewItem);
 
-            tabBorder.PointerPressed += OnTabPointerPressed;
-            tabBorder.PointerMoved += OnTabPointerMoved;
-            tabBorder.PointerReleased += OnTabPointerReleased;
+            // Manipulation 事件
+            tabBorder.ManipulationStarted += OnTabManipulationStarted;
+            tabBorder.ManipulationDelta += OnTabManipulationDelta;
+            tabBorder.ManipulationCompleted += OnTabManipulationCompleted;
 
             tabBorder.PointerEntered += (s, ev) =>
             {
-                if (_currentTab != tab && !_isDragging) tabBorder.Background = _hoverBrush;
+                if (_currentTab != tab) tabBorder.Background = _hoverBrush;
             };
             tabBorder.PointerExited += (s, ev) =>
             {
-                if (_currentTab != tab && !_isDragging) tabBorder.Background = _unselectedBrush;
+                if (_currentTab != tab) tabBorder.Background = _unselectedBrush;
             };
 
             tab.TitleChanged += (title) =>
@@ -353,6 +352,108 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
+        // ==================== Manipulation 拖拽实现 ====================
+        private void OnTabManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
+        {
+            var border = sender as Border;
+            if (border == null) return;
+            var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
+            if (viewItem == null) return;
+
+            _dragItem = viewItem;
+            _dragStartIndex = _tabViews.IndexOf(viewItem);
+            viewItem.Container.Opacity = 0.9;
+            e.Handled = true;
+        }
+
+        private void OnTabManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+        {
+            if (_dragItem == null) return;
+
+            double totalX = e.Cumulative.Translation.X;
+            double totalY = e.Cumulative.Translation.Y;
+
+            // 垂直拖出窗口（阈值 30px）
+            if (Math.Abs(totalY) > 30 && Math.Abs(totalY) > Math.Abs(totalX))
+            {
+                var item = _dragItem;
+                _dragItem = null;
+                item.Container.RenderTransform = null;
+                item.Container.Opacity = 1.0;
+                MoveTabToNewWindow(item);
+                e.Complete();
+                return;
+            }
+
+            // 水平拖拽排序
+            _dragItem.Container.RenderTransform = new TranslateTransform { X = totalX };
+
+            int currentIndex = _tabViews.IndexOf(_dragItem);
+            if (currentIndex < 0) return;
+
+            double itemWidth = _dragItem.Container.ActualWidth;
+            if (itemWidth <= 0) itemWidth = MaxTabWidth;
+
+            int newIndex = currentIndex;
+            if (totalX > itemWidth * 0.5 && currentIndex < _tabViews.Count - 1)
+                newIndex = currentIndex + 1;
+            else if (totalX < -itemWidth * 0.5 && currentIndex > 0)
+                newIndex = currentIndex - 1;
+
+            if (newIndex != currentIndex)
+            {
+                SwapTabs(currentIndex, newIndex);
+                _dragItem.Container.RenderTransform = null;
+                _dragStartIndex = newIndex;
+                e.Complete();
+            }
+            e.Handled = true;
+        }
+
+        private void OnTabManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+        {
+            if (_dragItem != null)
+            {
+                _dragItem.Container.RenderTransform = null;
+                _dragItem.Container.Opacity = 1.0;
+                _dragItem = null;
+            }
+            UpdateTabLayout();
+            e.Handled = true;
+        }
+
+        private void SwapTabs(int oldIndex, int newIndex)
+        {
+            if (oldIndex == newIndex) return;
+            var item = _tabViews[oldIndex];
+            _tabViews.RemoveAt(oldIndex);
+            _tabViews.Insert(newIndex, item);
+
+            TabBarPanel.Children.RemoveAt(oldIndex);
+            TabBarPanel.Children.Insert(newIndex, item.Container);
+        }
+
+        private async void MoveTabToNewWindow(TabViewItem item)
+        {
+            string url = item.Tab.CurrentUrl;
+            CloseTab(item);
+            if (_tabViews.Count == 0)
+                CreateNewTab(EngineType.EdgeHtml, "about:blank");
+
+            var newView = CoreApplication.CreateNewView();
+            int newViewId = 0;
+            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                var frame = new Frame();
+                frame.Navigate(typeof(MainPage), url);
+                Window.Current.Content = frame;
+                Window.Current.Activate();
+                newViewId = ApplicationView.GetForCurrentView().Id;
+            });
+            await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+        }
+
+        // ==================== 下载事件 ====================
         private void AttachDownloadEvents(WebView2Tab wv2Tab)
         {
             if (wv2Tab.CoreWebView2 == null) return;
@@ -369,7 +470,7 @@ namespace EdgeRebuild
                     }
                     else if (op.State == Microsoft.Web.WebView2.Core.CoreWebView2DownloadState.Interrupted)
                     {
-                        item.Status = "已取消";
+                        item.Status = "已中断";
                     }
                     RefreshDownloadsIfOpen();
                 };
@@ -385,6 +486,7 @@ namespace EdgeRebuild
             }
         }
 
+        // ==================== 标签切换/关闭 ====================
         private async void SwitchToTab(TabViewItem viewItem)
         {
             if (!_isLoaded || _currentTab == viewItem.Tab) return;
@@ -471,7 +573,7 @@ namespace EdgeRebuild
             if (HubSplitView.IsPaneOpen) RefreshFavPanel();
         }
 
-        // ========== Hub 面板刷新 ==========
+        // ==================== Hub 面板刷新 ====================
         private void RefreshFavPanel()
         {
             HubFavStackPanel.Children.Clear();
@@ -585,107 +687,7 @@ namespace EdgeRebuild
             RefreshDownloadsPanel();
         }
 
-        // ========== 标签拖拽 ==========
-        private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
-        {
-            var border = sender as Border;
-            if (border == null) return;
-            var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
-            if (viewItem == null) return;
-
-            _dragItem = viewItem;
-            _dragStartIndex = _tabViews.IndexOf(viewItem);
-            _dragStartPoint = e.GetCurrentPoint(border).Position;
-            _isDragging = false;
-            _isSorting = false;
-            _dragTransform = new TranslateTransform();
-            viewItem.Container.RenderTransform = _dragTransform;
-            border.CapturePointer(e.Pointer);
-            e.Handled = true;
-        }
-
-        private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
-        {
-            if (_dragItem == null || sender != _dragItem.Container) return;
-            var currentPoint = e.GetCurrentPoint(_dragItem.Container);
-            double dx = currentPoint.Position.X - _dragStartPoint.X;
-            double dy = currentPoint.Position.Y - _dragStartPoint.Y;
-
-            if (!_isDragging && !_isSorting && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
-            {
-                if (dy < -30 || dy > 30)
-                {
-                    _isDragging = true;
-                    _dragItem.Container.ReleasePointerCapture(e.Pointer);
-                    _dragItem.Container.RenderTransform = null;
-                    MoveTabToNewWindow(_dragItem);
-                    _dragItem = null;
-                    return;
-                }
-                else
-                {
-                    _isSorting = true;
-                }
-            }
-
-            if (_isSorting)
-            {
-                _dragTransform.X = dx;
-                int currentIndex = _tabViews.IndexOf(_dragItem);
-                if (currentIndex < 0) return;
-                double itemWidth = _dragItem.Container.ActualWidth;
-                int offset = (int)(dx / itemWidth);
-                int newIndex = _dragStartIndex + offset;
-                newIndex = Math.Max(0, Math.Min(newIndex, _tabViews.Count - 1));
-                if (newIndex != currentIndex)
-                    SwapTabs(currentIndex, newIndex);
-            }
-            e.Handled = true;
-        }
-
-        private void SwapTabs(int oldIndex, int newIndex)
-        {
-            if (oldIndex == newIndex) return;
-            var item = _tabViews[oldIndex];
-            _tabViews.RemoveAt(oldIndex);
-            _tabViews.Insert(newIndex, item);
-            TabBarPanel.Children.RemoveAt(oldIndex);
-            TabBarPanel.Children.Insert(newIndex, item.Container);
-        }
-
-        private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
-        {
-            if (_dragItem != null && sender == _dragItem.Container)
-            {
-                _dragItem.Container.ReleasePointerCapture(e.Pointer);
-                if (_isSorting) _dragItem.Container.RenderTransform = null;
-                _dragItem = null;
-            }
-            _isDragging = false;
-            _isSorting = false;
-            e.Handled = true;
-        }
-
-        private async void MoveTabToNewWindow(TabViewItem item)
-        {
-            string url = item.Tab.CurrentUrl;
-            CloseTab(item);
-            if (_tabViews.Count == 0)
-                CreateNewTab(EngineType.EdgeHtml, "about:blank");
-
-            var newView = CoreApplication.CreateNewView();
-            int newViewId = 0;
-            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-            {
-                var frame = new Frame();
-                frame.Navigate(typeof(MainPage), url);
-                Window.Current.Content = frame;
-                Window.Current.Activate();
-                newViewId = ApplicationView.GetForCurrentView().Id;
-            });
-            await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
-        }
-
+        // ==================== 滚动箭头 ====================
         private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) =>
             TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset - 100, null, null);
 
@@ -694,6 +696,7 @@ namespace EdgeRebuild
 
         private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
 
+        // ==================== Favicon 更新 ====================
         private async void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
         {
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
@@ -723,6 +726,7 @@ namespace EdgeRebuild
             });
         }
 
+        // ==================== 其他按钮事件 ====================
         private void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
             var engine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
