@@ -1,10 +1,7 @@
 ﻿<Page
     x:Class="EdgeRebuild.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:EdgeRebuild"
-    xmlns:core="using:EdgeRebuild.Core"
-    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
@@ -13,43 +10,24 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 标签栏 -->
-        <ListView x:Name="TabListView" Grid.Row="0" 
-                  ItemsSource="{x:Bind TabManager.Tabs}"
-                  SelectedItem="{x:Bind TabManager.CurrentTab, Mode=TwoWay}"
-                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                  Height="36">
-            <ListView.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal"/>
-                </ItemsPanelTemplate>
-            </ListView.ItemsPanel>
-            <ListView.ItemTemplate>
-                <DataTemplate x:DataType="core:IBrowserTab">
-                    <Grid>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="📑" VerticalAlignment="Center"/>
-                            <TextBlock Text="{x:Bind Id}" FontSize="12" Width="80"
-                                       TextTrimming="CharacterEllipsis" Margin="4,0"/>
-                            <Button Content="✕" FontSize="10" Padding="0" 
-                                    Click="CloseTabButton_Click"
-                                    Tag="{x:Bind}"/>
-                        </StackPanel>
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+        <!-- 标签栏容器（代码动态填充） -->
+        <StackPanel x:Name="TabBarPanel" Grid.Row="0" Orientation="Horizontal"
+                    Height="36" Background="#FFE0E0E0"/>
 
-        <!-- 地址栏和操作按钮 -->
+        <!-- 地址栏 -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="4">
-            <Button x:Name="BackButton" Content="◀" Click="BackButton_Click" Width="30" IsEnabled="False"/>
-            <Button x:Name="ForwardButton" Content="▶" Click="ForwardButton_Click" Width="30" IsEnabled="False"/>
-            <Button Content="↻" Click="RefreshButton_Click" Width="30"/>
-            <TextBox x:Name="UrlTextBox" Width="400" PlaceholderText="输入网址或搜索"
-                     KeyDown="UrlTextBox_KeyDown"/>
-            <Button Content="+ 新标签" Click="NewTabButton_Click"/>
-            <ComboBox x:Name="EngineComboBox" Width="100" SelectedIndex="0">
+            <TextBlock x:Name="EngineLabel" FontSize="16" FontWeight="Bold"
+                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <Button x:Name="BackBtn" Content="◀" Width="30" IsEnabled="False"
+                    Click="BackBtn_Click"/>
+            <Button x:Name="ForwardBtn" Content="▶" Width="30" IsEnabled="False"
+                    Click="ForwardBtn_Click"/>
+            <Button x:Name="RefreshBtn" Content="↻" Width="30"
+                    Click="RefreshBtn_Click"/>
+            <TextBox x:Name="UrlBox" Width="400" PlaceholderText="输入网址或搜索"
+                     KeyDown="UrlBox_KeyDown"/>
+            <Button Content="+ 新标签" Click="NewTabBtn_Click"/>
+            <ComboBox x:Name="EngineCombo" Width="100" SelectedIndex="0">
                 <ComboBoxItem Content="EdgeHTML"/>
                 <ComboBoxItem Content="WebView2"/>
             </ComboBox>

@@ -1,14 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using Windows.UI;
-using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using EdgeRebuild.Core;
-
 
 namespace EdgeRebuild
 {
@@ -25,6 +24,7 @@ namespace EdgeRebuild
             public FontIcon FaviconPlaceholder { get; set; }
             public TextBlock EngineMark { get; set; }
         }
+
         private readonly List<TabViewItem> _tabViews = new List<TabViewItem>();
         private IBrowserTab _currentTab;
         private bool _isLoaded;
@@ -32,21 +32,13 @@ namespace EdgeRebuild
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
         private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.LightGray);
 
-        private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
-        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.LightGray);
-
         public MainPage()
         {
             this.InitializeComponent();
-            TabManager.CurrentTabChanged += OnCurrentTabChanged;
-
-            // 创建初始标签（默认 EdgeHTML）
-            var firstTab = CreateTab(EngineType.EdgeHtml);
-            TabManager.AddTab(firstTab);
-            firstTab.Navigate("about:blank"); // 第一个标签直接导航（此时已设为当前标签）
+            this.Loaded += OnLoaded;
         }
 
-        private async void OnCurrentTabChanged(IBrowserTab tab)
+        private void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
             // 创建第一个标签（EdgeHTML，打开空白页）
@@ -113,10 +105,15 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Stretch
             };
 
-        private async void OnCanGoForwardChanged(bool canGoForward)
-        {
-            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => ForwardButton.IsEnabled = canGoForward);
-        }
+            // 关闭按钮
+            var closeBtn = new Button
+            {
+                Content = "✕",
+                FontSize = 10,
+                Padding = new Thickness(2, 0, 2, 0),
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
 
             // 将控件按顺序添加到面板
             tabPanel.Children.Add(engineMark);
@@ -255,9 +252,10 @@ namespace EdgeRebuild
         /// </summary>
         private void CloseTab(TabViewItem viewItem)
         {
-            EngineType engine = EngineComboBox.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
-            var newTab = CreateTab(engine);
-            TabManager.AddTab(newTab);     // 这会触发 CurrentTabChanged，在 OnCurrentTabChanged 中完成了初始化
+            if (!_isLoaded) return;
+
+            int index = _tabViews.IndexOf(viewItem);
+            if (index < 0) return;
 
             // 确定下一个要激活的标签
             TabViewItem nextTab = null;
@@ -291,22 +289,20 @@ namespace EdgeRebuild
         // 新建标签按钮
         private void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (e.Key == Windows.System.VirtualKey.Enter)
-                TabManager.CurrentTab?.Navigate(UrlTextBox.Text);
+            var engine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
+            CreateNewTab(engine, "about:blank");
         }
 
         // 后退
         private void BackBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (TabManager.CurrentTab?.CanGoBack == true)
-                TabManager.CurrentTab.GoBack();
+            if (_currentTab?.CanGoBack == true) _currentTab.GoBack();
         }
 
         // 前进
         private void ForwardBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (TabManager.CurrentTab?.CanGoForward == true)
-                TabManager.CurrentTab.GoForward();
+            if (_currentTab?.CanGoForward == true) _currentTab.GoForward();
         }
 
         // 刷新
