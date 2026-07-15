@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Windows.ApplicationModel.Core;
-using Windows.Devices.Input;
+using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
@@ -12,6 +12,7 @@ using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
+using Windows.UI.Xaml.Navigation;
 using EdgeRebuild.Core;
 
 namespace EdgeRebuild
@@ -21,7 +22,7 @@ namespace EdgeRebuild
         private class TabViewItem
         {
             public IBrowserTab Tab { get; set; }
-            public Button TabButton { get; set; }
+            public TextBlock TitleText { get; set; }
             public Button CloseButton { get; set; }
             public Border Container { get; set; }
             public Image FaviconImage { get; set; }
@@ -32,14 +33,26 @@ namespace EdgeRebuild
         private readonly List<TabViewItem> _tabViews = new List<TabViewItem>();
         private IBrowserTab _currentTab;
         private bool _isLoaded;
+        private string _pendingUrl;
 
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
-        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.LightGray);
+        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Color.FromArgb(0xB3, 0xE0, 0xE0, 0xE0));
         private readonly SolidColorBrush _hoverBrush = new SolidColorBrush(Colors.Silver);
         private readonly SolidColorBrush _starYellowBrush = new SolidColorBrush(Colors.Gold);
         private readonly SolidColorBrush _starGrayBrush = new SolidColorBrush(Colors.Gray);
         private readonly SolidColorBrush _edgeBlueBrush = new SolidColorBrush(Colors.DodgerBlue);
         private readonly SolidColorBrush _webGreenBrush = new SolidColorBrush(Colors.MediumSeaGreen);
+
+        private const int MinTabWidth = 44;
+        private const int MaxTabWidth = 120;
+        private const int MinRightPadding = 40;
+
+        private Point _dragStartPoint;
+        private TabViewItem _dragItem;
+        private int _dragStartIndex;
+        private bool _isDragging;
+        private bool _isSorting;
+        private TranslateTransform _dragTransform;
 
         public MainPage()
         {
@@ -52,13 +65,92 @@ namespace EdgeRebuild
             _isLoaded = true;
 
             CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
-            Window.Current.SetTitleBar(TabBarBorder);
+            Window.Current.SetTitleBar(TitleBarDragArea);
             var titleBar = ApplicationView.GetForCurrentView().TitleBar;
             titleBar.ButtonBackgroundColor = Colors.Transparent;
             titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
             titleBar.ButtonForegroundColor = Colors.Black;
 
-            CreateNewTab(EngineType.EdgeHtml, "about:blank");
+            SetDragAreaMargin();
+            UpdateScrollButtonsVisibility();
+
+            if (_tabViews.Count == 0)
+            {
+                if (!string.IsNullOrEmpty(_pendingUrl))
+                {
+                    CreateNewTab(EngineType.EdgeHtml, _pendingUrl);
+                    _pendingUrl = null;
+                }
+                else
+                {
+                    CreateNewTab(EngineType.EdgeHtml, "about:blank");
+                }
+            }
+        }
+
+        private void SetDragAreaMargin()
+        {
+            double rightInset = 120;
+            try
+            {
+                var bounds = ApplicationView.GetForCurrentView().VisibleBounds;
+                var windowBounds = Window.Current.Bounds;
+                rightInset = windowBounds.Width - bounds.Width;
+                if (rightInset <= 0) rightInset = 120;
+            }
+            catch { }
+            TitleBarDragArea.Margin = new Thickness(0, 0, rightInset + MinRightPadding, 0);
+        }
+
+        private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            SetDragAreaMargin();
+            AdjustTabWidths();
+        }
+
+        private void UpdateScrollButtonsVisibility()
+        {
+            if (TabScrollViewer.ScrollableWidth > 0)
+            {
+                ScrollLeftBtn.Visibility = Visibility.Visible;
+                ScrollRightBtn.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ScrollLeftBtn.Visibility = Visibility.Collapsed;
+                ScrollRightBtn.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        protected override void OnNavigatedTo(NavigationEventArgs e)
+        {
+            base.OnNavigatedTo(e);
+            if (e.Parameter is string url)
+            {
+                _pendingUrl = url;
+            }
+        }
+
+        private void AdjustTabWidths()
+        {
+            if (_tabViews.Count == 0) return;
+
+            double availableWidth = TabScrollViewer.ViewportWidth;
+            if (availableWidth <= 0) return;
+
+            double totalIdeal = _tabViews.Count * MaxTabWidth;
+            double tabWidth = MaxTabWidth;
+            if (totalIdeal > availableWidth)
+            {
+                tabWidth = Math.Max(MinTabWidth, availableWidth / _tabViews.Count);
+            }
+
+            foreach (var item in _tabViews)
+            {
+                item.Container.Width = tabWidth;
+                double reserved = 60;
+                item.TitleText.MaxWidth = Math.Max(0, tabWidth - reserved);
+            }
         }
 
         private void CreateNewTab(EngineType engine, string url = null)
@@ -69,14 +161,15 @@ namespace EdgeRebuild
                 ? new WebView2Tab()
                 : new EdgeHtmlTab();
 
-            // 标签容器
             var tabBorder = new Border
             {
+                Height = 32,
                 Background = _unselectedBrush,
                 BorderBrush = new SolidColorBrush(Colors.LightGray),
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(4, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Stretch
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Width = MaxTabWidth
             };
 
             var tabPanel = new StackPanel
@@ -85,7 +178,6 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            // 引擎标记 (字母)
             var engineMark = new TextBlock
             {
                 Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
@@ -93,63 +185,56 @@ namespace EdgeRebuild
                 FontSize = 11,
                 FontWeight = Windows.UI.Text.FontWeights.Bold,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 6, 0)
+                Margin = new Thickness(0, 0, 4, 0)
             };
 
-            // Favicon 占位符
             var faviconPlaceholder = new FontIcon
             {
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
                 Glyph = "\xE774",
-                FontSize = 14,
+                FontSize = 12,
                 Foreground = new SolidColorBrush(Colors.Gray),
-                Margin = new Thickness(0, 0, 4, 0),
+                Margin = new Thickness(0, 0, 2, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            // 真实 Favicon 图片
             var faviconImage = new Image
             {
-                Width = 16,
-                Height = 16,
-                Margin = new Thickness(0, 0, 4, 0),
+                Width = 14,
+                Height = 14,
+                Margin = new Thickness(0, 0, 2, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed
             };
 
-            // 标题按钮
-            var titleBtn = new Button
+            var titleText = new TextBlock
             {
-                Content = "新标签页",
-                Background = new SolidColorBrush(Colors.Transparent),
-                FontSize = 11,
+                Text = "新标签页",
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                FontSize = 10,
                 Foreground = new SolidColorBrush(Colors.Black),
-                Padding = new Thickness(6, 0, 6, 0),
-                BorderThickness = new Thickness(0),
-                VerticalAlignment = VerticalAlignment.Stretch
+                VerticalAlignment = VerticalAlignment.Center
             };
 
-            // 关闭按钮
             var closeBtn = new Button
             {
                 Content = "\xE711",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 12,
+                FontSize = 10,
                 Foreground = new SolidColorBrush(Colors.DimGray),
                 Background = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(0),
-                Width = 24,
-                Height = 24,
+                Width = 20,
+                Height = 20,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(4, 0, 0, 0)
+                Margin = new Thickness(2, 0, 0, 0)
             };
 
-            // 组装
             tabPanel.Children.Add(engineMark);
             tabPanel.Children.Add(faviconPlaceholder);
             tabPanel.Children.Add(faviconImage);
-            tabPanel.Children.Add(titleBtn);
+            tabPanel.Children.Add(titleText);
             tabPanel.Children.Add(closeBtn);
             tabBorder.Child = tabPanel;
             TabBarPanel.Children.Add(tabBorder);
@@ -157,7 +242,7 @@ namespace EdgeRebuild
             var viewItem = new TabViewItem
             {
                 Tab = tab,
-                TabButton = titleBtn,
+                TitleText = titleText,
                 CloseButton = closeBtn,
                 Container = tabBorder,
                 FaviconImage = faviconImage,
@@ -166,27 +251,27 @@ namespace EdgeRebuild
             };
             _tabViews.Add(viewItem);
 
-            // 事件绑定
-            titleBtn.Click += (s, ev) => SwitchToTab(viewItem);
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
+            titleText.Tapped += (s, ev) => SwitchToTab(viewItem);
 
-            // 悬停效果
+            tabBorder.PointerPressed += OnTabPointerPressed;
+            tabBorder.PointerMoved += OnTabPointerMoved;
+            tabBorder.PointerReleased += OnTabPointerReleased;
+
             tabBorder.PointerEntered += (s, ev) =>
             {
-                if (_currentTab != tab)
-                    tabBorder.Background = _hoverBrush;
+                if (_currentTab != tab && !_isDragging) tabBorder.Background = _hoverBrush;
             };
             tabBorder.PointerExited += (s, ev) =>
             {
-                if (_currentTab != tab)
-                    tabBorder.Background = _unselectedBrush;
+                if (_currentTab != tab && !_isDragging) tabBorder.Background = _unselectedBrush;
             };
 
             tab.TitleChanged += (title) =>
             {
                 _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                 {
-                    if (titleBtn != null) titleBtn.Content = title;
+                    titleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title;
                 });
             };
 
@@ -198,22 +283,140 @@ namespace EdgeRebuild
                     UpdateStarButton();
                 }
             };
-            tab.CanGoBackChanged += (can) =>
-            {
-                if (_currentTab == tab) BackBtn.IsEnabled = can;
-            };
-            tab.CanGoForwardChanged += (can) =>
-            {
-                if (_currentTab == tab) ForwardBtn.IsEnabled = can;
-            };
+            tab.CanGoBackChanged += (can) => { if (_currentTab == tab) BackBtn.IsEnabled = can; };
+            tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) ForwardBtn.IsEnabled = can; };
             tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
 
             SwitchToTab(viewItem);
 
             if (!string.IsNullOrEmpty(url))
                 tab.Navigate(url);
-            else if (string.IsNullOrEmpty(tab.CurrentUrl))
-                tab.Navigate("about:blank");
+
+            AdjustTabWidths();
+            UpdateScrollButtonsVisibility();
+        }
+
+        private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) =>
+            TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset - 100, null, null);
+
+        private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) =>
+            TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset + 100, null, null);
+
+        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) =>
+            UpdateScrollButtonsVisibility();
+
+        private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            var border = sender as Border;
+            if (border == null) return;
+
+            var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
+            if (viewItem == null) return;
+
+            _dragItem = viewItem;
+            _dragStartIndex = _tabViews.IndexOf(viewItem);
+            _dragStartPoint = e.GetCurrentPoint(border).Position;
+            _isDragging = false;
+            _isSorting = false;
+            _dragTransform = new TranslateTransform();
+            viewItem.Container.RenderTransform = _dragTransform;
+            border.CapturePointer(e.Pointer);
+            e.Handled = true;
+        }
+
+        private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
+        {
+            if (_dragItem == null || sender != _dragItem.Container) return;
+
+            var currentPoint = e.GetCurrentPoint(_dragItem.Container);
+            double dx = currentPoint.Position.X - _dragStartPoint.X;
+            double dy = currentPoint.Position.Y - _dragStartPoint.Y;
+
+            if (!_isDragging && !_isSorting && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
+            {
+                if (dy < -30 || dy > 30)
+                {
+                    _isDragging = true;
+                    _dragItem.Container.ReleasePointerCapture(e.Pointer);
+                    _dragItem.Container.RenderTransform = null;
+                    MoveTabToNewWindow(_dragItem);
+                    _dragItem = null;
+                    return;
+                }
+                else
+                {
+                    _isSorting = true;
+                }
+            }
+
+            if (_isSorting)
+            {
+                _dragTransform.X = dx;
+
+                int currentIndex = _tabViews.IndexOf(_dragItem);
+                if (currentIndex < 0) return;
+
+                double itemWidth = _dragItem.Container.ActualWidth;
+                int offset = (int)(dx / itemWidth);
+                int newIndex = _dragStartIndex + offset;
+                newIndex = Math.Max(0, Math.Min(newIndex, _tabViews.Count - 1));
+
+                if (newIndex != currentIndex)
+                {
+                    SwapTabs(currentIndex, newIndex);
+                }
+            }
+            e.Handled = true;
+        }
+
+        private void SwapTabs(int oldIndex, int newIndex)
+        {
+            if (oldIndex == newIndex) return;
+
+            var item = _tabViews[oldIndex];
+            _tabViews.RemoveAt(oldIndex);
+            _tabViews.Insert(newIndex, item);
+
+            TabBarPanel.Children.RemoveAt(oldIndex);
+            TabBarPanel.Children.Insert(newIndex, item.Container);
+        }
+
+        private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            if (_dragItem != null && sender == _dragItem.Container)
+            {
+                _dragItem.Container.ReleasePointerCapture(e.Pointer);
+                if (_isSorting)
+                {
+                    _dragItem.Container.RenderTransform = null;
+                }
+                _dragItem = null;
+            }
+            _isDragging = false;
+            _isSorting = false;
+            e.Handled = true;
+        }
+
+        private async void MoveTabToNewWindow(TabViewItem item)
+        {
+            string url = item.Tab.CurrentUrl;
+
+            CloseTab(item);
+            if (_tabViews.Count == 0)
+                CreateNewTab(EngineType.EdgeHtml, "about:blank");
+
+            var newView = CoreApplication.CreateNewView();
+            int newViewId = 0;
+            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                var frame = new Frame();
+                frame.Navigate(typeof(MainPage), url);
+                Window.Current.Content = frame;
+                Window.Current.Activate();
+                newViewId = ApplicationView.GetForCurrentView().Id;
+            });
+
+            await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
         }
 
         private async void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
@@ -261,7 +464,6 @@ namespace EdgeRebuild
             BackBtn.IsEnabled = _currentTab.CanGoBack;
             ForwardBtn.IsEnabled = _currentTab.CanGoForward;
 
-            // 引擎指示
             if (_currentTab.Engine == EngineType.EdgeHtml)
             {
                 EngineLabel.Text = "E";
@@ -273,7 +475,6 @@ namespace EdgeRebuild
                 EngineLabel.Foreground = _webGreenBrush;
             }
 
-            // 更新标签背景
             foreach (var t in _tabViews)
             {
                 t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
@@ -292,8 +493,7 @@ namespace EdgeRebuild
             TabViewItem nextTab = null;
             if (_tabViews.Count > 1)
             {
-                if (index > 0) nextTab = _tabViews[index - 1];
-                else nextTab = _tabViews[1];
+                nextTab = (index > 0) ? _tabViews[index - 1] : _tabViews[1];
             }
 
             TabBarPanel.Children.Remove(viewItem.Container);
@@ -301,17 +501,20 @@ namespace EdgeRebuild
 
             if (_currentTab == viewItem.Tab)
             {
-                if (nextTab != null) SwitchToTab(nextTab);
-                else _currentTab = null;
+                if (nextTab != null)
+                    SwitchToTab(nextTab);
+                else
+                    _currentTab = null;
             }
 
             viewItem.Tab.Dispose();
 
             if (_tabViews.Count == 0)
                 CreateNewTab(EngineType.EdgeHtml, "about:blank");
+            else
+                AdjustTabWidths();
+            UpdateScrollButtonsVisibility();
         }
-
-        // ========== 收藏与面板 ==========
 
         private void UpdateStarButton()
         {
@@ -319,20 +522,19 @@ namespace EdgeRebuild
             bool exists = FavoritesManager.Instance.ContainsUrl(_currentTab.CurrentUrl);
             if (exists)
             {
-                AddFavBtn.Content = "\xE735"; // 实心星
+                AddFavBtn.Content = "\xE735";
                 AddFavBtn.Foreground = _starYellowBrush;
             }
             else
             {
-                AddFavBtn.Content = "\xE734"; // 空心星
+                AddFavBtn.Content = "\xE734";
                 AddFavBtn.Foreground = _starGrayBrush;
             }
         }
 
         private void AddFavBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (_currentTab == null || string.IsNullOrEmpty(_currentTab.CurrentUrl))
-                return;
+            if (_currentTab == null || string.IsNullOrEmpty(_currentTab.CurrentUrl)) return;
 
             string url = _currentTab.CurrentUrl;
             if (FavoritesManager.Instance.ContainsUrl(url))
@@ -358,10 +560,7 @@ namespace EdgeRebuild
                 RefreshHubPanel();
         }
 
-        private void CloseHubBtn_Click(object sender, RoutedEventArgs e)
-        {
-            HubSplitView.IsPaneOpen = false;
-        }
+        private void CloseHubBtn_Click(object sender, RoutedEventArgs e) => HubSplitView.IsPaneOpen = false;
 
         private void RefreshHubPanel()
         {
@@ -395,7 +594,6 @@ namespace EdgeRebuild
                     TextTrimming = TextTrimming.CharacterEllipsis
                 });
 
-                // 右键菜单
                 stack.RightTapped += (sender, e) =>
                 {
                     var flyout = new MenuFlyout();
@@ -440,10 +638,9 @@ namespace EdgeRebuild
                     flyout.ShowAt(stack);
                 };
 
-                // 左键导航
                 stack.PointerPressed += (s, e) =>
                 {
-                    if (e.Pointer.PointerDeviceType != PointerDeviceType.Mouse ||
+                    if (e.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse ||
                         e.GetCurrentPoint(stack).Properties.IsLeftButtonPressed)
                     {
                         _currentTab?.Navigate(fav.Url);
@@ -454,8 +651,6 @@ namespace EdgeRebuild
                 HubFavStackPanel.Children.Add(stack);
             }
         }
-
-        // ========== 其他事件 ==========
 
         private void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
@@ -473,10 +668,7 @@ namespace EdgeRebuild
             if (_currentTab?.CanGoForward == true) _currentTab.GoForward();
         }
 
-        private void RefreshBtn_Click(object sender, RoutedEventArgs e)
-        {
-            _currentTab?.Refresh();
-        }
+        private void RefreshBtn_Click(object sender, RoutedEventArgs e) => _currentTab?.Refresh();
 
         private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
@@ -498,14 +690,10 @@ namespace EdgeRebuild
             }
         }
 
-        private void UrlBox_GotFocus(object sender, RoutedEventArgs e)
-        {
-            UrlBox.BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD7));
-        }
+        private void UrlBox_GotFocus(object sender, RoutedEventArgs e) =>
+            UrlBox.BorderBrush = new SolidColorBrush(Colors.DodgerBlue);
 
-        private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
-        {
+        private void UrlBox_LostFocus(object sender, RoutedEventArgs e) =>
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
-        }
     }
 }
