@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using Windows.ApplicationModel.Core;
+using Windows.Devices.Input;
 using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
@@ -33,6 +35,8 @@ namespace EdgeRebuild
 
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
         private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.LightGray);
+        private readonly SolidColorBrush _starYellowBrush = new SolidColorBrush(Colors.Gold);
+        private readonly SolidColorBrush _starGrayBrush = new SolidColorBrush(Colors.Gray);
 
         public MainPage()
         {
@@ -148,7 +152,11 @@ namespace EdgeRebuild
 
             tab.UrlChanged += (url) =>
             {
-                if (_currentTab == tab) UrlBox.Text = url;
+                if (_currentTab == tab)
+                {
+                    UrlBox.Text = url;
+                    UpdateStarButton();
+                }
             };
             tab.CanGoBackChanged += (can) =>
             {
@@ -219,6 +227,8 @@ namespace EdgeRebuild
                 t.TabButton.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
                 t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
             }
+
+            UpdateStarButton();
         }
 
         private void CloseTab(TabViewItem viewItem)
@@ -250,7 +260,46 @@ namespace EdgeRebuild
                 CreateNewTab(EngineType.EdgeHtml, "about:blank");
         }
 
-        // ========== Hub 面板 ==========
+        // ========== 收藏状态与面板 ==========
+
+        private void UpdateStarButton()
+        {
+            if (_currentTab == null) return;
+            bool exists = FavoritesManager.Instance.ContainsUrl(_currentTab.CurrentUrl);
+            if (exists)
+            {
+                AddFavBtn.Content = "★";
+                AddFavBtn.Foreground = _starYellowBrush;
+            }
+            else
+            {
+                AddFavBtn.Content = "☆";
+                AddFavBtn.Foreground = _starGrayBrush;
+            }
+        }
+
+        private void AddFavBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentTab == null || string.IsNullOrEmpty(_currentTab.CurrentUrl))
+                return;
+
+            string url = _currentTab.CurrentUrl;
+            if (FavoritesManager.Instance.ContainsUrl(url))
+            {
+                var item = FavoritesManager.Instance.Favorites.FirstOrDefault(f => f.Url == url);
+                if (item != null)
+                    FavoritesManager.Instance.Remove(item);
+            }
+            else
+            {
+                string title = !string.IsNullOrEmpty(_currentTab.Title) ? _currentTab.Title : _currentTab.CurrentUrl;
+                FavoritesManager.Instance.Add(title, url);
+            }
+            UpdateStarButton();
+            if (HubSplitView.IsPaneOpen)
+                RefreshHubPanel();
+        }
+
         private void HubBtn_Click(object sender, RoutedEventArgs e)
         {
             HubSplitView.IsPaneOpen = !HubSplitView.IsPaneOpen;
@@ -263,11 +312,6 @@ namespace EdgeRebuild
             HubSplitView.IsPaneOpen = false;
         }
 
-        private void HubSplitView_PaneClosed(SplitView sender, object args)
-        {
-            // 可选，面板关闭时清理
-        }
-
         private void RefreshHubPanel()
         {
             HubFavStackPanel.Children.Clear();
@@ -277,8 +321,9 @@ namespace EdgeRebuild
                 var stack = new StackPanel
                 {
                     Margin = new Thickness(4, 8, 4, 8),
-                    Tag = fav.Url
+                    Tag = fav
                 };
+
                 stack.Children.Add(new TextBlock
                 {
                     Text = fav.Title,
@@ -292,19 +337,70 @@ namespace EdgeRebuild
                     Foreground = new SolidColorBrush(Colors.Gray),
                     TextTrimming = TextTrimming.CharacterEllipsis
                 });
+
+                // 右键菜单
+                stack.RightTapped += (sender, e) =>
+                {
+                    var flyout = new MenuFlyout();
+
+                    var editItem = new MenuFlyoutItem { Text = "编辑" };
+                    var deleteItem = new MenuFlyoutItem { Text = "删除" };
+
+                    editItem.Click += async (s, args) =>
+                    {
+                        var titleBox = new TextBox { Text = fav.Title, PlaceholderText = "标题" };
+                        var urlBox = new TextBox { Text = fav.Url, PlaceholderText = "网址" };
+                        var panel = new StackPanel();
+                        panel.Children.Add(titleBox);
+                        panel.Children.Add(urlBox);
+
+                        var dialog = new ContentDialog
+                        {
+                            Title = "编辑收藏",
+                            Content = panel,
+                            PrimaryButtonText = "保存",
+                            SecondaryButtonText = "取消"
+                        };
+
+                        var result = await dialog.ShowAsync();
+                        if (result == ContentDialogResult.Primary)
+                        {
+                            fav.Title = titleBox.Text;
+                            fav.Url = urlBox.Text;
+                            RefreshHubPanel();
+                            UpdateStarButton();
+                        }
+                    };
+
+                    deleteItem.Click += (s, args) =>
+                    {
+                        FavoritesManager.Instance.Remove(fav);
+                        RefreshHubPanel();
+                        UpdateStarButton();
+                    };
+
+                    flyout.Items.Add(editItem);
+                    flyout.Items.Add(deleteItem);
+                    flyout.ShowAt(stack);
+                };
+
+                // 左键点击导航
                 stack.PointerPressed += (s, e) =>
                 {
-                    if (s is StackPanel sp && sp.Tag is string url)
+                    if (e.Pointer.PointerDeviceType != PointerDeviceType.Mouse ||
+                        e.GetCurrentPoint(stack).Properties.IsLeftButtonPressed)
                     {
-                        _currentTab?.Navigate(url);
-                        HubSplitView.IsPaneOpen = false; // 自动关闭
+                        _currentTab?.Navigate(fav.Url);
+                        HubSplitView.IsPaneOpen = false;
                     }
                 };
+
                 HubFavStackPanel.Children.Add(stack);
             }
         }
 
         // ========== 其他事件 ==========
+
         private void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
             var engine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
@@ -343,15 +439,6 @@ namespace EdgeRebuild
                     }
                 }
                 _currentTab?.Navigate(input);
-            }
-        }
-
-        private void AddFavBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_currentTab != null && !string.IsNullOrEmpty(_currentTab.CurrentUrl))
-            {
-                string title = !string.IsNullOrEmpty(_currentTab.Title) ? _currentTab.Title : _currentTab.CurrentUrl;
-                FavoritesManager.Instance.Add(title, _currentTab.CurrentUrl);
             }
         }
     }
