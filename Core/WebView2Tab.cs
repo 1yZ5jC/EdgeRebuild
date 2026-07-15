@@ -23,6 +23,9 @@ namespace EdgeRebuild.Core
         public string Title => _title;
         public string FaviconUri => _faviconUri;
 
+        // 公开 CoreWebView2，供外部绑定下载事件等
+        public Microsoft.Web.WebView2.Core.CoreWebView2 CoreWebView2 => _webView?.CoreWebView2;
+
         public event Action<string> TitleChanged;
         public event Action<string> UrlChanged;
         public event Action<bool> CanGoBackChanged;

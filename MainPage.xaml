@@ -94,7 +94,7 @@
             <!-- 内容区 -->
         </Grid.RowDefinitions>
 
-        <!-- 标签栏：四列布局，拖拽区独立，按钮左移50px -->
+        <!-- 标签栏：四列布局，拖拽区独立 -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -104,7 +104,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <!-- 标签滚动区 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 右按钮组 -->
+                    <!-- 右按钮组（左移50px） -->
                     <ColumnDefinition Width="*"/>
                     <!-- 拖拽区 -->
                 </Grid.ColumnDefinitions>
@@ -208,26 +208,53 @@
             </Grid>
         </Border>
 
-        <!-- 右侧 Hub 面板 -->
+        <!-- 右侧 Hub 面板（Pivot 三合一） -->
         <SplitView x:Name="HubSplitView" Grid.Row="2" DisplayMode="Overlay"
-                   OpenPaneLength="320" PanePlacement="Right"
+                   OpenPaneLength="360" PanePlacement="Right"
                    PaneBackground="{ThemeResource ToolbarAcrylicBrush}">
             <SplitView.Pane>
-                <Grid Width="320" VerticalAlignment="Stretch">
+                <Grid Width="360" VerticalAlignment="Stretch">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="收藏夹" FontSize="20" FontWeight="SemiBold"
-                               Margin="16,16,16,8" Foreground="{ThemeResource Foreground}"/>
                     <Button x:Name="CloseHubBtn" Grid.Row="0" Content="&#xE711;"
-                            HorizontalAlignment="Right" Margin="0,12,12,0"
+                            HorizontalAlignment="Right" Margin="0,8,8,0"
                             Click="CloseHubBtn_Click" Style="{StaticResource ToolButtonStyle}"
                             Foreground="{ThemeResource MutedForeground}"/>
-                    <ScrollViewer Grid.Row="2" Margin="8,0">
-                        <StackPanel x:Name="HubFavStackPanel" Orientation="Vertical"/>
-                    </ScrollViewer>
+                    <Pivot x:Name="HubPivot" Grid.Row="1" Margin="0,0,0,0">
+                        <PivotItem Header="收藏夹">
+                            <ScrollViewer Margin="8,0">
+                                <StackPanel x:Name="HubFavStackPanel" Orientation="Vertical"/>
+                            </ScrollViewer>
+                        </PivotItem>
+                        <PivotItem Header="历史记录">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Button Content="清空历史" HorizontalAlignment="Right" Margin="8"
+                                        Click="ClearHistoryBtn_Click"/>
+                                <ScrollViewer Grid.Row="1" Margin="8,0">
+                                    <StackPanel x:Name="HubHistoryStackPanel" Orientation="Vertical"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </PivotItem>
+                        <PivotItem Header="下载">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Button Content="清除已完成" HorizontalAlignment="Right" Margin="8"
+                                        Click="ClearDownloadsBtn_Click"/>
+                                <ScrollViewer Grid.Row="1" Margin="8,0">
+                                    <StackPanel x:Name="HubDownloadsStackPanel" Orientation="Vertical"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </PivotItem>
+                    </Pivot>
                 </Grid>
             </SplitView.Pane>
             <Border x:Name="ContentContainer" Background="White"/>
