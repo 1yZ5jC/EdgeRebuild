@@ -4,9 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Page.Resources>
-        <SolidColorBrush x:Key="ToolbarBackground" Color="#FFE1E1E1"/>
+        <SolidColorBrush x:Key="TitleBarBackground" Color="#FFE1E1E1"/>
         <SolidColorBrush x:Key="AddressBarBackground" Color="#FFFFFFFF"/>
-        <SolidColorBrush x:Key="TabBarBackground" Color="#FFE1E1E1"/>
         <SolidColorBrush x:Key="Foreground" Color="#FF000000"/>
 
         <Style x:Key="NavigationButtonStyle" TargetType="Button">
@@ -35,37 +34,30 @@
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="36"/>
-            <!-- 标签栏（兼标题栏） -->
+            <!-- 标签栏 -->
             <RowDefinition Height="36"/>
             <!-- 工具栏 -->
             <RowDefinition Height="*"/>
-            <!-- 内容 -->
+            <!-- 内容区域（含右侧 Hub 面板） -->
         </Grid.RowDefinitions>
 
         <!-- 标签栏（可拖拽窗口） -->
-        <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource TabBarBackground}">
+        <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource TitleBarBackground}">
             <StackPanel x:Name="TabBarPanel" Orientation="Horizontal" VerticalAlignment="Center"/>
         </Border>
 
         <!-- 工具栏 -->
-        <Grid Grid.Row="1" Background="{ThemeResource ToolbarBackground}">
+        <Grid Grid.Row="1" Background="{ThemeResource TitleBarBackground}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
-                <!-- 引擎图标 -->
                 <ColumnDefinition Width="Auto"/>
-                <!-- 后退 -->
                 <ColumnDefinition Width="Auto"/>
-                <!-- 前进 -->
                 <ColumnDefinition Width="Auto"/>
-                <!-- 刷新 -->
                 <ColumnDefinition Width="*"/>
-                <!-- 地址栏（自动扩展） -->
                 <ColumnDefinition Width="Auto"/>
-                <!-- 新建标签 + 引擎选择 -->
             </Grid.ColumnDefinitions>
 
-            <TextBlock x:Name="EngineLabel" Grid.Column="0" FontSize="16" VerticalAlignment="Center"
-                       Margin="8,0,4,0"/>
+            <TextBlock x:Name="EngineLabel" Grid.Column="0" FontSize="16" VerticalAlignment="Center" Margin="8,0,4,0"/>
 
             <Button x:Name="BackBtn" Grid.Column="1" Content="◀" Width="32" Height="32" IsEnabled="False"
                     Click="BackBtn_Click" Style="{StaticResource NavigationButtonStyle}" Margin="2,0"/>
@@ -74,15 +66,16 @@
             <Button x:Name="RefreshBtn" Grid.Column="3" Content="↻" Width="32" Height="32"
                     Click="RefreshBtn_Click" Style="{StaticResource NavigationButtonStyle}" Margin="2,0"/>
 
-            <TextBox x:Name="UrlBox" Grid.Column="4" MinWidth="200"
-                     PlaceholderText="输入网址或搜索"
+            <TextBox x:Name="UrlBox" Grid.Column="4" MinWidth="200" PlaceholderText="输入网址或搜索"
                      KeyDown="UrlBox_KeyDown"
-                     Background="{ThemeResource AddressBarBackground}"
-                     BorderBrush="Transparent"
-                     Padding="8,4"
-                     VerticalAlignment="Stretch"/>
+                     Background="{ThemeResource AddressBarBackground}" BorderBrush="Transparent"
+                     Padding="8,4" VerticalAlignment="Stretch"/>
 
             <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="4,0">
+                <Button x:Name="AddFavBtn" Content="⭐" Width="32" Height="32"
+                        Click="AddFavBtn_Click" Style="{StaticResource NavigationButtonStyle}" Margin="2,0"/>
+                <Button x:Name="HubBtn" Content="📚" Width="32" Height="32"
+                        Click="HubBtn_Click" Style="{StaticResource NavigationButtonStyle}" Margin="2,0"/>
                 <Button Content="+ 新标签" Click="NewTabBtn_Click" Height="32" Margin="2,0"
                         Style="{StaticResource ToolButtonStyle}"/>
                 <ComboBox x:Name="EngineCombo" Width="90" SelectedIndex="0" VerticalAlignment="Center"
@@ -93,7 +86,31 @@
             </StackPanel>
         </Grid>
 
-        <!-- 内容区域 -->
-        <Border x:Name="ContentContainer" Grid.Row="2" Margin="4" Background="White"/>
+        <!-- 内容区域：SplitView 实现右侧滑出面板 -->
+        <SplitView x:Name="HubSplitView" Grid.Row="2"
+                   DisplayMode="Overlay"
+                   OpenPaneLength="320"
+                   PanePlacement="Right"
+                   PaneBackground="{ThemeResource TitleBarBackground}">
+            <SplitView.Pane>
+                <Grid Width="320" VerticalAlignment="Stretch">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="收藏夹" FontSize="20" FontWeight="Bold" Margin="16,16,16,8"/>
+                    <Button x:Name="CloseHubBtn" Grid.Row="0" Content="✕" HorizontalAlignment="Right"
+                            Margin="0,12,12,0" Click="CloseHubBtn_Click"
+                            Style="{StaticResource NavigationButtonStyle}" Width="32" Height="32"/>
+                    <ScrollViewer Grid.Row="2" Margin="8,0">
+                        <StackPanel x:Name="HubFavStackPanel" Orientation="Vertical"/>
+                    </ScrollViewer>
+                </Grid>
+            </SplitView.Pane>
+
+            <!-- 网页内容 -->
+            <Border x:Name="ContentContainer" Margin="4" Background="White"/>
+        </SplitView>
     </Grid>
 </Page>

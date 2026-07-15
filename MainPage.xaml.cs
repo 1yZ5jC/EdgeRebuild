@@ -1,15 +1,16 @@
-﻿using EdgeRebuild.Core;
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Windows.ApplicationModel.Core;
 using Windows.UI;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
-using Windows.ApplicationModel.Core;
+using EdgeRebuild.Core;
 
 namespace EdgeRebuild
 {
@@ -42,9 +43,13 @@ namespace EdgeRebuild
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
+
             CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
-            // 设置标签栏区域为标题栏拖拽区域
             Window.Current.SetTitleBar(TabBarBorder);
+            var titleBar = ApplicationView.GetForCurrentView().TitleBar;
+            titleBar.ButtonBackgroundColor = Colors.Transparent;
+            titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+
             CreateNewTab(EngineType.EdgeHtml, "about:blank");
         }
 
@@ -91,7 +96,6 @@ namespace EdgeRebuild
                 Visibility = Visibility.Collapsed
             };
 
-            // 初始显示“新标签页”，因为标题尚未生成
             var titleBtn = new Button
             {
                 Content = "新标签页",
@@ -131,7 +135,6 @@ namespace EdgeRebuild
             };
             _tabViews.Add(viewItem);
 
-            // 事件
             titleBtn.Click += (s, ev) => SwitchToTab(viewItem);
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
 
@@ -139,15 +142,13 @@ namespace EdgeRebuild
             {
                 _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                 {
-                    if (titleBtn != null)
-                        titleBtn.Content = title; // 现在总是非空字符串
+                    if (titleBtn != null) titleBtn.Content = title;
                 });
             };
 
             tab.UrlChanged += (url) =>
             {
-                if (_currentTab == tab)
-                    UrlBox.Text = url;
+                if (_currentTab == tab) UrlBox.Text = url;
             };
             tab.CanGoBackChanged += (can) =>
             {
@@ -202,7 +203,6 @@ namespace EdgeRebuild
             if (!_isLoaded || _currentTab == viewItem.Tab) return;
 
             ContentContainer.Child = null;
-
             _currentTab = viewItem.Tab;
             ContentContainer.Child = _currentTab.ViewElement;
 
@@ -240,10 +240,8 @@ namespace EdgeRebuild
 
             if (_currentTab == viewItem.Tab)
             {
-                if (nextTab != null)
-                    SwitchToTab(nextTab);
-                else
-                    _currentTab = null;
+                if (nextTab != null) SwitchToTab(nextTab);
+                else _currentTab = null;
             }
 
             viewItem.Tab.Dispose();
@@ -252,6 +250,61 @@ namespace EdgeRebuild
                 CreateNewTab(EngineType.EdgeHtml, "about:blank");
         }
 
+        // ========== Hub 面板 ==========
+        private void HubBtn_Click(object sender, RoutedEventArgs e)
+        {
+            HubSplitView.IsPaneOpen = !HubSplitView.IsPaneOpen;
+            if (HubSplitView.IsPaneOpen)
+                RefreshHubPanel();
+        }
+
+        private void CloseHubBtn_Click(object sender, RoutedEventArgs e)
+        {
+            HubSplitView.IsPaneOpen = false;
+        }
+
+        private void HubSplitView_PaneClosed(SplitView sender, object args)
+        {
+            // 可选，面板关闭时清理
+        }
+
+        private void RefreshHubPanel()
+        {
+            HubFavStackPanel.Children.Clear();
+            var favorites = FavoritesManager.Instance.Favorites;
+            foreach (var fav in favorites)
+            {
+                var stack = new StackPanel
+                {
+                    Margin = new Thickness(4, 8, 4, 8),
+                    Tag = fav.Url
+                };
+                stack.Children.Add(new TextBlock
+                {
+                    Text = fav.Title,
+                    FontWeight = Windows.UI.Text.FontWeights.Bold,
+                    FontSize = 14
+                });
+                stack.Children.Add(new TextBlock
+                {
+                    Text = fav.Url,
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Colors.Gray),
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                });
+                stack.PointerPressed += (s, e) =>
+                {
+                    if (s is StackPanel sp && sp.Tag is string url)
+                    {
+                        _currentTab?.Navigate(url);
+                        HubSplitView.IsPaneOpen = false; // 自动关闭
+                    }
+                };
+                HubFavStackPanel.Children.Add(stack);
+            }
+        }
+
+        // ========== 其他事件 ==========
         private void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
             var engine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
@@ -290,6 +343,15 @@ namespace EdgeRebuild
                     }
                 }
                 _currentTab?.Navigate(input);
+            }
+        }
+
+        private void AddFavBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentTab != null && !string.IsNullOrEmpty(_currentTab.CurrentUrl))
+            {
+                string title = !string.IsNullOrEmpty(_currentTab.Title) ? _currentTab.Title : _currentTab.CurrentUrl;
+                FavoritesManager.Instance.Add(title, _currentTab.CurrentUrl);
             }
         }
     }

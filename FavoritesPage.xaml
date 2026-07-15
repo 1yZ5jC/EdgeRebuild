@@ -1,0 +1,17 @@
+﻿<Page
+    x:Class="EdgeRebuild.FavoritesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="收藏夹" FontSize="24" Margin="16"/>
+        <ListView x:Name="FavListView" Grid.Row="1" Margin="8"
+                  SelectionChanged="FavListView_SelectionChanged">
+            <!-- 不使用 ItemTemplate，改由代码填充 -->
+        </ListView>
+    </Grid>
+</Page>
