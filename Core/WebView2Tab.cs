@@ -21,6 +21,8 @@ namespace EdgeRebuild.Core
         public event Action<string> UrlChanged;
         public event Action<bool> CanGoBackChanged;
         public event Action<bool> CanGoForwardChanged;
+        public EngineType Engine => EngineType.WebView2;
+        public string EngineIcon => "🧬";
 
         public WebView2Tab()
         {

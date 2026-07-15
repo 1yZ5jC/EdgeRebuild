@@ -21,6 +21,12 @@ namespace EdgeRebuild.Core
         public event Action<string> UrlChanged;
         public event Action<bool> CanGoBackChanged;
         public event Action<bool> CanGoForwardChanged;
+        public EngineType Engine => EngineType.EdgeHtml;
+        public string EngineIcon => "🌐";
+        public string FaviconUri => _faviconUri;
+
+        
+        public event Action<string> FaviconChanged;
 
         public EdgeHtmlTab()
         {
