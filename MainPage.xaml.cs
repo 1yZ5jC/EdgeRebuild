@@ -45,7 +45,8 @@ namespace EdgeRebuild
 
         private const int MinTabWidth = 44;
         private const int MaxTabWidth = 120;
-        private const int AdditionalMargin = 30; // 系统按钮区外的额外间距
+        private const int AdditionalMargin = 30;
+        private const int MinDragWidth = 20;
         private double _rightReserved;
 
         private Point _dragStartPoint;
@@ -72,7 +73,7 @@ namespace EdgeRebuild
             titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
             titleBar.ButtonForegroundColor = Colors.Black;
 
-            SetDragAreaMargin();
+            SetSafeZonePadding();
             UpdateTabLayout();
 
             Window.Current.SizeChanged += OnWindowSizeChanged;
@@ -93,33 +94,29 @@ namespace EdgeRebuild
 
         private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
         {
-            SetDragAreaMargin();
+            SetSafeZonePadding();
             UpdateTabLayout();
         }
 
-        private void SetDragAreaMargin()
+        private void SetSafeZonePadding()
         {
-            double systemOverlay = 100; // 默认值
-
+            double systemOverlay = 100;
             try
             {
-                // 使用 VisibleBounds 计算系统按钮区宽度（兼容所有版本）
                 var bounds = ApplicationView.GetForCurrentView().VisibleBounds;
                 var windowBounds = Window.Current.Bounds;
                 systemOverlay = windowBounds.Width - bounds.Width;
             }
             catch { }
-
             if (systemOverlay <= 0) systemOverlay = 100;
 
-            // 安全区 = 系统按钮区 + 30px
             _rightReserved = systemOverlay + AdditionalMargin;
-            TitleBarDragArea.Margin = new Thickness(0, 0, _rightReserved, 0);
+            TabBarBorder.Padding = new Thickness(0, 0, _rightReserved, 0);
         }
 
         private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
         {
-            SetDragAreaMargin();
+            SetSafeZonePadding();
             UpdateTabLayout();
         }
 
@@ -133,8 +130,8 @@ namespace EdgeRebuild
                 ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
                 : 0;
             double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
-            double totalWidth = TabBarBorder.ActualWidth;
-            double availableWidth = Math.Max(0, totalWidth - leftFixed - rightFixed - _rightReserved);
+            double totalWidth = TabBarBorder.ActualWidth - _rightReserved;
+            double availableWidth = Math.Max(0, totalWidth - leftFixed - rightFixed - MinDragWidth);
 
             double idealTotal = _tabViews.Count * MaxTabWidth;
             double minTotal = _tabViews.Count * MinTabWidth;

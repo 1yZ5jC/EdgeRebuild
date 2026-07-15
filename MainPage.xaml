@@ -21,10 +21,12 @@
         <SolidColorBrush x:Key="Foreground" Color="#000000"/>
         <SolidColorBrush x:Key="MutedForeground" Color="#666666"/>
 
+        <!-- 增强按钮样式：悬停时背景变亮、边框发光，按下时背景加深 -->
         <Style x:Key="ToolButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
-            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="Width" Value="32"/>
@@ -33,8 +35,40 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid Background="{TemplateBinding Background}">
-                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        <Grid Background="{TemplateBinding Background}"
+                              BorderBrush="{TemplateBinding BorderBrush}"
+                              BorderThickness="{TemplateBinding BorderThickness}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BorderElement"
+                                                                           Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#40FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BorderElement"
+                                                                           Storyboard.TargetProperty="BorderBrush">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AddressBarFocusBorder}"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BorderElement"
+                                                                           Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#80FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border x:Name="BorderElement" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}">
+                                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Border>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -63,7 +97,7 @@
             <!-- 内容区 -->
         </Grid.RowDefinitions>
 
-        <!-- 标签栏：四列布局，拖拽区填充剩余空间 -->
+        <!-- 标签栏：四列布局，通过 Padding 预留安全区，拖拽区无 Margin -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -71,14 +105,13 @@
                     <ColumnDefinition Width="Auto"/>
                     <!-- 左箭头 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 标签滚动区（动态 MaxWidth） -->
+                    <!-- 标签滚动区 -->
                     <ColumnDefinition Width="Auto"/>
                     <!-- 右箭头 + 新建按钮 -->
                     <ColumnDefinition Width="*"/>
                     <!-- 拖拽区 -->
                 </Grid.ColumnDefinitions>
 
-                <!-- 左翻页箭头 -->
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
                         Style="{StaticResource ToolButtonStyle}"
                         Width="24" Height="24"
@@ -88,7 +121,6 @@
                         Margin="2,0,0,0"
                         Visibility="Collapsed"/>
 
-                <!-- 标签滚动区 -->
                 <ScrollViewer x:Name="TabScrollViewer" Grid.Column="1"
                               HorizontalScrollBarVisibility="Hidden"
                               VerticalScrollBarVisibility="Disabled"
@@ -100,10 +132,9 @@
                                 VerticalAlignment="Stretch" Background="Transparent" />
                 </ScrollViewer>
 
-                <!-- 右侧按钮组（再向左移动 40px，累计 80px） -->
                 <StackPanel x:Name="RightSidePanel" Grid.Column="2"
                             Orientation="Horizontal" VerticalAlignment="Center"
-                            Background="Transparent" Margin="0,0,80,0">
+                            Background="Transparent" Margin="0,0,0,0">
                     <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
                             Style="{StaticResource ToolButtonStyle}"
                             Width="24" Height="24"
@@ -119,14 +150,12 @@
                             Margin="0,0,0,0"/>
                 </StackPanel>
 
-                <!-- 拖拽区域透明矩形（最小宽度 20px，安全区由代码控制） -->
                 <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
-                           Grid.Column="3" VerticalAlignment="Stretch"
-                           MinWidth="20"/>
+                           Grid.Column="3" VerticalAlignment="Stretch"/>
             </Grid>
         </Border>
 
-        <!-- 工具栏（亚克力背景） -->
+        <!-- 工具栏 -->
         <Border Grid.Row="1" Background="{ThemeResource ToolbarAcrylicBrush}"
                 BorderBrush="{ThemeResource SeparatorBrush}" BorderThickness="0,1,0,1">
             <Grid>
