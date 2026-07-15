@@ -1,0 +1,7 @@
+{
+  "profiles": {
+    "EdgeRebuild": {
+      "commandName": "MsixPackage"
+    }
+  }
+}
