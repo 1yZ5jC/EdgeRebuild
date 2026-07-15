@@ -23,7 +23,7 @@ namespace EdgeRebuild
             public IBrowserTab Tab { get; set; }
             public Button TabButton { get; set; }
             public Button CloseButton { get; set; }
-            public Panel Container { get; set; }
+            public Border Container { get; set; }
             public Image FaviconImage { get; set; }
             public FontIcon FaviconPlaceholder { get; set; }
             public TextBlock EngineMark { get; set; }
@@ -35,8 +35,11 @@ namespace EdgeRebuild
 
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
         private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.LightGray);
+        private readonly SolidColorBrush _hoverBrush = new SolidColorBrush(Colors.Silver);
         private readonly SolidColorBrush _starYellowBrush = new SolidColorBrush(Colors.Gold);
         private readonly SolidColorBrush _starGrayBrush = new SolidColorBrush(Colors.Gray);
+        private readonly SolidColorBrush _edgeBlueBrush = new SolidColorBrush(Colors.DodgerBlue);
+        private readonly SolidColorBrush _webGreenBrush = new SolidColorBrush(Colors.MediumSeaGreen);
 
         public MainPage()
         {
@@ -53,6 +56,7 @@ namespace EdgeRebuild
             var titleBar = ApplicationView.GetForCurrentView().TitleBar;
             titleBar.ButtonBackgroundColor = Colors.Transparent;
             titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+            titleBar.ButtonForegroundColor = Colors.Black;
 
             CreateNewTab(EngineType.EdgeHtml, "about:blank");
         }
@@ -65,22 +69,34 @@ namespace EdgeRebuild
                 ? new WebView2Tab()
                 : new EdgeHtmlTab();
 
+            // 标签容器
+            var tabBorder = new Border
+            {
+                Background = _unselectedBrush,
+                BorderBrush = new SolidColorBrush(Colors.LightGray),
+                BorderThickness = new Thickness(0, 0, 1, 0),
+                Padding = new Thickness(4, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Stretch
+            };
+
             var tabPanel = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Margin = new Thickness(1, 0, 1, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Background = _unselectedBrush
+                VerticalAlignment = VerticalAlignment.Center
             };
 
+            // 引擎标记 (字母)
             var engineMark = new TextBlock
             {
-                Text = tab.EngineIcon,
-                FontSize = 14,
+                Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
+                Foreground = tab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush,
+                FontSize = 11,
+                FontWeight = Windows.UI.Text.FontWeights.Bold,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 4, 0)
+                Margin = new Thickness(0, 0, 6, 0)
             };
 
+            // Favicon 占位符
             var faviconPlaceholder = new FontIcon
             {
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
@@ -91,6 +107,7 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center
             };
 
+            // 真实 Favicon 图片
             var faviconImage = new Image
             {
                 Width = 16,
@@ -100,47 +117,70 @@ namespace EdgeRebuild
                 Visibility = Visibility.Collapsed
             };
 
+            // 标题按钮
             var titleBtn = new Button
             {
                 Content = "新标签页",
-                Background = _unselectedBrush,
-                FontSize = 10,
-                Padding = new Thickness(4, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Stretch,
-                BorderThickness = new Thickness(0)
+                Background = new SolidColorBrush(Colors.Transparent),
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Colors.Black),
+                Padding = new Thickness(6, 0, 6, 0),
+                BorderThickness = new Thickness(0),
+                VerticalAlignment = VerticalAlignment.Stretch
             };
 
+            // 关闭按钮
             var closeBtn = new Button
             {
-                Content = "✕",
-                FontSize = 10,
-                Padding = new Thickness(2, 0, 2, 0),
-                Margin = new Thickness(4, 0, 0, 0),
-                VerticalAlignment = VerticalAlignment.Stretch,
-                BorderThickness = new Thickness(0)
+                Content = "\xE711",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Colors.DimGray),
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
+                Width = 24,
+                Height = 24,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0)
             };
 
+            // 组装
             tabPanel.Children.Add(engineMark);
             tabPanel.Children.Add(faviconPlaceholder);
             tabPanel.Children.Add(faviconImage);
             tabPanel.Children.Add(titleBtn);
             tabPanel.Children.Add(closeBtn);
-            TabBarPanel.Children.Add(tabPanel);
+            tabBorder.Child = tabPanel;
+            TabBarPanel.Children.Add(tabBorder);
 
             var viewItem = new TabViewItem
             {
                 Tab = tab,
                 TabButton = titleBtn,
                 CloseButton = closeBtn,
-                Container = tabPanel,
+                Container = tabBorder,
                 FaviconImage = faviconImage,
                 FaviconPlaceholder = faviconPlaceholder,
                 EngineMark = engineMark
             };
             _tabViews.Add(viewItem);
 
+            // 事件绑定
             titleBtn.Click += (s, ev) => SwitchToTab(viewItem);
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
+
+            // 悬停效果
+            tabBorder.PointerEntered += (s, ev) =>
+            {
+                if (_currentTab != tab)
+                    tabBorder.Background = _hoverBrush;
+            };
+            tabBorder.PointerExited += (s, ev) =>
+            {
+                if (_currentTab != tab)
+                    tabBorder.Background = _unselectedBrush;
+            };
 
             tab.TitleChanged += (title) =>
             {
@@ -220,11 +260,22 @@ namespace EdgeRebuild
             UrlBox.Text = _currentTab.CurrentUrl;
             BackBtn.IsEnabled = _currentTab.CanGoBack;
             ForwardBtn.IsEnabled = _currentTab.CanGoForward;
-            EngineLabel.Text = _currentTab.EngineIcon;
 
+            // 引擎指示
+            if (_currentTab.Engine == EngineType.EdgeHtml)
+            {
+                EngineLabel.Text = "E";
+                EngineLabel.Foreground = _edgeBlueBrush;
+            }
+            else
+            {
+                EngineLabel.Text = "W";
+                EngineLabel.Foreground = _webGreenBrush;
+            }
+
+            // 更新标签背景
             foreach (var t in _tabViews)
             {
-                t.TabButton.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
                 t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
             }
 
@@ -260,7 +311,7 @@ namespace EdgeRebuild
                 CreateNewTab(EngineType.EdgeHtml, "about:blank");
         }
 
-        // ========== 收藏状态与面板 ==========
+        // ========== 收藏与面板 ==========
 
         private void UpdateStarButton()
         {
@@ -268,12 +319,12 @@ namespace EdgeRebuild
             bool exists = FavoritesManager.Instance.ContainsUrl(_currentTab.CurrentUrl);
             if (exists)
             {
-                AddFavBtn.Content = "★";
+                AddFavBtn.Content = "\xE735"; // 实心星
                 AddFavBtn.Foreground = _starYellowBrush;
             }
             else
             {
-                AddFavBtn.Content = "☆";
+                AddFavBtn.Content = "\xE734"; // 空心星
                 AddFavBtn.Foreground = _starGrayBrush;
             }
         }
@@ -320,21 +371,27 @@ namespace EdgeRebuild
             {
                 var stack = new StackPanel
                 {
-                    Margin = new Thickness(4, 8, 4, 8),
+                    Margin = new Thickness(4, 6, 4, 6),
+                    Padding = new Thickness(8),
+                    Background = new SolidColorBrush(Colors.Transparent),
                     Tag = fav
                 };
+
+                stack.PointerEntered += (s, e) => stack.Background = new SolidColorBrush(Colors.LightGray);
+                stack.PointerExited += (s, e) => stack.Background = new SolidColorBrush(Colors.Transparent);
 
                 stack.Children.Add(new TextBlock
                 {
                     Text = fav.Title,
-                    FontWeight = Windows.UI.Text.FontWeights.Bold,
-                    FontSize = 14
+                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+                    FontSize = 14,
+                    Foreground = new SolidColorBrush(Colors.Black)
                 });
                 stack.Children.Add(new TextBlock
                 {
                     Text = fav.Url,
                     FontSize = 12,
-                    Foreground = new SolidColorBrush(Colors.Gray),
+                    Foreground = new SolidColorBrush(Colors.DimGray),
                     TextTrimming = TextTrimming.CharacterEllipsis
                 });
 
@@ -342,7 +399,6 @@ namespace EdgeRebuild
                 stack.RightTapped += (sender, e) =>
                 {
                     var flyout = new MenuFlyout();
-
                     var editItem = new MenuFlyoutItem { Text = "编辑" };
                     var deleteItem = new MenuFlyoutItem { Text = "删除" };
 
@@ -384,7 +440,7 @@ namespace EdgeRebuild
                     flyout.ShowAt(stack);
                 };
 
-                // 左键点击导航
+                // 左键导航
                 stack.PointerPressed += (s, e) =>
                 {
                     if (e.Pointer.PointerDeviceType != PointerDeviceType.Mouse ||
@@ -440,6 +496,16 @@ namespace EdgeRebuild
                 }
                 _currentTab?.Navigate(input);
             }
+        }
+
+        private void UrlBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            UrlBox.BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x00, 0x78, 0xD7));
+        }
+
+        private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
         }
     }
 }
