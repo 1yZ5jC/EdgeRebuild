@@ -206,12 +206,18 @@
                             Click="CloseHubBtn_Click" Style="{StaticResource ToolButtonStyle}"
                             Foreground="{StaticResource MutedForegroundBrush}"/>
                     <Pivot x:Name="HubPivot" Grid.Row="1" Margin="0,0,0,0">
-                        <PivotItem Header="收藏夹">
+                        <PivotItem>
+                            <PivotItem.Header>
+                                <TextBlock Text="收藏夹" FontSize="14"/>
+                            </PivotItem.Header>
                             <ScrollViewer Margin="8,0">
                                 <StackPanel x:Name="HubFavStackPanel" Orientation="Vertical"/>
                             </ScrollViewer>
                         </PivotItem>
-                        <PivotItem Header="历史记录">
+                        <PivotItem>
+                            <PivotItem.Header>
+                                <TextBlock Text="历史记录" FontSize="14"/>
+                            </PivotItem.Header>
                             <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -224,8 +230,11 @@
                                 </ScrollViewer>
                             </Grid>
                         </PivotItem>
-                        <PivotItem Header="下载">
-                            <Grid>
+                        <PivotItem>
+                                <PivotItem.Header>
+                                    <TextBlock Text="下载" FontSize="14"/>
+                                </PivotItem.Header>
+                                <Grid>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>

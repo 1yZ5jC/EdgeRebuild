@@ -37,7 +37,7 @@ namespace EdgeRebuild
         private IBrowserTab _currentTab;
         private bool _isLoaded;
         private string _pendingUrl;
-        private string _currentSkin = "Spartan";
+        private string _currentSkin = SkinManager.SkinSpartan;
 
         private double _zoomFactor = 1.0;
         private readonly Stack<string> _closedTabUrls = new Stack<string>();
@@ -50,7 +50,6 @@ namespace EdgeRebuild
         private readonly SolidColorBrush _edgeBlueBrush = new SolidColorBrush(Colors.DodgerBlue);
         private readonly SolidColorBrush _webGreenBrush = new SolidColorBrush(Colors.MediumSeaGreen);
 
-        // 动态文字画刷（根据皮肤切换）
         private SolidColorBrush _foregroundBrush;
         private SolidColorBrush _mutedForegroundBrush;
 
@@ -95,7 +94,7 @@ namespace EdgeRebuild
 
                 Window.Current.SizeChanged += OnWindowSizeChanged;
 
-                string savedSkin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
+                string savedSkin = await SettingsManager.GetAsync("Skin") ?? SkinManager.SkinSpartan;
                 _currentSkin = savedSkin;
                 ApplySkinColors(savedSkin);
 
@@ -123,7 +122,6 @@ namespace EdgeRebuild
             }
         }
 
-        // ========== 皮肤切换 ==========
         private async void SwitchSkin(string name)
         {
             _currentSkin = name;
@@ -133,75 +131,44 @@ namespace EdgeRebuild
 
         private void ApplySkinColors(string skinName)
         {
-            Brush toolbarBg;
-            SolidColorBrush tabActiveBg, tabInactiveBg, tabHoverBg;
-            SolidColorBrush addressBg, addressBorder, addressFocusBorder;
-            SolidColorBrush separatorBrush;
+            var colors = SkinManager.GetSkinColors(skinName);
 
-            if (skinName == "ModernIE")
-            {
-                toolbarBg = new SolidColorBrush(Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30));
-                tabActiveBg = new SolidColorBrush(Color.FromArgb(0xFF, 0x3E, 0x3E, 0x40));
-                tabInactiveBg = new SolidColorBrush(Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30));
-                tabHoverBg = new SolidColorBrush(Color.FromArgb(0xFF, 0x4E, 0x4E, 0x50));
-                addressBg = new SolidColorBrush(Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E));
-                addressBorder = new SolidColorBrush(Color.FromArgb(0xFF, 0x55, 0x55, 0x55));
-                addressFocusBorder = new SolidColorBrush(Colors.DodgerBlue);
-                separatorBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x55, 0x55, 0x55));
-                _foregroundBrush = new SolidColorBrush(Colors.White);
-                _mutedForegroundBrush = new SolidColorBrush(Colors.Gray);
-            }
-            else // Spartan
-            {
-                var acrylic = new AcrylicBrush
-                {
-                    BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
-                    TintColor = Color.FromArgb(0xFF, 0xF0, 0xF0, 0xF0),
-                    TintOpacity = 0.8,
-                    FallbackColor = Color.FromArgb(0xFF, 0xF0, 0xF0, 0xF0)
-                };
-                toolbarBg = acrylic;
-                tabActiveBg = new SolidColorBrush(Colors.White);
-                tabInactiveBg = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
-                tabHoverBg = new SolidColorBrush(Colors.Silver);
-                addressBg = new SolidColorBrush(Colors.White);
-                addressBorder = new SolidColorBrush(Colors.LightGray);
-                addressFocusBorder = new SolidColorBrush(Colors.DodgerBlue);
-                separatorBrush = new SolidColorBrush(Colors.LightGray);
-                _foregroundBrush = new SolidColorBrush(Colors.Black);
-                _mutedForegroundBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x66, 0x66, 0x66));
-            }
+            // 工具栏背景
+            TabBarBorder.Background = colors.ToolbarBackground;
+            ToolbarBorder.Background = colors.ToolbarBackground;
+            HubSplitView.PaneBackground = colors.ToolbarBackground;
 
-            // 工具栏
-            TabBarBorder.Background = toolbarBg;
-            ToolbarBorder.Background = toolbarBg;
-            HubSplitView.PaneBackground = toolbarBg;
+            // 地址栏
+            UrlBox.Background = colors.AddressBarBackground;
+            UrlBox.BorderBrush = colors.AddressBarBorder;
+            UrlBox.Foreground = colors.ForegroundBrush;
 
-            UrlBox.Background = addressBg;
-            UrlBox.BorderBrush = addressBorder;
-            UrlBox.Foreground = _foregroundBrush;
+            // 引擎标签和组合框
+            EngineLabel.Foreground = colors.ForegroundBrush;
+            EngineCombo.Foreground = colors.ForegroundBrush;
 
-            EngineLabel.Foreground = _foregroundBrush;
-            EngineCombo.Foreground = _foregroundBrush;
+            // 工具栏按钮
+            BackBtn.Foreground = colors.MutedForegroundBrush;
+            ForwardBtn.Foreground = colors.MutedForegroundBrush;
+            RefreshBtn.Foreground = colors.MutedForegroundBrush;
+            AddFavBtn.Foreground = colors.MutedForegroundBrush;
+            HubBtn.Foreground = colors.MutedForegroundBrush;
+            MenuBtn.Foreground = colors.MutedForegroundBrush;
+            ScrollLeftBtn.Foreground = colors.MutedForegroundBrush;
+            ScrollRightBtn.Foreground = colors.MutedForegroundBrush;
+            NewTabButton.Foreground = colors.MutedForegroundBrush;
+            CloseHubBtn.Foreground = colors.MutedForegroundBrush;
 
-            BackBtn.Foreground = _mutedForegroundBrush;
-            ForwardBtn.Foreground = _mutedForegroundBrush;
-            RefreshBtn.Foreground = _mutedForegroundBrush;
-            AddFavBtn.Foreground = _mutedForegroundBrush;
-            HubBtn.Foreground = _mutedForegroundBrush;
-            MenuBtn.Foreground = _mutedForegroundBrush;
-            ScrollLeftBtn.Foreground = _mutedForegroundBrush;
-            ScrollRightBtn.Foreground = _mutedForegroundBrush;
-            NewTabButton.Foreground = _mutedForegroundBrush;
-            CloseHubBtn.Foreground = _mutedForegroundBrush;
+            ToolbarBorder.BorderBrush = colors.SeparatorBrush;
 
-            ToolbarBorder.BorderBrush = separatorBrush;
+            // 更新标签栏画刷及文字
+            _selectedBrush.Color = colors.TabActiveBackground.Color;
+            _unselectedBrush.Color = colors.TabInactiveBackground.Color;
+            _hoverBrush.Color = colors.TabHoverBackground.Color;
 
-            _selectedBrush.Color = tabActiveBg.Color;
-            _unselectedBrush.Color = tabInactiveBg.Color;
-            _hoverBrush.Color = tabHoverBg.Color;
+            _foregroundBrush = colors.ForegroundBrush;
+            _mutedForegroundBrush = colors.MutedForegroundBrush;
 
-            // 标签文字
             foreach (var item in _tabViews)
             {
                 item.Container.Background = (item.Tab == _currentTab) ? _selectedBrush : _unselectedBrush;
@@ -209,25 +176,18 @@ namespace EdgeRebuild
                 item.CloseButton.Foreground = _mutedForegroundBrush;
             }
 
-            // ★ 修复 Pivot 标题颜色
-            foreach (PivotItem item in HubPivot.Items)
+            // Pivot 标题颜色（Header 已改为 TextBlock）
+            foreach (PivotItem pivotItem in HubPivot.Items)
             {
-                if (item.Header is string headerText)
-                {
-                    item.Header = new TextBlock
-                    {
-                        Text = headerText,
-                        Foreground = _foregroundBrush,
-                        FontSize = 14  // 可根据需要调整
-                    };
-                }
+                if (pivotItem.Header is TextBlock headerText)
+                    headerText.Foreground = _foregroundBrush;
             }
 
-            // ★ 修复 Hub 面板内的按钮（清空历史、清除已完成）
+            // Hub 面板内的按钮
             ClearHistoryBtn.Foreground = _foregroundBrush;
             ClearDownloadsBtn.Foreground = _foregroundBrush;
 
-            // 如果 Hub 面板打开，刷新内容以应用新颜色
+            // 如果 Hub 面板已打开，刷新内容以应用新颜色
             if (HubSplitView.IsPaneOpen)
             {
                 RefreshFavPanel();
@@ -236,7 +196,6 @@ namespace EdgeRebuild
             }
         }
 
-        // ========== 窗口与布局 ==========
         private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
         {
             SetSafeZonePadding();
@@ -251,7 +210,6 @@ namespace EdgeRebuild
                     DragCanvas.Children.Remove(_dragItem.Container);
                 _dragItem.Container.Opacity = 1.0;
             }
-
             if (_placeholder != null)
             {
                 int idx = TabBarPanel.Children.IndexOf(_placeholder);
@@ -261,16 +219,13 @@ namespace EdgeRebuild
 
             TabBarPanel.Children.Clear();
             foreach (var item in _tabViews)
-            {
                 if (item.Container.Parent == null)
                     TabBarPanel.Children.Add(item.Container);
-            }
 
             _dragItem = null;
             _isDragging = false;
             _hasMoved = false;
             _totalDx = 0;
-
             UpdateTabLayout();
         }
 
@@ -285,7 +240,6 @@ namespace EdgeRebuild
             }
             catch { }
             if (systemOverlay <= 0) systemOverlay = 100;
-
             _rightReserved = systemOverlay + AdditionalMargin;
             TabBarBorder.Padding = new Thickness(0, 0, _rightReserved, 0);
         }
@@ -301,13 +255,10 @@ namespace EdgeRebuild
             RightSidePanel.UpdateLayout();
             double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
             double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible
-                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
-                : 0;
+                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right : 0;
             double contentWidth = TabBarBorder.ActualWidth - _rightReserved;
-
             double requiredForDrag = rightFixed + MinDragWidth;
             double extraOffset = Math.Max(0, requiredForDrag - (contentWidth - leftFixed));
-
             RightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset + extraOffset, 0);
             RightSidePanel.UpdateLayout();
         }
@@ -315,47 +266,29 @@ namespace EdgeRebuild
         private void UpdateTabLayout()
         {
             if (!_isLoaded || _tabViews.Count == 0 || _isDragging) return;
-
             TabBarBorder.UpdateLayout();
-
             RightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset, 0);
             RightSidePanel.UpdateLayout();
-
             UpdateRightPanelMargin();
 
             double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible
-                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right
-                : 0;
+                ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right : 0;
             double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
             double contentWidth = TabBarBorder.ActualWidth - _rightReserved;
             double availableWidth = Math.Max(0, contentWidth - leftFixed - rightFixed - MinDragWidth);
 
             double idealTotal = _tabViews.Count * MaxTabWidth;
             double minTotal = _tabViews.Count * MinTabWidth;
-
             bool needScroll = false;
             double targetTabWidth = MaxTabWidth;
 
-            if (idealTotal <= availableWidth)
-            {
-                targetTabWidth = MaxTabWidth;
-            }
-            else if (minTotal <= availableWidth)
-            {
-                targetTabWidth = availableWidth / _tabViews.Count;
-            }
-            else
-            {
-                targetTabWidth = MinTabWidth;
-                needScroll = true;
-            }
+            if (idealTotal <= availableWidth) targetTabWidth = MaxTabWidth;
+            else if (minTotal <= availableWidth) targetTabWidth = availableWidth / _tabViews.Count;
+            else { targetTabWidth = MinTabWidth; needScroll = true; }
 
-            foreach (var item in _tabViews)
-            {
-                item.Container.Width = targetTabWidth;
-            }
-
+            foreach (var item in _tabViews) item.Container.Width = targetTabWidth;
             TabScrollViewer.MaxWidth = availableWidth;
+
             if (!needScroll)
             {
                 TabScrollViewer.HorizontalScrollMode = ScrollMode.Disabled;
@@ -368,27 +301,19 @@ namespace EdgeRebuild
                 ScrollLeftBtn.Visibility = Visibility.Visible;
                 ScrollRightBtn.Visibility = Visibility.Visible;
             }
-
             UpdateRightPanelMargin();
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if (e.Parameter is string url)
-            {
-                _pendingUrl = url;
-            }
+            if (e.Parameter is string url) _pendingUrl = url;
         }
 
-        // ========== 标签创建 ==========
         private async Task CreateNewTabAsync(EngineType engine, string url = null)
         {
             if (!_isLoaded) return;
-
-            IBrowserTab tab = engine == EngineType.WebView2
-                ? new WebView2Tab()
-                : new EdgeHtmlTab();
+            IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
 
             var tabBorder = new Border
             {
@@ -401,12 +326,9 @@ namespace EdgeRebuild
                 Width = MaxTabWidth
             };
 
-            var tabPanel = new Grid
-            {
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            tabPanel.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
-            tabPanel.ColumnDefinitions.Add(new ColumnDefinition() { Width = GridLength.Auto });
+            var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
+            tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var engineMark = new TextBlock
             {
@@ -417,7 +339,6 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 4, 0)
             };
-
             var faviconPlaceholder = new FontIcon
             {
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
@@ -427,7 +348,6 @@ namespace EdgeRebuild
                 Margin = new Thickness(0, 0, 2, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-
             var faviconImage = new Image
             {
                 Width = 14,
@@ -436,7 +356,6 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed
             };
-
             var titleText = new TextBlock
             {
                 Text = "新标签页",
@@ -446,15 +365,9 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center
             };
 
-            var infoPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            infoPanel.Children.Add(engineMark);
-            infoPanel.Children.Add(faviconPlaceholder);
-            infoPanel.Children.Add(faviconImage);
-            infoPanel.Children.Add(titleText);
+            var infoPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            infoPanel.Children.Add(engineMark); infoPanel.Children.Add(faviconPlaceholder);
+            infoPanel.Children.Add(faviconImage); infoPanel.Children.Add(titleText);
 
             Grid.SetColumn(infoPanel, 0);
             tabPanel.Children.Add(infoPanel);
@@ -474,10 +387,8 @@ namespace EdgeRebuild
                 HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(0, 0, 4, 0)
             };
-
             Grid.SetColumn(closeBtn, 1);
             tabPanel.Children.Add(closeBtn);
-
             tabBorder.Child = tabPanel;
             TabBarPanel.Children.Add(tabBorder);
 
@@ -494,40 +405,19 @@ namespace EdgeRebuild
             _tabViews.Add(viewItem);
 
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
-
             tabBorder.PointerPressed += OnTabPointerPressed;
             tabBorder.PointerMoved += OnTabPointerMoved;
             tabBorder.PointerReleased += OnTabPointerReleased;
             tabBorder.PointerCanceled += OnTabPointerReleased;
-
             tabBorder.RightTapped += OnTabRightTapped;
+            tabBorder.PointerEntered += (s, ev) => { if (_currentTab != tab && !_isDragging) tabBorder.Background = _hoverBrush; };
+            tabBorder.PointerExited += (s, ev) => { if (_currentTab != tab && !_isDragging) tabBorder.Background = _unselectedBrush; };
 
-            tabBorder.PointerEntered += (s, ev) =>
+            tab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
+            tab.UrlChanged += (u) =>
             {
-                if (_currentTab != tab && !_isDragging) tabBorder.Background = _hoverBrush;
-            };
-            tabBorder.PointerExited += (s, ev) =>
-            {
-                if (_currentTab != tab && !_isDragging) tabBorder.Background = _unselectedBrush;
-            };
-
-            tab.TitleChanged += (title) =>
-            {
-                _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                {
-                    viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title;
-                });
-            };
-
-            tab.UrlChanged += (url) =>
-            {
-                if (_currentTab == tab)
-                {
-                    UrlBox.Text = url;
-                    UpdateStarButton();
-                }
-                if (!string.IsNullOrEmpty(url) && url != "about:blank")
-                    HistoryManager.Add(tab.Title ?? url, url);
+                if (_currentTab == tab) { UrlBox.Text = u; UpdateStarButton(); }
+                if (!string.IsNullOrEmpty(u) && u != "about:blank") HistoryManager.Add(tab.Title ?? u, u);
             };
             tab.CanGoBackChanged += (can) => { if (_currentTab == tab) BackBtn.IsEnabled = can; };
             tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) ForwardBtn.IsEnabled = can; };
@@ -535,36 +425,24 @@ namespace EdgeRebuild
             tab.ContextMenuRequested += OnTabContextMenuRequested;
 
             await SwitchToTabAsync(viewItem);
-
-            if (!string.IsNullOrEmpty(url))
-                await tab.NavigateAsync(url);
-
+            if (!string.IsNullOrEmpty(url)) await tab.NavigateAsync(url);
             UpdateTabLayout();
         }
 
-        // ========== 标签拖拽 ==========
+        // ========== 拖拽 ==========
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            var properties = e.GetCurrentPoint((UIElement)sender).Properties;
-            if (properties.IsRightButtonPressed) return;
-
+            if (e.GetCurrentPoint((UIElement)sender).Properties.IsRightButtonPressed) return;
             ResetDragState();
             if (_tabViews.Count <= 1) return;
-
             var border = sender as Border;
-            if (border == null) return;
             var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
             if (viewItem == null) return;
-
             _dragItem = viewItem;
             _dragOffset = e.GetCurrentPoint(viewItem.Container).Position;
-            _hasMoved = false;
-            _isDragging = false;
-            _totalDx = 0;
-
+            _hasMoved = false; _isDragging = false; _totalDx = 0;
             _dragStartCanvasPoint = e.GetCurrentPoint(DragCanvas).Position;
             _dragStartScreenPoint = CoreWindow.GetForCurrentThread().PointerPosition;
-
             border.CapturePointer(e.Pointer);
             e.Handled = true;
         }
@@ -572,7 +450,6 @@ namespace EdgeRebuild
         private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
         {
             if (_dragItem == null) return;
-
             var posInCanvas = e.GetCurrentPoint(DragCanvas).Position;
             var screenPoint = CoreWindow.GetForCurrentThread().PointerPosition;
             double dyScreen = screenPoint.Y - _dragStartScreenPoint.Y;
@@ -580,22 +457,14 @@ namespace EdgeRebuild
 
             if (!_isDragging && (Math.Abs(posInCanvas.X - _dragStartCanvasPoint.X) > 3 || Math.Abs(posInCanvas.Y - _dragStartCanvasPoint.Y) > 3))
             {
-                _hasMoved = true;
-                _isDragging = true;
-
+                _hasMoved = true; _isDragging = true;
                 int index = _tabViews.IndexOf(_dragItem);
-                _placeholder = new Border
-                {
-                    Width = _dragItem.Container.ActualWidth,
-                    Height = 32,
-                    Background = new SolidColorBrush(Colors.Transparent)
-                };
+                _placeholder = new Border { Width = _dragItem.Container.ActualWidth, Height = 32, Background = new SolidColorBrush(Colors.Transparent) };
                 TabBarPanel.Children.Insert(index, _placeholder);
-
-                var parentPanel = _dragItem.Container.Parent as Panel;
-                parentPanel?.Children.Remove(_dragItem.Container);
-
+                (_dragItem.Container.Parent as Panel)?.Children.Remove(_dragItem.Container);
                 DragCanvas.Children.Add(_dragItem.Container);
+                Canvas.SetLeft(_dragItem.Container, posInCanvas.X - _dragOffset.X);
+                Canvas.SetTop(_dragItem.Container, posInCanvas.Y - _dragOffset.Y);
                 Canvas.SetZIndex(_dragItem.Container, 1000);
                 _dragItem.Container.Opacity = 0.9;
             }
@@ -607,34 +476,17 @@ namespace EdgeRebuild
                 if (newLeft > maxLeft) newLeft = maxLeft;
                 Canvas.SetLeft(_dragItem.Container, newLeft);
                 Canvas.SetTop(_dragItem.Container, posInCanvas.Y - _dragOffset.Y);
-
                 _totalDx = posInCanvas.X - _dragStartCanvasPoint.X;
-
                 if (shouldPopOut)
                 {
                     _dragItem.Container.ReleasePointerCaptures();
-                    var item = _dragItem;
-                    _dragItem = null;
-
-                    if (DragCanvas.Children.Contains(item.Container))
-                        DragCanvas.Children.Remove(item.Container);
+                    var item = _dragItem; _dragItem = null;
+                    if (DragCanvas.Children.Contains(item.Container)) DragCanvas.Children.Remove(item.Container);
                     item.Container.Opacity = 1.0;
-
-                    if (_placeholder != null)
-                    {
-                        int idx = TabBarPanel.Children.IndexOf(_placeholder);
-                        if (idx >= 0) TabBarPanel.Children.RemoveAt(idx);
-                        _placeholder = null;
-                    }
-
-                    _isDragging = false;
-                    _hasMoved = false;
-                    _totalDx = 0;
-
+                    if (_placeholder != null) { int idx = TabBarPanel.Children.IndexOf(_placeholder); if (idx >= 0) TabBarPanel.Children.RemoveAt(idx); _placeholder = null; }
+                    _isDragging = false; _hasMoved = false; _totalDx = 0;
                     TabBarPanel.Children.Clear();
-                    foreach (var t in _tabViews)
-                        if (t != item) TabBarPanel.Children.Add(t.Container);
-
+                    foreach (var t in _tabViews) if (t != item) TabBarPanel.Children.Add(t.Container);
                     MoveTabToNewWindow(item);
                     return;
                 }
@@ -645,43 +497,27 @@ namespace EdgeRebuild
         private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
         {
             if (_dragItem == null) return;
-
             try
             {
                 try { _dragItem.Container.ReleasePointerCaptures(); } catch { }
-
-                if (!_hasMoved)
-                {
-                    SwitchToTab(_dragItem);
-                    return;
-                }
-
+                if (!_hasMoved) { SwitchToTab(_dragItem); return; }
                 if (_isDragging)
                 {
                     var transform = _dragItem.Container.TransformToVisual(TabBarPanel);
                     double centerX = transform.TransformPoint(new Point(0, 0)).X + _dragItem.Container.ActualWidth / 2;
                     int targetIndex = _tabViews.IndexOf(_dragItem);
-
                     for (int i = 0; i < _tabViews.Count; i++)
                     {
                         if (_tabViews[i] == _dragItem) continue;
                         var childPos = _tabViews[i].Container.TransformToVisual(TabBarPanel).TransformPoint(new Point(0, 0));
                         if (centerX >= childPos.X && centerX <= childPos.X + _tabViews[i].Container.ActualWidth)
-                        {
-                            targetIndex = i;
-                            break;
-                        }
+                        { targetIndex = i; break; }
                     }
-
                     if (targetIndex != _tabViews.IndexOf(_dragItem))
                         MoveTabToIndex(_tabViews.IndexOf(_dragItem), targetIndex);
                 }
             }
-            finally
-            {
-                ResetDragState();
-                e.Handled = true;
-            }
+            finally { ResetDragState(); e.Handled = true; }
         }
 
         private void MoveTabToIndex(int oldIndex, int newIndex)
@@ -697,11 +533,8 @@ namespace EdgeRebuild
         {
             string url = item.Tab.CurrentUrl;
             CloseTab(item);
-            if (_tabViews.Count == 0)
-                await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
-            else
-                UpdateTabLayout();
-
+            if (_tabViews.Count == 0) await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
+            else UpdateTabLayout();
             try
             {
                 var newView = CoreApplication.CreateNewView();
@@ -716,10 +549,7 @@ namespace EdgeRebuild
                 });
                 await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to create new window: {ex.Message}");
-            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Failed to create new window: {ex.Message}"); }
         }
 
         // ========== 标签右键菜单 ==========
@@ -728,51 +558,27 @@ namespace EdgeRebuild
             var border = sender as Border;
             var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
             if (viewItem == null) return;
-
             var menu = new MenuFlyout();
             var newTabItem = new MenuFlyoutItem { Text = "新建标签页" };
-            newTabItem.Click += async (s, ev) =>
-                await CreateNewTabAsync(EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml, "about:blank");
+            newTabItem.Click += async (s, ev) => await CreateNewTabAsync(EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml, "about:blank");
             menu.Items.Add(newTabItem);
-            var reloadItem = new MenuFlyoutItem { Text = "重新加载" };
-            reloadItem.Click += (s, ev) => viewItem.Tab?.RefreshAsync();
-            menu.Items.Add(reloadItem);
-            var closeItem = new MenuFlyoutItem { Text = "关闭标签页" };
-            closeItem.Click += (s, ev) => CloseTab(viewItem);
-            menu.Items.Add(closeItem);
+            var reloadItem = new MenuFlyoutItem { Text = "重新加载" }; reloadItem.Click += (s, ev) => viewItem.Tab?.RefreshAsync(); menu.Items.Add(reloadItem);
+            var closeItem = new MenuFlyoutItem { Text = "关闭标签页" }; closeItem.Click += (s, ev) => CloseTab(viewItem); menu.Items.Add(closeItem);
             menu.Items.Add(new MenuFlyoutSeparator());
-            var closeOthersItem = new MenuFlyoutItem { Text = "关闭其他标签页" };
-            closeOthersItem.Click += (s, ev) => CloseOtherTabs(viewItem);
-            menu.Items.Add(closeOthersItem);
-            var closeRightItem = new MenuFlyoutItem { Text = "关闭右侧标签页" };
-            closeRightItem.Click += (s, ev) => CloseTabsToRight(viewItem);
-            menu.Items.Add(closeRightItem);
+            var closeOthersItem = new MenuFlyoutItem { Text = "关闭其他标签页" }; closeOthersItem.Click += (s, ev) => CloseOtherTabs(viewItem); menu.Items.Add(closeOthersItem);
+            var closeRightItem = new MenuFlyoutItem { Text = "关闭右侧标签页" }; closeRightItem.Click += (s, ev) => CloseTabsToRight(viewItem); menu.Items.Add(closeRightItem);
             menu.Items.Add(new MenuFlyoutSeparator());
-            var moveItem = new MenuFlyoutItem { Text = "移动到新窗口" };
-            moveItem.Click += (s, ev) => { _ = SwitchToTabAsync(viewItem); MoveTabToNewWindow(viewItem); };
-            menu.Items.Add(moveItem);
+            var moveItem = new MenuFlyoutItem { Text = "移动到新窗口" }; moveItem.Click += (s, ev) => { _ = SwitchToTabAsync(viewItem); MoveTabToNewWindow(viewItem); }; menu.Items.Add(moveItem);
             menu.ShowAt(border, e.GetPosition(border));
         }
 
-        private void CloseOtherTabs(TabViewItem keepItem)
-        {
-            var tabsToClose = _tabViews.Where(t => t != keepItem).ToList();
-            foreach (var item in tabsToClose) CloseTab(item);
-        }
-
-        private void CloseTabsToRight(TabViewItem startItem)
-        {
-            int index = _tabViews.IndexOf(startItem);
-            if (index < 0) return;
-            var tabsToClose = _tabViews.Skip(index + 1).ToList();
-            foreach (var item in tabsToClose) CloseTab(item);
-        }
+        private void CloseOtherTabs(TabViewItem keepItem) { foreach (var item in _tabViews.Where(t => t != keepItem).ToList()) CloseTab(item); }
+        private void CloseTabsToRight(TabViewItem startItem) { int index = _tabViews.IndexOf(startItem); if (index < 0) return; foreach (var item in _tabViews.Skip(index + 1).ToList()) CloseTab(item); }
 
         // ========== 网页右键菜单（仅 WebView2） ==========
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
             if (_currentTab is EdgeHtmlTab) return;
-
             var flyout = new MenuFlyout();
             var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = args.HasSelection };
             copyItem.Click += async (s, e) =>
@@ -782,149 +588,78 @@ namespace EdgeRebuild
                     string selectedText = await wv2.CoreWebView2.ExecuteScriptAsync("window.getSelection().toString();");
                     if (!string.IsNullOrEmpty(selectedText))
                     {
-                        var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                        dataPackage.SetText(selectedText);
-                        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+                        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage(); dp.SetText(selectedText);
+                        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
                     }
                 }
             };
             flyout.Items.Add(copyItem);
-
             var pasteItem = new MenuFlyoutItem { Text = "粘贴", IsEnabled = args.IsEditable };
-            pasteItem.Click += async (s, e) =>
-            {
-                await new ContentDialog { Title = "粘贴", Content = "请使用键盘快捷键 Ctrl+V 进行粘贴。", CloseButtonText = "确定" }.ShowAsync();
-            };
+            pasteItem.Click += async (s, ev) => await new ContentDialog { Title = "粘贴", Content = "请使用键盘快捷键 Ctrl+V 进行粘贴。", CloseButtonText = "确定" }.ShowAsync();
             flyout.Items.Add(pasteItem);
-
             var selectAllItem = new MenuFlyoutItem { Text = "全选" };
-            selectAllItem.Click += async (s, e) =>
-            {
-                if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                    await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');");
-            };
+            selectAllItem.Click += async (s, e) => { if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');"); };
             flyout.Items.Add(selectAllItem);
             flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var backItem = new MenuFlyoutItem { Text = "后退", IsEnabled = args.CanGoBack };
-            backItem.Click += (s, e) => _currentTab?.GoBackAsync();
-            flyout.Items.Add(backItem);
-            var forwardItem = new MenuFlyoutItem { Text = "前进", IsEnabled = args.CanGoForward };
-            forwardItem.Click += (s, e) => _currentTab?.GoForwardAsync();
-            flyout.Items.Add(forwardItem);
-            var refreshItem = new MenuFlyoutItem { Text = "刷新" };
-            refreshItem.Click += (s, e) => _currentTab?.RefreshAsync();
-            flyout.Items.Add(refreshItem);
+            var backItem = new MenuFlyoutItem { Text = "后退", IsEnabled = args.CanGoBack }; backItem.Click += (s, e) => _currentTab?.GoBackAsync(); flyout.Items.Add(backItem);
+            var forwardItem = new MenuFlyoutItem { Text = "前进", IsEnabled = args.CanGoForward }; forwardItem.Click += (s, e) => _currentTab?.GoForwardAsync(); flyout.Items.Add(forwardItem);
+            var refreshItem = new MenuFlyoutItem { Text = "刷新" }; refreshItem.Click += (s, e) => _currentTab?.RefreshAsync(); flyout.Items.Add(refreshItem);
             flyout.Items.Add(new MenuFlyoutSeparator());
-
             if (args.MenuType == ContextMenuType.Link && !string.IsNullOrEmpty(args.LinkUrl))
             {
                 var openInNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
-                openInNewTabItem.Click += async (s, e) => await CreateNewTabAsync(_currentTab?.Engine ?? EngineType.EdgeHtml, args.LinkUrl);
-                flyout.Items.Add(openInNewTabItem);
-                var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" };
-                copyLinkItem.Click += (s, e) =>
-                {
-                    var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                    dataPackage.SetText(args.LinkUrl);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
-                };
-                flyout.Items.Add(copyLinkItem);
+                openInNewTabItem.Click += async (s, e) => await CreateNewTabAsync(_currentTab?.Engine ?? EngineType.EdgeHtml, args.LinkUrl); flyout.Items.Add(openInNewTabItem);
+                var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" }; copyLinkItem.Click += (s, e) => { var dp = new Windows.ApplicationModel.DataTransfer.DataPackage(); dp.SetText(args.LinkUrl); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp); }; flyout.Items.Add(copyLinkItem);
             }
-
             if (args.MenuType == ContextMenuType.Image && !string.IsNullOrEmpty(args.ImageUrl))
             {
-                var copyImageUrlItem = new MenuFlyoutItem { Text = "复制图片地址" };
-                copyImageUrlItem.Click += (s, e) =>
-                {
-                    var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                    dataPackage.SetText(args.ImageUrl);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
-                };
-                flyout.Items.Add(copyImageUrlItem);
+                var copyImageUrlItem = new MenuFlyoutItem { Text = "复制图片地址" }; copyImageUrlItem.Click += (s, e) => { var dp = new Windows.ApplicationModel.DataTransfer.DataPackage(); dp.SetText(args.ImageUrl); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp); }; flyout.Items.Add(copyImageUrlItem);
             }
-
             flyout.Items.Add(new MenuFlyoutSeparator());
-            var printItem = new MenuFlyoutItem { Text = "打印" };
-            printItem.Click += (s, e) =>
-            {
-                if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                    wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
-            };
-            flyout.Items.Add(printItem);
-            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
-            sourceItem.Click += async (s, ev) => await ViewSourceAsync();
-            flyout.Items.Add(sourceItem);
+            var printItem = new MenuFlyoutItem { Text = "打印" }; printItem.Click += (s, e) => { if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser); }; flyout.Items.Add(printItem);
+            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" }; sourceItem.Click += async (s, ev) => await ViewSourceAsync(); flyout.Items.Add(sourceItem);
             flyout.Items.Add(new MenuFlyoutSeparator());
-
-            if (_currentTab is WebView2Tab wv2Tab && wv2Tab.CoreWebView2 != null)
-            {
-                var inspectItem = new MenuFlyoutItem { Text = "检查元素 (F12)" };
-                inspectItem.Click += (s, e) => wv2Tab.CoreWebView2.OpenDevToolsWindow();
-                flyout.Items.Add(inspectItem);
-            }
-
+            if (_currentTab is WebView2Tab wv2Tab && wv2Tab.CoreWebView2 != null) { var inspectItem = new MenuFlyoutItem { Text = "检查元素 (F12)" }; inspectItem.Click += (s, e) => wv2Tab.CoreWebView2.OpenDevToolsWindow(); flyout.Items.Add(inspectItem); }
             var targetElement = _currentTab?.ViewElement;
-            if (targetElement != null)
-                flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
+            if (targetElement != null) flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
         }
 
         // ========== 功能菜单 ==========
         private void MenuBtn_Click(object sender, RoutedEventArgs e)
         {
             var menu = new MenuFlyout();
-
             var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
-            var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" };
-            edgeHtmlItem.Click += async (s, ev) => await SwitchCurrentTabEngine(EngineType.EdgeHtml);
-            var webView2Item = new MenuFlyoutItem { Text = "WebView2" };
-            webView2Item.Click += async (s, ev) => await SwitchCurrentTabEngine(EngineType.WebView2);
-            if (_currentTab?.Engine == EngineType.EdgeHtml) edgeHtmlItem.IsEnabled = false;
-            else if (_currentTab?.Engine == EngineType.WebView2) webView2Item.IsEnabled = false;
-            engineSub.Items.Add(edgeHtmlItem); engineSub.Items.Add(webView2Item);
-            menu.Items.Add(engineSub);
+            var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" }; edgeHtmlItem.Click += async (s, ev) => await SwitchCurrentTabEngine(EngineType.EdgeHtml);
+            var webView2Item = new MenuFlyoutItem { Text = "WebView2" }; webView2Item.Click += async (s, ev) => await SwitchCurrentTabEngine(EngineType.WebView2);
+            if (_currentTab?.Engine == EngineType.EdgeHtml) edgeHtmlItem.IsEnabled = false; else if (_currentTab?.Engine == EngineType.WebView2) webView2Item.IsEnabled = false;
+            engineSub.Items.Add(edgeHtmlItem); engineSub.Items.Add(webView2Item); menu.Items.Add(engineSub);
             menu.Items.Add(new MenuFlyoutSeparator());
-
             var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
             var zoomIn = new MenuFlyoutItem { Text = "放大" }; zoomIn.Click += (s, ev) => AdjustZoom(0.1);
             var zoomOut = new MenuFlyoutItem { Text = "缩小" }; zoomOut.Click += (s, ev) => AdjustZoom(-0.1);
             var zoomReset = new MenuFlyoutItem { Text = "重置" }; zoomReset.Click += (s, ev) => ResetZoom();
-            zoomSub.Items.Add(zoomIn); zoomSub.Items.Add(zoomOut); zoomSub.Items.Add(zoomReset);
-            menu.Items.Add(zoomSub);
-
-            var printItem = new MenuFlyoutItem { Text = "打印" }; printItem.Click += (s, e) => PrintCurrentPage();
-            var findItem = new MenuFlyoutItem { Text = "查找" }; findItem.Click += (s, e) => FindOnPage();
-            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" }; sourceItem.Click += async (s, e) => await ViewSourceAsync();
-            menu.Items.Add(printItem); menu.Items.Add(findItem); menu.Items.Add(sourceItem);
-
+            zoomSub.Items.Add(zoomIn); zoomSub.Items.Add(zoomOut); zoomSub.Items.Add(zoomReset); menu.Items.Add(zoomSub);
+            var printItem = new MenuFlyoutItem { Text = "打印" }; printItem.Click += (s, ev) => PrintCurrentPage(); menu.Items.Add(printItem);
+            var findItem = new MenuFlyoutItem { Text = "查找" }; findItem.Click += (s, ev) => FindOnPage(); menu.Items.Add(findItem);
+            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" }; sourceItem.Click += async (s, ev) => await ViewSourceAsync(); menu.Items.Add(sourceItem);
             var skinSub = new MenuFlyoutSubItem { Text = "皮肤" };
-            var classicSkin = new MenuFlyoutItem { Text = "经典 Edge" }; classicSkin.Click += (s, ev) => SwitchSkin("Spartan");
-            var modernIeSkin = new MenuFlyoutItem { Text = "Modern IE" }; modernIeSkin.Click += (s, ev) => SwitchSkin("ModernIE");
+            var classicSkin = new MenuFlyoutItem { Text = "经典 Edge" }; classicSkin.Click += (s, ev) => SwitchSkin(SkinManager.SkinSpartan);
+            var modernIeSkin = new MenuFlyoutItem { Text = "Modern IE" }; modernIeSkin.Click += (s, ev) => SwitchSkin(SkinManager.SkinModernIE);
             var mobileSkin = new MenuFlyoutItem { Text = "Windows 10 Mobile (即将推出)" }; mobileSkin.IsEnabled = false;
-            skinSub.Items.Add(classicSkin); skinSub.Items.Add(modernIeSkin); skinSub.Items.Add(mobileSkin);
-            menu.Items.Add(skinSub);
-
+            skinSub.Items.Add(classicSkin); skinSub.Items.Add(modernIeSkin); skinSub.Items.Add(mobileSkin); menu.Items.Add(skinSub);
             var toolsSub = new MenuFlyoutSubItem { Text = "更多工具" };
             var extensionsItem = new MenuFlyoutItem { Text = "扩展管理器" }; extensionsItem.Click += (s, ev) => ShowNotImplementedDialog("扩展管理器");
             var taskManagerItem = new MenuFlyoutItem { Text = "任务管理器" }; taskManagerItem.Click += (s, ev) => ShowNotImplementedDialog("任务管理器");
             var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" }; devToolsItem.Click += (s, ev) => OpenDevTools();
-            toolsSub.Items.Add(extensionsItem); toolsSub.Items.Add(taskManagerItem); toolsSub.Items.Add(devToolsItem);
-            menu.Items.Add(toolsSub);
+            toolsSub.Items.Add(extensionsItem); toolsSub.Items.Add(taskManagerItem); toolsSub.Items.Add(devToolsItem); menu.Items.Add(toolsSub);
             menu.Items.Add(new MenuFlyoutSeparator());
-
-            var reopenTab = new MenuFlyoutItem { Text = "重新打开关闭的标签" }; reopenTab.Click += async (s, ev) => await ReopenClosedTabAsync();
-            var bookmarkAll = new MenuFlyoutItem { Text = "将所有标签加入收藏" }; bookmarkAll.Click += (s, ev) => BookmarkAllTabs();
-            menu.Items.Add(reopenTab); menu.Items.Add(bookmarkAll);
-
-            var historyItem = new MenuFlyoutItem { Text = "历史记录" }; historyItem.Click += (s, ev) => { HubSplitView.IsPaneOpen = true; HubPivot.SelectedIndex = 1; RefreshHistoryPanel(); };
-            var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" }; clearDataItem.Click += async (s, ev) => await ClearBrowsingDataAsync();
-            menu.Items.Add(historyItem); menu.Items.Add(clearDataItem);
+            var reopenTab = new MenuFlyoutItem { Text = "重新打开关闭的标签" }; reopenTab.Click += async (s, ev) => await ReopenClosedTabAsync(); menu.Items.Add(reopenTab);
+            var bookmarkAll = new MenuFlyoutItem { Text = "将所有标签加入收藏" }; bookmarkAll.Click += (s, ev) => BookmarkAllTabs(); menu.Items.Add(bookmarkAll);
+            var historyItem = new MenuFlyoutItem { Text = "历史记录" }; historyItem.Click += (s, ev) => { HubSplitView.IsPaneOpen = true; HubPivot.SelectedIndex = 1; RefreshHistoryPanel(); }; menu.Items.Add(historyItem);
+            var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" }; clearDataItem.Click += async (s, ev) => await ClearBrowsingDataAsync(); menu.Items.Add(clearDataItem);
             menu.Items.Add(new MenuFlyoutSeparator());
-
-            var settingsItem = new MenuFlyoutItem { Text = "设置" }; settingsItem.Click += (s, ev) => ShowNotImplementedDialog("设置");
-            var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" }; aboutItem.Click += (s, ev) => ShowAboutDialog();
-            menu.Items.Add(settingsItem); menu.Items.Add(aboutItem);
-
+            var settingsItem = new MenuFlyoutItem { Text = "设置" }; settingsItem.Click += (s, ev) => ShowNotImplementedDialog("设置"); menu.Items.Add(settingsItem);
+            var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" }; aboutItem.Click += (s, ev) => ShowAboutDialog(); menu.Items.Add(aboutItem);
             menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
         }
 
@@ -934,21 +669,17 @@ namespace EdgeRebuild
             string currentUrl = _currentTab.CurrentUrl;
             var viewItem = _tabViews.FirstOrDefault(v => v.Tab == _currentTab);
             if (viewItem == null) return;
-
             _currentTab.Dispose();
             IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
             viewItem.Tab = newTab;
-
-            newTab.TitleChanged += (title) => Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
-            newTab.UrlChanged += (url) => { if (_currentTab == newTab) { UrlBox.Text = url; UpdateStarButton(); } if (!string.IsNullOrEmpty(url) && url != "about:blank") HistoryManager.Add(newTab.Title ?? url, url); };
+            newTab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
+            newTab.UrlChanged += (u) => { if (_currentTab == newTab) { UrlBox.Text = u; UpdateStarButton(); } if (!string.IsNullOrEmpty(u) && u != "about:blank") HistoryManager.Add(newTab.Title ?? u, u); };
             newTab.CanGoBackChanged += (can) => { if (_currentTab == newTab) BackBtn.IsEnabled = can; };
             newTab.CanGoForwardChanged += (can) => { if (_currentTab == newTab) ForwardBtn.IsEnabled = can; };
             newTab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
             newTab.ContextMenuRequested += OnTabContextMenuRequested;
-
             viewItem.EngineMark.Text = newTab.Engine == EngineType.EdgeHtml ? "E" : "W";
             viewItem.EngineMark.Foreground = newTab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush;
-
             _currentTab = null;
             await SwitchToTabAsync(viewItem);
             if (!string.IsNullOrEmpty(currentUrl) && currentUrl != "about:blank") await newTab.NavigateAsync(currentUrl);
@@ -982,19 +713,14 @@ namespace EdgeRebuild
             {
                 string url = item.Tab.CurrentUrl;
                 if (!string.IsNullOrEmpty(url) && url != "about:blank" && !FavoritesManager.Instance.ContainsUrl(url))
-                {
-                    FavoritesManager.Instance.Add(string.IsNullOrEmpty(item.Tab.Title) ? url : item.Tab.Title, url);
-                    count++;
-                }
+                { FavoritesManager.Instance.Add(string.IsNullOrEmpty(item.Tab.Title) ? url : item.Tab.Title, url); count++; }
             }
-            UpdateStarButton();
-            if (HubSplitView.IsPaneOpen) RefreshFavPanel();
+            UpdateStarButton(); if (HubSplitView.IsPaneOpen) RefreshFavPanel();
             _ = new ContentDialog { Title = "完成", Content = $"已将 {count} 个标签页加入收藏。", CloseButtonText = "确定" }.ShowAsync();
         }
         private async Task ClearBrowsingDataAsync()
         {
-            HistoryManager.Clear(); RefreshHistoryPanel();
-            DownloadManager.ClearCompleted(); RefreshDownloadsPanel();
+            HistoryManager.Clear(); DownloadManager.ClearCompleted(); RefreshHistoryPanel(); RefreshDownloadsPanel();
             if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.Profile.CookieManager.DeleteAllCookies();
             await new ContentDialog { Title = "已清除", Content = "浏览数据已清除。", CloseButtonText = "确定" }.ShowAsync();
         }
@@ -1004,28 +730,15 @@ namespace EdgeRebuild
         private void CloseTab(TabViewItem viewItem)
         {
             if (!_isLoaded) return;
-            int index = _tabViews.IndexOf(viewItem);
-            if (index < 0) return;
-
-            string url = viewItem.Tab.CurrentUrl;
-            if (!string.IsNullOrEmpty(url) && url != "about:blank") _closedTabUrls.Push(url);
-
-            var parent = viewItem.Container.Parent as Panel;
-            parent?.Children.Remove(viewItem.Container);
-
+            int index = _tabViews.IndexOf(viewItem); if (index < 0) return;
+            string url = viewItem.Tab.CurrentUrl; if (!string.IsNullOrEmpty(url) && url != "about:blank") _closedTabUrls.Push(url);
+            (viewItem.Container.Parent as Panel)?.Children.Remove(viewItem.Container);
             TabViewItem nextTab = null;
             if (_tabViews.Count > 1) nextTab = (index > 0) ? _tabViews[index - 1] : _tabViews[1];
             _tabViews.RemoveAt(index);
-
-            if (_currentTab == viewItem.Tab)
-            {
-                if (nextTab != null) _ = SwitchToTabAsync(nextTab);
-                else _currentTab = null;
-            }
+            if (_currentTab == viewItem.Tab) { if (nextTab != null) _ = SwitchToTabAsync(nextTab); else _currentTab = null; }
             viewItem.Tab.Dispose();
-
-            if (_tabViews.Count == 0) _ = CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
-            else UpdateTabLayout();
+            if (_tabViews.Count == 0) _ = CreateNewTabAsync(EngineType.EdgeHtml, "about:blank"); else UpdateTabLayout();
         }
 
         private void AttachDownloadEvents(WebView2Tab wv2Tab)
@@ -1046,7 +759,6 @@ namespace EdgeRebuild
         }
 
         private void RefreshDownloadsIfOpen() { if (HubSplitView.IsPaneOpen) _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => RefreshDownloadsPanel()); }
-
         private void SwitchToTab(TabViewItem viewItem) => _ = SwitchToTabAsync(viewItem);
 
         private async Task SwitchToTabAsync(TabViewItem viewItem)
@@ -1055,20 +767,11 @@ namespace EdgeRebuild
             ContentContainer.Child = null;
             _currentTab = viewItem.Tab;
             ContentContainer.Child = _currentTab.ViewElement;
-
-            if (_currentTab is WebView2Tab wv2Tab)
-            {
-                await wv2Tab.EnsureInitializedAsync();
-                AttachDownloadEvents(wv2Tab);
-            }
-
+            if (_currentTab is WebView2Tab wv2Tab) { await wv2Tab.EnsureInitializedAsync(); AttachDownloadEvents(wv2Tab); }
             UrlBox.Text = _currentTab.CurrentUrl;
-            BackBtn.IsEnabled = _currentTab.CanGoBack;
-            ForwardBtn.IsEnabled = _currentTab.CanGoForward;
-
+            BackBtn.IsEnabled = _currentTab.CanGoBack; ForwardBtn.IsEnabled = _currentTab.CanGoForward;
             if (_currentTab.Engine == EngineType.EdgeHtml) { EngineLabel.Text = "E"; EngineLabel.Foreground = _edgeBlueBrush; EngineCombo.SelectedIndex = 0; }
             else { EngineLabel.Text = "W"; EngineLabel.Foreground = _webGreenBrush; EngineCombo.SelectedIndex = 1; }
-
             foreach (var t in _tabViews) t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
             UpdateStarButton();
         }
@@ -1137,13 +840,7 @@ namespace EdgeRebuild
                 stack.Children.Add(new TextBlock { Text = item.Title, FontWeight = Windows.UI.Text.FontWeights.SemiBold, FontSize = 14, Foreground = _foregroundBrush });
                 stack.Children.Add(new TextBlock { Text = $"{item.Url} - {item.VisitTime:g}", FontSize = 11, Foreground = _mutedForegroundBrush });
                 stack.PointerPressed += (s, ev) => { if (ev.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse || ev.GetCurrentPoint(stack).Properties.IsLeftButtonPressed) { _currentTab?.NavigateAsync(item.Url); HubSplitView.IsPaneOpen = false; } };
-                stack.RightTapped += (s, ev) =>
-                {
-                    var flyout = new MenuFlyout();
-                    var deleteItem = new MenuFlyoutItem { Text = "删除" }; deleteItem.Click += (_, _) => { HistoryManager.History.Remove(item); RefreshHistoryPanel(); };
-                    flyout.Items.Add(deleteItem);
-                    flyout.ShowAt(stack);
-                };
+                stack.RightTapped += (s, ev) => { var flyout = new MenuFlyout(); var deleteItem = new MenuFlyoutItem { Text = "删除" }; deleteItem.Click += (_, _) => { HistoryManager.History.Remove(item); RefreshHistoryPanel(); }; flyout.Items.Add(deleteItem); flyout.ShowAt(stack); };
                 HubHistoryStackPanel.Children.Add(stack);
             }
         }
@@ -1174,11 +871,7 @@ namespace EdgeRebuild
             {
                 if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
                 { viewItem.FaviconPlaceholder.Visibility = Visibility.Visible; viewItem.FaviconImage.Visibility = Visibility.Collapsed; viewItem.FaviconImage.Source = null; return; }
-                try
-                {
-                    var bitmap = new BitmapImage(); bitmap.UriSource = uri; viewItem.FaviconImage.Source = bitmap;
-                    viewItem.FaviconImage.Visibility = Visibility.Visible; viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
-                }
+                try { var bitmap = new BitmapImage { UriSource = uri }; viewItem.FaviconImage.Source = bitmap; viewItem.FaviconImage.Visibility = Visibility.Visible; viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed; }
                 catch { viewItem.FaviconImage.Visibility = Visibility.Collapsed; viewItem.FaviconPlaceholder.Visibility = Visibility.Visible; }
             });
         }
@@ -1210,25 +903,20 @@ namespace EdgeRebuild
             if (!_isLoaded || _currentTab == null) return;
             EngineType newEngine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
             if (_currentTab.Engine == newEngine) return;
-
             string currentUrl = _currentTab.CurrentUrl;
             var viewItem = _tabViews.FirstOrDefault(v => v.Tab == _currentTab);
             if (viewItem == null) return;
-
             _currentTab.Dispose();
             IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
             viewItem.Tab = newTab;
-
-            newTab.TitleChanged += (title) => Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
-            newTab.UrlChanged += (url) => { if (_currentTab == newTab) { UrlBox.Text = url; UpdateStarButton(); } if (!string.IsNullOrEmpty(url) && url != "about:blank") HistoryManager.Add(newTab.Title ?? url, url); };
+            newTab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
+            newTab.UrlChanged += (u) => { if (_currentTab == newTab) { UrlBox.Text = u; UpdateStarButton(); } if (!string.IsNullOrEmpty(u) && u != "about:blank") HistoryManager.Add(newTab.Title ?? u, u); };
             newTab.CanGoBackChanged += (can) => { if (_currentTab == newTab) BackBtn.IsEnabled = can; };
             newTab.CanGoForwardChanged += (can) => { if (_currentTab == newTab) ForwardBtn.IsEnabled = can; };
             newTab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
             newTab.ContextMenuRequested += OnTabContextMenuRequested;
-
             viewItem.EngineMark.Text = newTab.Engine == EngineType.EdgeHtml ? "E" : "W";
             viewItem.EngineMark.Foreground = newTab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush;
-
             _currentTab = null;
             await SwitchToTabAsync(viewItem);
             if (!string.IsNullOrEmpty(currentUrl) && currentUrl != "about:blank") await newTab.NavigateAsync(currentUrl);
