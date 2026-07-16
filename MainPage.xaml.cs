@@ -42,14 +42,14 @@ namespace EdgeRebuild
         private readonly Stack<string> _closedTabUrls = new Stack<string>();
 
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
-        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.Transparent);
+        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
         private readonly SolidColorBrush _hoverBrush = new SolidColorBrush(Colors.Silver);
         private readonly SolidColorBrush _starYellowBrush = new SolidColorBrush(Colors.Gold);
         private readonly SolidColorBrush _starGrayBrush = new SolidColorBrush(Colors.Gray);
         private readonly SolidColorBrush _edgeBlueBrush = new SolidColorBrush(Colors.DodgerBlue);
         private readonly SolidColorBrush _webGreenBrush = new SolidColorBrush(Colors.MediumSeaGreen);
 
-        private const int MinTabWidth = 44;
+        private const int MinTabWidth = 100;
         private const int MaxTabWidth = 160;
         private const int AdditionalMargin = 30;
         private const int MinDragWidth = 20;
@@ -218,8 +218,7 @@ namespace EdgeRebuild
             foreach (var item in _tabViews)
             {
                 item.Container.Width = targetTabWidth;
-                double reserved = 60;
-                item.TitleText.MaxWidth = Math.Max(0, targetTabWidth - reserved);
+                // 不再手动设置 TitleText.MaxWidth
             }
 
             TabScrollViewer.MaxWidth = availableWidth;
@@ -259,7 +258,7 @@ namespace EdgeRebuild
             var tabBorder = new Border
             {
                 Height = 32,
-                Background = new SolidColorBrush(Colors.Transparent),
+                Background = _unselectedBrush,
                 BorderBrush = new SolidColorBrush(Colors.LightGray),
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(4, 0, 4, 0),
@@ -267,12 +266,15 @@ namespace EdgeRebuild
                 Width = MaxTabWidth
             };
 
-            var tabPanel = new StackPanel
+            // 创建 Grid 作为标签内部的主布局（两列）
+            var tabPanel = new Grid
             {
-                Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center
             };
+            tabPanel.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
+            tabPanel.ColumnDefinitions.Add(new ColumnDefinition() { Width = GridLength.Auto });
 
+            // 引擎标记、图标、标题放在一个 StackPanel 中，放在 Grid 的第一列
             var engineMark = new TextBlock
             {
                 Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
@@ -311,6 +313,20 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center
             };
 
+            var infoPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            infoPanel.Children.Add(engineMark);
+            infoPanel.Children.Add(faviconPlaceholder);
+            infoPanel.Children.Add(faviconImage);
+            infoPanel.Children.Add(titleText);
+
+            Grid.SetColumn(infoPanel, 0);
+            tabPanel.Children.Add(infoPanel);
+
+            // 关闭按钮放在第二列，靠右对齐
             var closeBtn = new Button
             {
                 Content = "\xE711",
@@ -322,16 +338,14 @@ namespace EdgeRebuild
                 Padding = new Thickness(0),
                 Width = 20,
                 Height = 20,
-                VerticalAlignment = VerticalAlignment.Center,   // 垂直居中
-                HorizontalAlignment = HorizontalAlignment.Right, // 水平靠右
-                Margin = new Thickness(0, 0, 8, 0)              // 右侧留 8 像素间距
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(0, 0, 4, 0)
             };
 
-            tabPanel.Children.Add(engineMark);
-            tabPanel.Children.Add(faviconPlaceholder);
-            tabPanel.Children.Add(faviconImage);
-            tabPanel.Children.Add(titleText);
+            Grid.SetColumn(closeBtn, 1);
             tabPanel.Children.Add(closeBtn);
+
             tabBorder.Child = tabPanel;
             TabBarPanel.Children.Add(tabBorder);
 
@@ -369,7 +383,7 @@ namespace EdgeRebuild
             {
                 _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                 {
-                    titleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title;
+                    viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title;
                 });
             };
 
