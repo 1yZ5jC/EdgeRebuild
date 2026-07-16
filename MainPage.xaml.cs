@@ -54,9 +54,9 @@ namespace EdgeRebuild
         // 拖拽状态
         private TabViewItem _dragItem;
         private Border _placeholder;
-        private Point _dragOffset;
-        private bool _isDragging;
-        private bool _hasMoved;
+        private Point _dragOffset;       // 鼠标在标签内的相对偏移
+        private bool _isDragging;        // 是否已进入拖拽状态（已提升至DragCanvas）
+        private bool _hasMoved;          // 是否发生过移动（用于区分点击）
 
         public MainPage()
         {
@@ -309,7 +309,7 @@ namespace EdgeRebuild
 
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
 
-            // 拖拽事件
+            // 拖拽事件（按下时立即捕获指针）
             tabBorder.PointerPressed += OnTabPointerPressed;
             tabBorder.PointerMoved += OnTabPointerMoved;
             tabBorder.PointerReleased += OnTabPointerReleased;
@@ -354,7 +354,7 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
-        // ==================== 拖拽实现 ====================
+        // ==================== 原始拖拽实现（占位符+Canvas） ====================
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var border = sender as Border;
@@ -367,7 +367,7 @@ namespace EdgeRebuild
             _hasMoved = false;
             _isDragging = false;
 
-            // 立即捕获指针，确保后续移动事件不丢失
+            // 立即捕获指针，确保后续移动事件都由该元素接收
             border.CapturePointer(e.Pointer);
             e.Handled = true;
         }
@@ -376,6 +376,7 @@ namespace EdgeRebuild
         {
             if (_dragItem == null) return;
 
+            // 使用 DragCanvas 作为参考容器，因为标签最终会移动到它上面
             var posInCanvas = e.GetCurrentPoint(DragCanvas).Position;
             double dx = posInCanvas.X - _dragOffset.X;
             double dy = posInCanvas.Y - _dragOffset.Y;
@@ -389,6 +390,7 @@ namespace EdgeRebuild
                 {
                     var item = _dragItem;
                     _dragItem = null;
+                    // 释放捕获，恢复标签
                     item.Container.ReleasePointerCaptures();
                     item.Container.RenderTransform = null;
                     item.Container.Opacity = 1.0;
@@ -399,6 +401,7 @@ namespace EdgeRebuild
                 // 水平拖拽：提升到 DragCanvas
                 _isDragging = true;
 
+                // 插入占位符
                 int index = _tabViews.IndexOf(_dragItem);
                 _placeholder = new Border
                 {
@@ -408,9 +411,11 @@ namespace EdgeRebuild
                 };
                 TabBarPanel.Children.Insert(index, _placeholder);
 
+                // 从原父级移除
                 var parent = _dragItem.Container.Parent as Panel;
                 parent?.Children.Remove(_dragItem.Container);
 
+                // 添加到 DragCanvas 并设置初始位置
                 DragCanvas.Children.Add(_dragItem.Container);
                 Canvas.SetLeft(_dragItem.Container, posInCanvas.X - _dragOffset.X);
                 Canvas.SetTop(_dragItem.Container, posInCanvas.Y - _dragOffset.Y);
@@ -444,9 +449,10 @@ namespace EdgeRebuild
         {
             if (_dragItem == null) return;
 
+            // 释放指针捕获
             try { _dragItem.Container.ReleasePointerCaptures(); } catch { }
 
-            if (!_hasMoved)
+            if (!_hasMoved) // 纯点击
             {
                 SwitchToTab(_dragItem);
                 _dragItem = null;
@@ -455,7 +461,7 @@ namespace EdgeRebuild
 
             if (_isDragging)
             {
-                // 将标签位置转换到 TabBarPanel 坐标系
+                // 将标签在 DragCanvas 中的位置转换为 TabBarPanel 坐标系
                 var transform = _dragItem.Container.TransformToVisual(TabBarPanel);
                 var tabPos = transform.TransformPoint(new Point(0, 0));
                 double left = tabPos.X;
@@ -524,6 +530,7 @@ namespace EdgeRebuild
                 _placeholder = null;
             }
 
+            // 按数据列表重建 TabBarPanel
             TabBarPanel.Children.Clear();
             foreach (var item in _tabViews)
                 TabBarPanel.Children.Add(item.Container);
