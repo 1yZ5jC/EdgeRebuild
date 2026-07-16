@@ -138,7 +138,7 @@
         </Border>
 
         <!-- 工具栏 -->
-        <Border Grid.Row="1" Background="{StaticResource ToolbarAcrylicBrush}"
+        <Border x:Name="ToolbarBorder" Grid.Row="1" Background="{StaticResource ToolbarAcrylicBrush}"
                 BorderBrush="{StaticResource SeparatorBrush}" BorderThickness="0,1,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -217,7 +217,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <Button Content="清空历史" HorizontalAlignment="Right" Margin="8"
+                                <Button x:Name="ClearHistoryBtn" Content="清空历史" HorizontalAlignment="Right" Margin="8"
                                         Click="ClearHistoryBtn_Click"/>
                                 <ScrollViewer Grid.Row="1" Margin="8,0">
                                     <StackPanel x:Name="HubHistoryStackPanel" Orientation="Vertical"/>
@@ -230,7 +230,7 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
-                                <Button Content="清除已完成" HorizontalAlignment="Right" Margin="8"
+                                <Button x:Name="ClearDownloadsBtn" Content="清除已完成" HorizontalAlignment="Right" Margin="8"
                                         Click="ClearDownloadsBtn_Click"/>
                                 <ScrollViewer Grid.Row="1" Margin="8,0">
                                     <StackPanel x:Name="HubDownloadsStackPanel" Orientation="Vertical"/>
