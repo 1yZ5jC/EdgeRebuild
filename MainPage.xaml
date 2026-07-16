@@ -5,7 +5,6 @@
     xmlns:media="using:Windows.UI.Xaml.Media">
 
     <Page.Resources>
-        <!-- 资源保持不变 -->
         <AcrylicBrush x:Key="ToolbarAcrylicBrush"
                       BackgroundSource="HostBackdrop"
                       TintColor="#F0F0F0"
@@ -23,7 +22,6 @@
         <SolidColorBrush x:Key="MutedForeground" Color="#666666"/>
 
         <Style x:Key="ToolButtonStyle" TargetType="Button">
-            <!-- 保持不变 -->
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -180,6 +178,10 @@
                             Foreground="{ThemeResource MutedForeground}"/>
                     <Button x:Name="HubBtn" Content="📚"
                             Click="HubBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
+                            Foreground="{ThemeResource MutedForeground}"/>
+                    <!-- 新增：设置及其他按钮 -->
+                    <Button x:Name="MenuBtn" Content="&#xE712;" 
+                            Click="MenuBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
                             Foreground="{ThemeResource MutedForeground}"/>
                     <ComboBox x:Name="EngineCombo" Width="90" SelectedIndex="0" VerticalAlignment="Center"
                               Background="Transparent" Foreground="{ThemeResource Foreground}"

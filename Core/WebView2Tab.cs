@@ -142,7 +142,6 @@ namespace EdgeRebuild.Core
             {
                 try
                 {
-                    // 图片类型
                     if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
                     {
                         args.MenuType = ContextMenuType.Image;
@@ -150,7 +149,6 @@ namespace EdgeRebuild.Core
                     }
                     else
                     {
-                        // 链接 (可能抛异常)
                         try
                         {
                             if (!string.IsNullOrEmpty(target.LinkUri))
@@ -162,7 +160,6 @@ namespace EdgeRebuild.Core
                         catch (InvalidOperationException) { }
                     }
 
-                    // 选择状态 / 编辑状态 (可能抛异常)
                     try { args.HasSelection = target.HasSelection; } catch { }
                     try { args.SelectionText = target.SelectionText ?? ""; } catch { }
                     try { args.IsEditable = target.IsEditable; } catch { }
@@ -174,7 +171,23 @@ namespace EdgeRebuild.Core
             }
 
             ContextMenuRequested?.Invoke(args);
-            e.Handled = true; // 阻止原生菜单
+            e.Handled = true;
+        }
+
+        /// <summary>
+        /// 执行 JavaScript 脚本并返回结果（供外部调用）
+        /// </summary>
+        public async Task<string> ExecuteScriptAsync(string script)
+        {
+            if (_webView?.CoreWebView2 == null) return "";
+            try
+            {
+                return await _webView.CoreWebView2.ExecuteScriptAsync(script);
+            }
+            catch
+            {
+                return "";
+            }
         }
 
         public async Task NavigateAsync(string url)
