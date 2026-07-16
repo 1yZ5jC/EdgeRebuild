@@ -31,6 +31,7 @@ namespace EdgeRebuild.Core
         public event Action<bool> CanGoBackChanged;
         public event Action<bool> CanGoForwardChanged;
         public event Action<string> FaviconChanged;
+        public event Action<TabContextMenuEventArgs> ContextMenuRequested;
 
         public WebView2Tab()
         {
@@ -47,6 +48,7 @@ namespace EdgeRebuild.Core
 
             _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
             _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
+            _webView.CoreWebView2.ContextMenuRequested += OnContextMenuRequested;
             CheckNavigationState();
         }
 
@@ -125,6 +127,56 @@ namespace EdgeRebuild.Core
             }
         }
 
+        private void OnContextMenuRequested(object sender, CoreWebView2ContextMenuRequestedEventArgs e)
+        {
+            var args = new TabContextMenuEventArgs
+            {
+                CanGoBack = _webView.CoreWebView2.CanGoBack,
+                CanGoForward = _webView.CoreWebView2.CanGoForward,
+                Location = new Windows.Foundation.Point(e.Location.X, e.Location.Y),
+                MenuType = ContextMenuType.Page
+            };
+
+            var target = e.ContextMenuTarget;
+            if (target != null)
+            {
+                try
+                {
+                    // 图片类型
+                    if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
+                    {
+                        args.MenuType = ContextMenuType.Image;
+                        args.ImageUrl = target.SourceUri;
+                    }
+                    else
+                    {
+                        // 链接 (可能抛异常)
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(target.LinkUri))
+                            {
+                                args.MenuType = ContextMenuType.Link;
+                                args.LinkUrl = target.LinkUri;
+                            }
+                        }
+                        catch (InvalidOperationException) { }
+                    }
+
+                    // 选择状态 / 编辑状态 (可能抛异常)
+                    try { args.HasSelection = target.HasSelection; } catch { }
+                    try { args.SelectionText = target.SelectionText ?? ""; } catch { }
+                    try { args.IsEditable = target.IsEditable; } catch { }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"ContextMenu target error: {ex.Message}");
+                }
+            }
+
+            ContextMenuRequested?.Invoke(args);
+            e.Handled = true; // 阻止原生菜单
+        }
+
         public async Task NavigateAsync(string url)
         {
             if (_webView == null) return;
@@ -175,6 +227,7 @@ namespace EdgeRebuild.Core
             {
                 _webView.CoreWebView2.DocumentTitleChanged -= OnDocumentTitleChanged;
                 _webView.CoreWebView2.HistoryChanged -= OnHistoryChanged;
+                _webView.CoreWebView2.ContextMenuRequested -= OnContextMenuRequested;
             }
             try
             {

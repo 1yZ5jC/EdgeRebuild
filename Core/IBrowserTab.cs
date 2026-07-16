@@ -16,7 +16,6 @@ namespace EdgeRebuild.Core
         string Title { get; }
         string FaviconUri { get; }
 
-        // 改为异步方法
         Task NavigateAsync(string url);
         Task GoBackAsync();
         Task GoForwardAsync();
@@ -29,5 +28,6 @@ namespace EdgeRebuild.Core
         event Action<bool> CanGoBackChanged;
         event Action<bool> CanGoForwardChanged;
         event Action<string> FaviconChanged;
+        event Action<TabContextMenuEventArgs> ContextMenuRequested;
     }
 }
