@@ -118,6 +118,7 @@ namespace EdgeRebuild
             }
         }
 
+        // ========== 皮肤切换 ==========
         private async void SwitchSkin(string name)
         {
             _currentSkin = name;
@@ -161,7 +162,7 @@ namespace EdgeRebuild
             }
         }
 
-        // ========== Toolbar 事件 ==========
+        // ========== Toolbar 事件处理 ==========
         private async void ToolbarControl_UrlSubmitted(string url) => await _currentTab?.NavigateAsync(url);
         private async void ToolbarControl_BackRequested() { if (_currentTab?.CanGoBack == true) await _currentTab.GoBackAsync(); }
         private async void ToolbarControl_ForwardRequested() { if (_currentTab?.CanGoForward == true) await _currentTab.GoForwardAsync(); }
@@ -241,10 +242,20 @@ namespace EdgeRebuild
             IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
             viewItem.Tab = newTab;
 
+            await RebindTabAndSwitch(viewItem, newTab, currentUrl);
+        }
+
+        // ========== 统一的引擎切换逻辑 ==========
+        private async Task RebindTabAndSwitch(TabViewItem viewItem, IBrowserTab newTab, string urlToNavigate = null)
+        {
             newTab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
             newTab.UrlChanged += (u) =>
             {
-                if (_currentTab == newTab) { toolbarControl.UpdateNavState(newTab.CanGoBack, newTab.CanGoForward, u); UpdateStarButton(); }
+                if (_currentTab == newTab)
+                {
+                    toolbarControl.UpdateNavState(newTab.CanGoBack, newTab.CanGoForward, u);
+                    UpdateStarButton();
+                }
                 if (!string.IsNullOrEmpty(u) && u != "about:blank") HistoryManager.Add(newTab.Title ?? u, u);
             };
             newTab.CanGoBackChanged += (can) => { if (_currentTab == newTab) toolbarControl.UpdateNavState(can, newTab.CanGoForward, newTab.CurrentUrl); };
@@ -258,8 +269,8 @@ namespace EdgeRebuild
             _currentTab = null;
             await SwitchToTabAsync(viewItem);
 
-            if (!string.IsNullOrEmpty(currentUrl) && currentUrl != "about:blank")
-                await newTab.NavigateAsync(currentUrl);
+            if (!string.IsNullOrEmpty(urlToNavigate))
+                await newTab.NavigateAsync(urlToNavigate);
             else
                 await newTab.NavigateAsync("about:blank");
         }
@@ -287,7 +298,7 @@ namespace EdgeRebuild
             toolbarControl.UpdateFavoriteButton(exists);
         }
 
-        // ========== 以下为原有的所有方法，完整复制 ==========
+        // ========== 窗口与布局 ==========
         private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
         {
             SetSafeZonePadding();
@@ -395,6 +406,7 @@ namespace EdgeRebuild
             if (e.Parameter is string url) _pendingUrl = url;
         }
 
+        // ========== 标签创建 ==========
         private async Task CreateNewTabAsync(EngineType engine, string url = null)
         {
             if (!_isLoaded) return;
@@ -508,6 +520,7 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
+        // ========== 标签拖拽 ==========
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
@@ -630,6 +643,7 @@ namespace EdgeRebuild
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Failed to create new window: {ex.Message}"); }
         }
 
+        // ========== 标签右键菜单 ==========
         private void OnTabRightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var border = sender as Border;
@@ -637,7 +651,7 @@ namespace EdgeRebuild
             if (viewItem == null) return;
             var menu = new MenuFlyout();
             var newTabItem = new MenuFlyoutItem { Text = "新建标签页" };
-            newTabItem.Click += async (s, ev) => await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank"); // 默认 EdgeHTML
+            newTabItem.Click += async (s, ev) => await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
             menu.Items.Add(newTabItem);
             var reloadItem = new MenuFlyoutItem { Text = "重新加载" }; reloadItem.Click += (s, ev) => viewItem.Tab?.RefreshAsync(); menu.Items.Add(reloadItem);
             var closeItem = new MenuFlyoutItem { Text = "关闭标签页" }; closeItem.Click += (s, ev) => CloseTab(viewItem); menu.Items.Add(closeItem);
@@ -652,6 +666,7 @@ namespace EdgeRebuild
         private void CloseOtherTabs(TabViewItem keepItem) { foreach (var item in _tabViews.Where(t => t != keepItem).ToList()) CloseTab(item); }
         private void CloseTabsToRight(TabViewItem startItem) { int index = _tabViews.IndexOf(startItem); if (index < 0) return; foreach (var item in _tabViews.Skip(index + 1).ToList()) CloseTab(item); }
 
+        // ========== 网页右键菜单（仅 WebView2） ==========
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
             if (_currentTab is EdgeHtmlTab) return;
@@ -700,29 +715,22 @@ namespace EdgeRebuild
             if (targetElement != null) flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
         }
 
+        // ========== 菜单中的引擎切换（使用统一方法） ==========
         private async Task SwitchCurrentTabEngine(EngineType newEngine)
         {
             if (_currentTab == null || _currentTab.Engine == newEngine) return;
             string currentUrl = _currentTab.CurrentUrl;
             var viewItem = _tabViews.FirstOrDefault(v => v.Tab == _currentTab);
             if (viewItem == null) return;
+
             _currentTab.Dispose();
             IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
             viewItem.Tab = newTab;
-            newTab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
-            newTab.UrlChanged += (u) => { if (_currentTab == newTab) { toolbarControl.UpdateNavState(newTab.CanGoBack, newTab.CanGoForward, u); UpdateStarButton(); } if (!string.IsNullOrEmpty(u) && u != "about:blank") HistoryManager.Add(newTab.Title ?? u, u); };
-            newTab.CanGoBackChanged += (can) => { if (_currentTab == newTab) toolbarControl.UpdateNavState(can, newTab.CanGoForward, newTab.CurrentUrl); };
-            newTab.CanGoForwardChanged += (can) => { if (_currentTab == newTab) toolbarControl.UpdateNavState(newTab.CanGoBack, can, newTab.CurrentUrl); };
-            newTab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
-            newTab.ContextMenuRequested += OnTabContextMenuRequested;
-            viewItem.EngineMark.Text = newTab.Engine == EngineType.EdgeHtml ? "E" : "W";
-            viewItem.EngineMark.Foreground = newTab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush;
-            _currentTab = null;
-            await SwitchToTabAsync(viewItem);
-            if (!string.IsNullOrEmpty(currentUrl) && currentUrl != "about:blank") await newTab.NavigateAsync(currentUrl);
-            else await newTab.NavigateAsync("about:blank");
+
+            await RebindTabAndSwitch(viewItem, newTab, currentUrl);
         }
 
+        // ========== 缩放、打印、查找等 ==========
         private async void AdjustZoom(double delta) { _zoomFactor = Math.Max(0.25, Math.Min(5.0, _zoomFactor + delta)); if (_currentTab is EdgeHtmlTab edgeTab) await edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';"); else if (_currentTab is WebView2Tab wv2) await wv2.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';"); }
         private async void ResetZoom() { _zoomFactor = 1.0; if (_currentTab is EdgeHtmlTab edgeTab) await edgeTab.ExecuteScriptAsync("document.body.style.zoom = '1';"); else if (_currentTab is WebView2Tab wv2) await wv2.ExecuteScriptAsync("document.body.style.zoom = '1';"); }
         private void PrintCurrentPage() { if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser); else if (_currentTab is EdgeHtmlTab edgeTab) _ = edgeTab.ExecuteScriptAsync("window.print();"); }
@@ -766,6 +774,7 @@ namespace EdgeRebuild
         private void ShowAboutDialog() => _ = new ContentDialog { Title = "Edge Rebuild", Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。", CloseButtonText = "确定" }.ShowAsync();
         private async void ShowNotImplementedDialog(string feature) => await new ContentDialog { Title = "即将推出", Content = $"功能“{feature}”尚未实现。", CloseButtonText = "确定" }.ShowAsync();
 
+        // ========== 标签关闭、下载、Hub 面板 ==========
         private void CloseTab(TabViewItem viewItem)
         {
             if (!_isLoaded) return;
@@ -873,9 +882,6 @@ namespace EdgeRebuild
             });
         }
 
-        private async void NewTabBtn_Click(object sender, RoutedEventArgs e) => await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank"); // 默认引擎可改为最后使用的引擎
-        private async void BackBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab?.CanGoBack == true) await _currentTab.GoBackAsync(); }
-        private async void ForwardBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab?.CanGoForward == true) await _currentTab.GoForwardAsync(); }
-        private async void RefreshBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab != null) await _currentTab.RefreshAsync(); }
+        private async void NewTabBtn_Click(object sender, RoutedEventArgs e) => await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
     }
 }
