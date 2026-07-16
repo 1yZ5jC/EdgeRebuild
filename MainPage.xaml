@@ -76,8 +76,10 @@
             <Setter Property="Background" Value="{ThemeResource AddressBarBackground}"/>
             <Setter Property="BorderBrush" Value="{ThemeResource AddressBarBorder}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Padding" Value="8,8,4,0"/>
             <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <!-- 新增 -->
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
             <Setter Property="SelectionHighlightColor" Value="#0078D7"/>
@@ -170,7 +172,9 @@
 
                 <TextBox x:Name="UrlBox" Grid.Column="4" MinWidth="200" PlaceholderText="输入网址或搜索"
                          KeyDown="UrlBox_KeyDown" Style="{StaticResource AddressBarStyle}"
-                         GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"/>
+                         GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
+                         VerticalContentAlignment="Center"/>
+                         <!-- 新增此行 -->
 
                 <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="4,0" VerticalAlignment="Center">
                     <Button x:Name="AddFavBtn" Content="&#xE734;"

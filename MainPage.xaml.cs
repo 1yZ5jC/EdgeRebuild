@@ -42,7 +42,7 @@ namespace EdgeRebuild
         private readonly Stack<string> _closedTabUrls = new Stack<string>();
 
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
-        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Color.FromArgb(0xB3, 0xE0, 0xE0, 0xE0));
+        private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Colors.Transparent);
         private readonly SolidColorBrush _hoverBrush = new SolidColorBrush(Colors.Silver);
         private readonly SolidColorBrush _starYellowBrush = new SolidColorBrush(Colors.Gold);
         private readonly SolidColorBrush _starGrayBrush = new SolidColorBrush(Colors.Gray);
@@ -50,7 +50,7 @@ namespace EdgeRebuild
         private readonly SolidColorBrush _webGreenBrush = new SolidColorBrush(Colors.MediumSeaGreen);
 
         private const int MinTabWidth = 44;
-        private const int MaxTabWidth = 120;
+        private const int MaxTabWidth = 160;
         private const int AdditionalMargin = 30;
         private const int MinDragWidth = 20;
         private const int ButtonBaseOffset = 50;
@@ -259,7 +259,7 @@ namespace EdgeRebuild
             var tabBorder = new Border
             {
                 Height = 32,
-                Background = _unselectedBrush,
+                Background = new SolidColorBrush(Colors.Transparent),
                 BorderBrush = new SolidColorBrush(Colors.LightGray),
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(4, 0, 4, 0),
@@ -322,8 +322,9 @@ namespace EdgeRebuild
                 Padding = new Thickness(0),
                 Width = 20,
                 Height = 20,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(2, 0, 0, 0)
+                VerticalAlignment = VerticalAlignment.Center,   // 垂直居中
+                HorizontalAlignment = HorizontalAlignment.Right, // 水平靠右
+                Margin = new Thickness(0, 0, 8, 0)              // 右侧留 8 像素间距
             };
 
             tabPanel.Children.Add(engineMark);
