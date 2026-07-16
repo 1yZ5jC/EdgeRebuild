@@ -218,7 +218,6 @@ namespace EdgeRebuild
             foreach (var item in _tabViews)
             {
                 item.Container.Width = targetTabWidth;
-                // 不再手动设置 TitleText.MaxWidth
             }
 
             TabScrollViewer.MaxWidth = availableWidth;
@@ -266,7 +265,6 @@ namespace EdgeRebuild
                 Width = MaxTabWidth
             };
 
-            // 创建 Grid 作为标签内部的主布局（两列）
             var tabPanel = new Grid
             {
                 VerticalAlignment = VerticalAlignment.Center
@@ -274,7 +272,6 @@ namespace EdgeRebuild
             tabPanel.ColumnDefinitions.Add(new ColumnDefinition() { Width = new GridLength(1, GridUnitType.Star) });
             tabPanel.ColumnDefinitions.Add(new ColumnDefinition() { Width = GridLength.Auto });
 
-            // 引擎标记、图标、标题放在一个 StackPanel 中，放在 Grid 的第一列
             var engineMark = new TextBlock
             {
                 Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
@@ -326,7 +323,6 @@ namespace EdgeRebuild
             Grid.SetColumn(infoPanel, 0);
             tabPanel.Children.Add(infoPanel);
 
-            // 关闭按钮放在第二列，靠右对齐
             var closeBtn = new Button
             {
                 Content = "\xE711",
@@ -866,9 +862,9 @@ namespace EdgeRebuild
 
             var skinSub = new MenuFlyoutSubItem { Text = "皮肤" };
             var classicSkin = new MenuFlyoutItem { Text = "经典 Edge" };
-            classicSkin.IsEnabled = false;
-            var modernIeSkin = new MenuFlyoutItem { Text = "Modern IE (即将推出)" };
-            modernIeSkin.IsEnabled = false;
+            classicSkin.Click += (s, ev) => SwitchSkin("Spartan");
+            var modernIeSkin = new MenuFlyoutItem { Text = "Modern IE" };
+            modernIeSkin.Click += (s, ev) => SwitchSkin("ModernIE");
             var mobileSkin = new MenuFlyoutItem { Text = "Windows 10 Mobile (即将推出)" };
             mobileSkin.IsEnabled = false;
             skinSub.Items.Add(classicSkin);
@@ -1505,6 +1501,13 @@ namespace EdgeRebuild
                 await newTab.NavigateAsync(currentUrl);
             else
                 await newTab.NavigateAsync("about:blank");
+        }
+
+        // ==================== 皮肤切换 ====================
+        private async void SwitchSkin(string name)
+        {
+            App.ApplySkin(name);
+            await SettingsManager.SetAsync("Skin", name);
         }
     }
 }

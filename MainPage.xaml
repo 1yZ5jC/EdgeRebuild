@@ -11,19 +11,19 @@
                       TintOpacity="0.8"
                       FallbackColor="#F0F0F0"/>
 
-        <SolidColorBrush x:Key="AddressBarBackground" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="AddressBarBorder" Color="#C0C0C0"/>
-        <SolidColorBrush x:Key="AddressBarFocusBorder" Color="#0078D7"/>
-        <SolidColorBrush x:Key="TabActiveBackground" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="TabInactiveBackground" Color="#B3E0E0E0"/>
-        <SolidColorBrush x:Key="TabHoverBackground" Color="#D0D0D0"/>
+        <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#C0C0C0"/>
+        <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="#0078D7"/>
+        <SolidColorBrush x:Key="TabActiveBackgroundBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TabInactiveBackgroundBrush" Color="#60FFFFFF"/>
+        <SolidColorBrush x:Key="TabHoverBackgroundBrush" Color="#C0C0C0"/>
         <SolidColorBrush x:Key="SeparatorBrush" Color="#CCCCCC"/>
-        <SolidColorBrush x:Key="Foreground" Color="#000000"/>
-        <SolidColorBrush x:Key="MutedForeground" Color="#666666"/>
+        <SolidColorBrush x:Key="ForegroundBrush" Color="#000000"/>
+        <SolidColorBrush x:Key="MutedForegroundBrush" Color="#666666"/>
 
         <Style x:Key="ToolButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
@@ -46,7 +46,7 @@
                                             </ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BorderElement"
                                                                            Storyboard.TargetProperty="BorderBrush">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource AddressBarFocusBorder}"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource AddressBarFocusBorderBrush}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -73,15 +73,14 @@
         </Style>
 
         <Style x:Key="AddressBarStyle" TargetType="TextBox">
-            <Setter Property="Background" Value="{ThemeResource AddressBarBackground}"/>
-            <Setter Property="BorderBrush" Value="{ThemeResource AddressBarBorder}"/>
+            <Setter Property="Background" Value="{StaticResource AddressBarBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AddressBarBorderBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,8,4,0"/>
             <Setter Property="VerticalAlignment" Value="Stretch"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <!-- 新增 -->
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
             <Setter Property="SelectionHighlightColor" Value="#0078D7"/>
         </Style>
     </Page.Resources>
@@ -89,15 +88,12 @@
     <Grid Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="32"/>
-            <!-- 标签栏 -->
             <RowDefinition Height="40"/>
-            <!-- 工具栏 -->
             <RowDefinition Height="*"/>
-            <!-- 内容区 -->
         </Grid.RowDefinitions>
 
         <!-- 标签栏 -->
-        <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource ToolbarAcrylicBrush}"
+        <Border x:Name="TabBarBorder" Grid.Row="0" Background="{StaticResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -109,7 +105,7 @@
 
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
                         Style="{StaticResource ToolButtonStyle}" Width="24" Height="24"
-                        Click="ScrollLeftBtn_Click" Foreground="{ThemeResource MutedForeground}"
+                        Click="ScrollLeftBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                         VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"/>
 
                 <ScrollViewer x:Name="TabScrollViewer" Grid.Column="1"
@@ -128,11 +124,11 @@
                             Background="Transparent" Margin="0,0,50,0">
                     <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
                             Style="{StaticResource ToolButtonStyle}" Width="24" Height="24"
-                            Click="ScrollRightBtn_Click" Foreground="{ThemeResource MutedForeground}"
+                            Click="ScrollRightBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                             Visibility="Collapsed" Margin="0,0,0,0"/>
                     <Button x:Name="NewTabButton" Content="&#xE710;"
                             Style="{StaticResource ToolButtonStyle}" Width="32" Height="32"
-                            Click="NewTabBtn_Click" Foreground="{ThemeResource MutedForeground}"
+                            Click="NewTabBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                             Margin="0,0,0,0"/>
                 </StackPanel>
 
@@ -142,8 +138,8 @@
         </Border>
 
         <!-- 工具栏 -->
-        <Border Grid.Row="1" Background="{ThemeResource ToolbarAcrylicBrush}"
-                BorderBrush="{ThemeResource SeparatorBrush}" BorderThickness="0,1,0,1">
+        <Border Grid.Row="1" Background="{StaticResource ToolbarAcrylicBrush}"
+                BorderBrush="{StaticResource SeparatorBrush}" BorderThickness="0,1,0,1">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -157,38 +153,36 @@
                 <Border Grid.Column="0" Width="32" Height="32" VerticalAlignment="Center" Margin="2,0,2,0"
                         Background="Transparent">
                     <TextBlock x:Name="EngineLabel" VerticalAlignment="Center" HorizontalAlignment="Center"
-                               FontSize="13" FontWeight="Bold"/>
+                               FontSize="13" FontWeight="Bold" Foreground="{StaticResource ForegroundBrush}"/>
                 </Border>
 
                 <Button x:Name="BackBtn" Grid.Column="1" Content="&#xE72B;" IsEnabled="False"
                         Click="BackBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
-                        Foreground="{ThemeResource MutedForeground}"/>
+                        Foreground="{StaticResource MutedForegroundBrush}"/>
                 <Button x:Name="ForwardBtn" Grid.Column="2" Content="&#xE72A;" IsEnabled="False"
                         Click="ForwardBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
-                        Foreground="{ThemeResource MutedForeground}"/>
+                        Foreground="{StaticResource MutedForegroundBrush}"/>
                 <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
                         Click="RefreshBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
-                        Foreground="{ThemeResource MutedForeground}"/>
+                        Foreground="{StaticResource MutedForegroundBrush}"/>
 
                 <TextBox x:Name="UrlBox" Grid.Column="4" MinWidth="200" PlaceholderText="输入网址或搜索"
                          KeyDown="UrlBox_KeyDown" Style="{StaticResource AddressBarStyle}"
                          GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
                          VerticalContentAlignment="Center"/>
-                         <!-- 新增此行 -->
 
                 <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="4,0" VerticalAlignment="Center">
                     <Button x:Name="AddFavBtn" Content="&#xE734;"
                             Click="AddFavBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
-                            Foreground="{ThemeResource MutedForeground}"/>
+                            Foreground="{StaticResource MutedForegroundBrush}"/>
                     <Button x:Name="HubBtn" Content="📚"
                             Click="HubBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
-                            Foreground="{ThemeResource MutedForeground}"/>
-                    <!-- 新增：设置及其他按钮 -->
+                            Foreground="{StaticResource MutedForegroundBrush}"/>
                     <Button x:Name="MenuBtn" Content="&#xE712;" 
                             Click="MenuBtn_Click" Style="{StaticResource ToolButtonStyle}" Margin="2,0"
-                            Foreground="{ThemeResource MutedForeground}"/>
+                            Foreground="{StaticResource MutedForegroundBrush}"/>
                     <ComboBox x:Name="EngineCombo" Width="90" SelectedIndex="0" VerticalAlignment="Center"
-                              Background="Transparent" Foreground="{ThemeResource Foreground}"
+                              Background="Transparent" Foreground="{StaticResource ForegroundBrush}"
                               BorderThickness="0" Margin="4,0">
                         <ComboBoxItem Content="EdgeHTML"/>
                         <ComboBoxItem Content="WebView2"/>
@@ -200,7 +194,7 @@
         <!-- 右侧 Hub 面板 -->
         <SplitView x:Name="HubSplitView" Grid.Row="2" DisplayMode="Overlay"
                    OpenPaneLength="360" PanePlacement="Right"
-                   PaneBackground="{ThemeResource ToolbarAcrylicBrush}">
+                   PaneBackground="{StaticResource ToolbarAcrylicBrush}">
             <SplitView.Pane>
                 <Grid Width="360" VerticalAlignment="Stretch">
                     <Grid.RowDefinitions>
@@ -210,7 +204,7 @@
                     <Button x:Name="CloseHubBtn" Grid.Row="0" Content="&#xE711;"
                             HorizontalAlignment="Right" Margin="0,8,8,0"
                             Click="CloseHubBtn_Click" Style="{StaticResource ToolButtonStyle}"
-                            Foreground="{ThemeResource MutedForeground}"/>
+                            Foreground="{StaticResource MutedForegroundBrush}"/>
                     <Pivot x:Name="HubPivot" Grid.Row="1" Margin="0,0,0,0">
                         <PivotItem Header="收藏夹">
                             <ScrollViewer Margin="8,0">

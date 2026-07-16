@@ -1,0 +1,41 @@
+﻿<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 深色主题 -->
+    <Color x:Key="ChromeBackgroundColor">#2D2D30</Color>
+    <Color x:Key="ChromeForegroundColor">#F1F1F1</Color>
+    <Color x:Key="AddressBarBackgroundColor">#1E1E1E</Color>
+    <Color x:Key="AddressBarBorderColor">#555555</Color>
+    <Color x:Key="AddressBarFocusBorderColor">#0078D7</Color>
+    <Color x:Key="TabActiveBackgroundColor">#3E3E40</Color>
+    <Color x:Key="TabInactiveBackgroundColor">#2D2D30</Color>
+    <Color x:Key="TabHoverBackgroundColor">#4E4E50</Color>
+    <Color x:Key="SeparatorColor">#555555</Color>
+
+    <!-- 画刷 -->
+    <SolidColorBrush x:Key="ToolbarAcrylicBrush" Color="#2D2D30"/>
+    <SolidColorBrush x:Key="ChromeBackgroundBrush" Color="{StaticResource ChromeBackgroundColor}"/>
+    <SolidColorBrush x:Key="ChromeForegroundBrush" Color="{StaticResource ChromeForegroundColor}"/>
+    <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="{StaticResource AddressBarBackgroundColor}"/>
+    <SolidColorBrush x:Key="AddressBarBorderBrush" Color="{StaticResource AddressBarBorderColor}"/>
+    <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="{StaticResource AddressBarFocusBorderColor}"/>
+    <SolidColorBrush x:Key="TabActiveBackgroundBrush" Color="{StaticResource TabActiveBackgroundColor}"/>
+    <SolidColorBrush x:Key="TabInactiveBackgroundBrush" Color="{StaticResource TabInactiveBackgroundColor}"/>
+    <SolidColorBrush x:Key="TabHoverBackgroundBrush" Color="{StaticResource TabHoverBackgroundColor}"/>
+    <SolidColorBrush x:Key="SeparatorBrush" Color="{StaticResource SeparatorColor}"/>
+    <SolidColorBrush x:Key="ForegroundBrush" Color="{StaticResource ChromeForegroundColor}"/>
+    <SolidColorBrush x:Key="MutedForegroundBrush" Color="#999999"/>
+
+    <!-- 工具栏位置：底部 -->
+    <Thickness x:Key="ToolbarMargin">0,0,0,0</Thickness>
+    <Thickness x:Key="ContentMargin">0,0,0,0</Thickness>
+    <GridLength x:Key="ToolbarRowHeight">40</GridLength>
+    <GridLength x:Key="ContentRowHeight">*</GridLength>
+
+    <!-- 标签栏高度 -->
+    <GridLength x:Key="TabRowHeight">32</GridLength>
+
+    <FontFamily x:Key="UIFontFamily">Segoe UI</FontFamily>
+    <x:Double x:Key="UIFontSize">13</x:Double>
+</ResourceDictionary>

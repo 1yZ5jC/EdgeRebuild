@@ -28,6 +28,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="FavoritesPage.xaml.cs" />
+    <Compile Remove="Themes\ModernIE.xaml.cs" />
+    <Compile Remove="Themes\Spartan.xaml.cs" />
   </ItemGroup>
   <ItemGroup>
     <Page Remove="FavoritesPage.xaml" />

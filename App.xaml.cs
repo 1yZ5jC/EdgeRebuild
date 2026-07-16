@@ -48,9 +48,12 @@ namespace EdgeRebuild
             await FavoritesManager.Instance.LoadAsync();
             await HistoryManager.LoadAsync();
 
+            string skin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
+            ApplySkin(skin);
             // 确保在 UI 线程继续
             Window.Current.Activate();
-
+            
+            ApplySkin(skin);
             if (e.PrelaunchActivated == false)
             {
                 if (rootFrame.Content == null)
@@ -88,6 +91,14 @@ namespace EdgeRebuild
 
             // TODO: Save application state and stop any background activity
             deferral.Complete();
+        }
+        public static void ApplySkin(string skinName)
+        {
+            var dicts = Application.Current.Resources.MergedDictionaries;
+            dicts.Clear();
+            string uri = skinName == "ModernIE" ? "Themes/ModernIE.xaml" : "Themes/Spartan.xaml";
+            var skinDict = new ResourceDictionary { Source = new Uri("ms-appx:///" + uri) };
+            dicts.Add(skinDict);
         }
     }
 }
