@@ -106,6 +106,7 @@ namespace EdgeRebuild
 
         private void ResetDragState()
         {
+            System.Diagnostics.Debug.WriteLine("[DEBUG] ResetDragState called");
             if (_dragItem != null)
             {
                 if (DragCanvas.Children.Contains(_dragItem.Container))
@@ -385,7 +386,7 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
-        // ==================== 拖拽实现 ====================
+        // ==================== 拖拽实现（向下位移 >5 像素即拖出） ====================
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             ResetDragState();
@@ -406,6 +407,7 @@ namespace EdgeRebuild
             var pointInCanvas = e.GetCurrentPoint(DragCanvas).Position;
             _dragStartCanvasPoint = pointInCanvas;
 
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] Pressed - offset:{_dragOffset}, canvasPos:{pointInCanvas}");
             border.CapturePointer(e.Pointer);
             e.Handled = true;
         }
@@ -418,24 +420,18 @@ namespace EdgeRebuild
             double dx = posInCanvas.X - _dragOffset.X;
             double dy = posInCanvas.Y - _dragOffset.Y;
 
+            // 简单规则：拖拽中，向下位移超过 5 像素就弹出新窗口
+            bool shouldPopOut = _isDragging && dy > 5;
+
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] Moved - dx:{dx:F1}, dy:{dy:F1}, shouldPopOut:{shouldPopOut}");
+
             if (!_isDragging && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
             {
                 _hasMoved = true;
 
-                if (Math.Abs(dy) > 40)
-                {
-                    var item = _dragItem;
-                    _dragItem = null;
-                    item.Container.ReleasePointerCaptures();
-                    item.Container.RenderTransform = null;
-                    item.Container.Opacity = 1.0;
-
-                    ResetDragState();
-                    MoveTabToNewWindow(item);
-                    return;
-                }
-
+                // 提升到 DragCanvas
                 _isDragging = true;
+                System.Diagnostics.Debug.WriteLine("[DEBUG] -> Start dragging on Canvas");
 
                 int index = _tabViews.IndexOf(_dragItem);
                 _placeholder = new Border
@@ -446,8 +442,8 @@ namespace EdgeRebuild
                 };
                 TabBarPanel.Children.Insert(index, _placeholder);
 
-                var parent = _dragItem.Container.Parent as Panel;
-                parent?.Children.Remove(_dragItem.Container);
+                var parentPanel = _dragItem.Container.Parent as Panel;
+                parentPanel?.Children.Remove(_dragItem.Container);
 
                 DragCanvas.Children.Add(_dragItem.Container);
                 Canvas.SetLeft(_dragItem.Container, posInCanvas.X - _dragOffset.X);
@@ -465,14 +461,34 @@ namespace EdgeRebuild
 
                 _totalDx = posInCanvas.X - _dragStartCanvasPoint.X;
 
-                double currentDy = posInCanvas.Y - _dragOffset.Y;
-                if (Math.Abs(currentDy) > 40)
+                if (shouldPopOut)
                 {
+                    System.Diagnostics.Debug.WriteLine("[DEBUG] -> Drag out (dy > 5)");
                     _dragItem.Container.ReleasePointerCaptures();
                     var item = _dragItem;
                     _dragItem = null;
-                    CleanupDragForOutOfWindow(item);
-                    ResetDragState();
+
+                    if (DragCanvas.Children.Contains(item.Container))
+                        DragCanvas.Children.Remove(item.Container);
+                    item.Container.Opacity = 1.0;
+
+                    if (_placeholder != null)
+                    {
+                        int idx = TabBarPanel.Children.IndexOf(_placeholder);
+                        if (idx >= 0) TabBarPanel.Children.RemoveAt(idx);
+                        _placeholder = null;
+                    }
+                    _isDragging = false;
+                    _hasMoved = false;
+                    _totalDx = 0;
+
+                    TabBarPanel.Children.Clear();
+                    foreach (var t in _tabViews)
+                    {
+                        if (t != item)
+                            TabBarPanel.Children.Add(t.Container);
+                    }
+
                     MoveTabToNewWindow(item);
                     return;
                 }
@@ -482,6 +498,7 @@ namespace EdgeRebuild
 
         private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
         {
+            System.Diagnostics.Debug.WriteLine("[DEBUG] OnTabPointerReleased");
             if (_dragItem == null) return;
 
             try
@@ -490,6 +507,7 @@ namespace EdgeRebuild
 
                 if (!_hasMoved)
                 {
+                    System.Diagnostics.Debug.WriteLine("  -> No move, switch tab");
                     SwitchToTab(_dragItem);
                     return;
                 }
@@ -515,9 +533,9 @@ namespace EdgeRebuild
 
                         if (centerX >= childLeft && centerX <= childRight)
                         {
-                            // 无论向左还是向右拖，只要中心落在盒子内，就放在该盒子左侧
                             targetIndex = i;
                             placed = true;
+                            System.Diagnostics.Debug.WriteLine($"  Placed inside child {i}, targetIndex={targetIndex}");
                             break;
                         }
                     }
@@ -538,10 +556,12 @@ namespace EdgeRebuild
                                 targetIndex = 0;
                             else if (centerX > lastRight)
                                 targetIndex = _tabViews.Count;
+                            System.Diagnostics.Debug.WriteLine($"  Not placed inside any, targetIndex set to {targetIndex}");
                         }
                     }
 
                     int currentIndex = _tabViews.IndexOf(_dragItem);
+                    System.Diagnostics.Debug.WriteLine($"  currentIndex:{currentIndex} -> targetIndex:{targetIndex}");
                     if (targetIndex != currentIndex)
                         MoveTabToIndex(currentIndex, targetIndex);
                 }
@@ -555,6 +575,7 @@ namespace EdgeRebuild
 
         private void MoveTabToIndex(int oldIndex, int newIndex)
         {
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] MoveTabToIndex {oldIndex} -> {newIndex}");
             if (oldIndex == newIndex) return;
             var item = _tabViews[oldIndex];
             _tabViews.RemoveAt(oldIndex);
@@ -564,46 +585,35 @@ namespace EdgeRebuild
                 _tabViews.Insert(newIndex, item);
         }
 
-        private void CleanupDragForOutOfWindow(TabViewItem item)
-        {
-            if (item == null) return;
-
-            if (DragCanvas.Children.Contains(item.Container))
-                DragCanvas.Children.Remove(item.Container);
-            item.Container.Opacity = 1.0;
-
-            if (_placeholder != null)
-            {
-                int idx = TabBarPanel.Children.IndexOf(_placeholder);
-                if (idx >= 0) TabBarPanel.Children.RemoveAt(idx);
-                _placeholder = null;
-            }
-
-            int index = _tabViews.IndexOf(item);
-            if (index >= 0 && index <= TabBarPanel.Children.Count)
-                TabBarPanel.Children.Insert(index, item.Container);
-            else
-                TabBarPanel.Children.Add(item.Container);
-        }
-
         private async void MoveTabToNewWindow(TabViewItem item)
         {
             string url = item.Tab.CurrentUrl;
+            System.Diagnostics.Debug.WriteLine($"[DEBUG] MoveTabToNewWindow url={url}");
             CloseTab(item);
             if (_tabViews.Count == 0)
                 await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
+            else
+                UpdateTabLayout();
 
-            var newView = CoreApplication.CreateNewView();
-            int newViewId = 0;
-            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            try
             {
-                var frame = new Frame();
-                frame.Navigate(typeof(MainPage), url);
-                Window.Current.Content = frame;
-                Window.Current.Activate();
-                newViewId = ApplicationView.GetForCurrentView().Id;
-            });
-            await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+                var newView = CoreApplication.CreateNewView();
+                int newViewId = 0;
+                await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                {
+                    var frame = new Frame();
+                    frame.Navigate(typeof(MainPage), url);
+                    Window.Current.Content = frame;
+                    Window.Current.Activate();
+                    newViewId = ApplicationView.GetForCurrentView().Id;
+                });
+                await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+                System.Diagnostics.Debug.WriteLine("[DEBUG] New window created successfully");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DEBUG] Failed to create new window: {ex.Message}");
+            }
         }
 
         private void CloseTab(TabViewItem viewItem)

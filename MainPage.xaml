@@ -5,6 +5,7 @@
     xmlns:media="using:Windows.UI.Xaml.Media">
 
     <Page.Resources>
+        <!-- 资源保持不变 -->
         <AcrylicBrush x:Key="ToolbarAcrylicBrush"
                       BackgroundSource="HostBackdrop"
                       TintColor="#F0F0F0"
@@ -22,6 +23,7 @@
         <SolidColorBrush x:Key="MutedForeground" Color="#666666"/>
 
         <Style x:Key="ToolButtonStyle" TargetType="Button">
+            <!-- 保持不变 -->
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{ThemeResource Foreground}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -94,19 +96,15 @@
             <!-- 内容区 -->
         </Grid.RowDefinitions>
 
-        <!-- 标签栏：四列布局，包含拖拽用 Canvas 覆盖层 -->
+        <!-- 标签栏 -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 左箭头 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 标签滚动区 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 右按钮组 -->
                     <ColumnDefinition Width="*"/>
-                    <!-- 拖拽区 -->
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
@@ -140,11 +138,6 @@
 
                 <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
                            Grid.Column="3" VerticalAlignment="Stretch"/>
-
-                <!-- 拖拽覆盖层 Canvas，用于置顶标签 -->
-                <Canvas x:Name="DragCanvas" Background="Transparent" IsHitTestVisible="False"
-                        Grid.ColumnSpan="4" Grid.Column="0" HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch" Canvas.ZIndex="1000"/>
             </Grid>
         </Border>
 
@@ -154,17 +147,11 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 引擎 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 后退 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 前进 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 刷新 -->
                     <ColumnDefinition Width="*"/>
-                    <!-- 地址栏 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 收藏、Hub、引擎选择 -->
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Width="32" Height="32" VerticalAlignment="Center" Margin="2,0,2,0"
@@ -255,5 +242,9 @@
             </SplitView.Pane>
             <Border x:Name="ContentContainer" Background="White"/>
         </SplitView>
+
+        <!-- 全页面拖拽覆盖层 -->
+        <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"
+                IsHitTestVisible="False" Canvas.ZIndex="1000"/>
     </Grid>
 </Page>
