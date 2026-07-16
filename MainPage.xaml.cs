@@ -54,9 +54,9 @@ namespace EdgeRebuild
         // 拖拽状态
         private TabViewItem _dragItem;
         private Border _placeholder;
-        private Point _dragOffset;       // 鼠标在标签内的相对偏移
-        private bool _isDragging;        // 是否已进入拖拽状态（已提升至DragCanvas）
-        private bool _hasMoved;          // 是否发生过移动（用于区分点击）
+        private Point _dragOffset;
+        private bool _isDragging;
+        private bool _hasMoved;
 
         public MainPage()
         {
@@ -309,7 +309,7 @@ namespace EdgeRebuild
 
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
 
-            // 拖拽事件（按下时立即捕获指针）
+            // 拖拽事件
             tabBorder.PointerPressed += OnTabPointerPressed;
             tabBorder.PointerMoved += OnTabPointerMoved;
             tabBorder.PointerReleased += OnTabPointerReleased;
@@ -354,9 +354,12 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
-        // ==================== 原始拖拽实现（占位符+Canvas） ====================
+        // ==================== 拖拽实现（实时交换，50%阈值，基于DragCanvas+占位符） ====================
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
+            // 只有一个标签时不允许拖拽
+            if (_tabViews.Count <= 1) return;
+
             var border = sender as Border;
             if (border == null) return;
             var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
@@ -367,7 +370,6 @@ namespace EdgeRebuild
             _hasMoved = false;
             _isDragging = false;
 
-            // 立即捕获指针，确保后续移动事件都由该元素接收
             border.CapturePointer(e.Pointer);
             e.Handled = true;
         }
@@ -376,7 +378,6 @@ namespace EdgeRebuild
         {
             if (_dragItem == null) return;
 
-            // 使用 DragCanvas 作为参考容器，因为标签最终会移动到它上面
             var posInCanvas = e.GetCurrentPoint(DragCanvas).Position;
             double dx = posInCanvas.X - _dragOffset.X;
             double dy = posInCanvas.Y - _dragOffset.Y;
@@ -385,12 +386,11 @@ namespace EdgeRebuild
             {
                 _hasMoved = true;
 
-                // 垂直拖出窗口（优先检测）
+                // 垂直拖出窗口
                 if (Math.Abs(dy) > 40)
                 {
                     var item = _dragItem;
                     _dragItem = null;
-                    // 释放捕获，恢复标签
                     item.Container.ReleasePointerCaptures();
                     item.Container.RenderTransform = null;
                     item.Container.Opacity = 1.0;
@@ -398,10 +398,9 @@ namespace EdgeRebuild
                     return;
                 }
 
-                // 水平拖拽：提升到 DragCanvas
+                // 开始拖拽：提升到 DragCanvas
                 _isDragging = true;
 
-                // 插入占位符
                 int index = _tabViews.IndexOf(_dragItem);
                 _placeholder = new Border
                 {
@@ -411,11 +410,9 @@ namespace EdgeRebuild
                 };
                 TabBarPanel.Children.Insert(index, _placeholder);
 
-                // 从原父级移除
                 var parent = _dragItem.Container.Parent as Panel;
                 parent?.Children.Remove(_dragItem.Container);
 
-                // 添加到 DragCanvas 并设置初始位置
                 DragCanvas.Children.Add(_dragItem.Container);
                 Canvas.SetLeft(_dragItem.Container, posInCanvas.X - _dragOffset.X);
                 Canvas.SetTop(_dragItem.Container, posInCanvas.Y - _dragOffset.Y);
@@ -430,7 +427,41 @@ namespace EdgeRebuild
                 if (newLeft > maxLeft) newLeft = maxLeft;
                 Canvas.SetLeft(_dragItem.Container, newLeft);
 
-                // 持续检测垂直拖出
+                // 实时交换：检查是否超过相邻标签的50%
+                int currentIndex = _tabViews.IndexOf(_dragItem);
+                if (currentIndex < 0) return;
+
+                double itemWidth = _dragItem.Container.ActualWidth;
+                if (itemWidth <= 0) itemWidth = MaxTabWidth;
+
+                // 向右交换
+                if (dx > itemWidth * 0.5 && currentIndex < _tabViews.Count - 1)
+                {
+                    // 在数据层面交换
+                    var swapItem = _tabViews[currentIndex + 1];
+                    _tabViews[currentIndex] = swapItem;
+                    _tabViews[currentIndex + 1] = _dragItem;
+
+                    // 在UI层面交换（占位符始终在原位置，其他标签需要调整顺序）
+                    // 简单重建 TabBarPanel 以反映新顺序
+                    RebuildTabPanel();
+
+                    // 重置偏移，保持鼠标相对位置不变
+                    _dragOffset = e.GetCurrentPoint(_dragItem.Container).Position;
+                }
+                // 向左交换
+                else if (dx < -itemWidth * 0.5 && currentIndex > 0)
+                {
+                    var swapItem = _tabViews[currentIndex - 1];
+                    _tabViews[currentIndex] = swapItem;
+                    _tabViews[currentIndex - 1] = _dragItem;
+
+                    RebuildTabPanel();
+
+                    _dragOffset = e.GetCurrentPoint(_dragItem.Container).Position;
+                }
+
+                // 垂直拖出窗口检测
                 double currentDy = posInCanvas.Y - _dragOffset.Y;
                 if (Math.Abs(currentDy) > 40)
                 {
@@ -445,14 +476,57 @@ namespace EdgeRebuild
             e.Handled = true;
         }
 
+        // 辅助：按当前数据列表重建 TabBarPanel（保持占位符在原位置不变）
+        private void RebuildTabPanel()
+        {
+            if (_placeholder == null) return;
+
+            // 记录占位符当前索引
+            int placeholderIndex = TabBarPanel.Children.IndexOf(_placeholder);
+
+            // 清空所有标签（保留占位符）
+            for (int i = TabBarPanel.Children.Count - 1; i >= 0; i--)
+            {
+                if (TabBarPanel.Children[i] == _placeholder) continue;
+                TabBarPanel.Children.RemoveAt(i);
+            }
+
+            // 按数据顺序重新添加标签，但跳过拖拽项（因为它已在 DragCanvas 中）
+            foreach (var item in _tabViews)
+            {
+                if (item == _dragItem) continue; // 跳过正在拖拽的标签
+                // 插入到占位符之前或之后？应该保持占位符在原位置。
+                // 简单方式：先全部添加到临时列表，再按索引插入
+            }
+
+            // 更稳健的重建：完全重建 TabBarPanel，然后重新插入占位符到正确位置
+            TabBarPanel.Children.Clear();
+            for (int i = 0; i < _tabViews.Count; i++)
+            {
+                // 占位符应出现在拖拽项的原位置（即 _tabViews 中当前拖拽项的索引）
+                if (i == _tabViews.IndexOf(_dragItem))
+                {
+                    TabBarPanel.Children.Add(_placeholder);
+                }
+                if (_tabViews[i] != _dragItem)
+                {
+                    TabBarPanel.Children.Add(_tabViews[i].Container);
+                }
+            }
+            // 如果拖拽项在列表末尾，占位符也需要在末尾
+            if (!TabBarPanel.Children.Contains(_placeholder))
+            {
+                TabBarPanel.Children.Add(_placeholder);
+            }
+        }
+
         private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
         {
             if (_dragItem == null) return;
 
-            // 释放指针捕获
             try { _dragItem.Container.ReleasePointerCaptures(); } catch { }
 
-            if (!_hasMoved) // 纯点击
+            if (!_hasMoved)
             {
                 SwitchToTab(_dragItem);
                 _dragItem = null;
@@ -461,7 +535,7 @@ namespace EdgeRebuild
 
             if (_isDragging)
             {
-                // 将标签在 DragCanvas 中的位置转换为 TabBarPanel 坐标系
+                // 最终排序已在实时交换中完成，但还需处理左右越界
                 var transform = _dragItem.Container.TransformToVisual(TabBarPanel);
                 var tabPos = transform.TransformPoint(new Point(0, 0));
                 double left = tabPos.X;
@@ -469,44 +543,24 @@ namespace EdgeRebuild
                 double right = left + width;
                 double tabAreaWidth = TabBarPanel.ActualWidth;
 
-                int targetIndex;
+                int targetIndex = _tabViews.IndexOf(_dragItem);
                 if (left < 0)
                     targetIndex = 0;
                 else if (right > tabAreaWidth)
                     targetIndex = _tabViews.Count - 1;
-                else
-                {
-                    double centerX = left + width / 2;
-                    targetIndex = GetTargetIndex(centerX);
-                }
+                // 如果已在正确区间，保持当前索引
 
-                int currentIndex = _tabViews.IndexOf(_dragItem);
-                if (targetIndex != currentIndex)
-                    MoveTabToIndex(currentIndex, targetIndex);
+                if (targetIndex != _tabViews.IndexOf(_dragItem))
+                {
+                    MoveTabToIndex(_tabViews.IndexOf(_dragItem), targetIndex);
+                }
             }
 
             CleanupDrag();
             e.Handled = true;
         }
 
-        private int GetTargetIndex(double centerX)
-        {
-            int target = 0;
-            for (int i = 0; i < TabBarPanel.Children.Count; i++)
-            {
-                if (TabBarPanel.Children[i] == _placeholder) continue;
-                var child = TabBarPanel.Children[i] as FrameworkElement;
-                if (child == null) continue;
-                var childTransform = child.TransformToVisual(TabBarPanel);
-                var childCenterX = childTransform.TransformPoint(new Point(child.ActualWidth / 2, 0)).X;
-                if (centerX > childCenterX) target = i + 1;
-                else break;
-            }
-            int placeholderIdx = TabBarPanel.Children.IndexOf(_placeholder);
-            if (placeholderIdx >= 0 && placeholderIdx < target) target--;
-            return Math.Max(0, Math.Min(target, _tabViews.Count - 1));
-        }
-
+        private int GetTargetIndex(double centerX) { /* 保留，但实际释放时可能不再需要 */ return 0; }
         private void MoveTabToIndex(int oldIndex, int newIndex)
         {
             if (oldIndex == newIndex) return;
@@ -530,7 +584,6 @@ namespace EdgeRebuild
                 _placeholder = null;
             }
 
-            // 按数据列表重建 TabBarPanel
             TabBarPanel.Children.Clear();
             foreach (var item in _tabViews)
                 TabBarPanel.Children.Add(item.Container);
@@ -615,6 +668,7 @@ namespace EdgeRebuild
                 UpdateTabLayout();
         }
 
+        // 以下方法保持不变
         private void AttachDownloadEvents(WebView2Tab wv2Tab)
         {
             if (wv2Tab.CoreWebView2 == null) return;
