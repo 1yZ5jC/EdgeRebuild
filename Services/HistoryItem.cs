@@ -1,15 +1,15 @@
 ﻿using SQLite;
 using System;
 
-namespace EdgeRebuild.Core
+namespace EdgeRebuild.Services
 {
-    [Table("Favorites")]
-    public class FavoriteItem
+    [Table("History")]
+    public class HistoryItem
     {
         [PrimaryKey, AutoIncrement]
         public int Id { get; set; }
         public string Title { get; set; }
         public string Url { get; set; }
-        public DateTime AddedDate { get; set; } = DateTime.Now;
+        public DateTime VisitTime { get; set; }
     }
 }
