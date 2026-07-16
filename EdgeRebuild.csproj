@@ -33,6 +33,12 @@
   </ItemGroup>
   <ItemGroup>
     <Page Remove="FavoritesPage.xaml" />
+    <Page Remove="Themes\ModernIE.xaml" />
+    <Page Remove="Themes\Spartan.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Themes\ModernIE.xaml" />
+    <Content Include="Themes\Spartan.xaml" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />
