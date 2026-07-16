@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -41,7 +42,6 @@ namespace EdgeRebuild.Core
                 string docTitle = _webView.DocumentTitle;
                 if (string.IsNullOrWhiteSpace(docTitle))
                 {
-                    // 使用域名作为后备
                     string host = _webView.Source?.Host;
                     _title = string.IsNullOrEmpty(host) ? "新标签页" : host;
                 }
@@ -121,9 +121,10 @@ namespace EdgeRebuild.Core
             FaviconChanged?.Invoke(url);
         }
 
-        public void Navigate(string url)
+        // 异步化包装
+        public Task NavigateAsync(string url)
         {
-            if (string.IsNullOrWhiteSpace(url)) return;
+            if (string.IsNullOrWhiteSpace(url)) return Task.CompletedTask;
             if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
                 !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
                 !url.StartsWith("about:", StringComparison.OrdinalIgnoreCase) &&
@@ -134,12 +135,13 @@ namespace EdgeRebuild.Core
             }
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 _webView.Navigate(uri);
+            return Task.CompletedTask;
         }
 
-        public void GoBack() => _webView.GoBack();
-        public void GoForward() => _webView.GoForward();
-        public void Refresh() => _webView.Refresh();
-        public void Stop() => _webView.Stop();
+        public Task GoBackAsync() { _webView.GoBack(); return Task.CompletedTask; }
+        public Task GoForwardAsync() { _webView.GoForward(); return Task.CompletedTask; }
+        public Task RefreshAsync() { _webView.Refresh(); return Task.CompletedTask; }
+        public Task StopAsync() { _webView.Stop(); return Task.CompletedTask; }
 
         public void Dispose()
         {

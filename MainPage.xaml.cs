@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
 using Windows.Foundation;
 using Windows.UI;
@@ -57,14 +58,17 @@ namespace EdgeRebuild
         private Point _dragOffset;
         private bool _isDragging;
         private bool _hasMoved;
+        private double _totalDx;
 
         public MainPage()
         {
             this.InitializeComponent();
             this.Loaded += OnLoaded;
+            // 绑定引擎切换事件
+            EngineCombo.SelectionChanged += EngineCombo_SelectionChanged;
         }
 
-        private void OnLoaded(object sender, RoutedEventArgs e)
+        private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
 
@@ -84,12 +88,12 @@ namespace EdgeRebuild
             {
                 if (!string.IsNullOrEmpty(_pendingUrl))
                 {
-                    CreateNewTab(EngineType.EdgeHtml, _pendingUrl);
+                    await CreateNewTabAsync(EngineType.EdgeHtml, _pendingUrl);
                     _pendingUrl = null;
                 }
                 else
                 {
-                    CreateNewTab(EngineType.EdgeHtml, "about:blank");
+                    await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
                 }
             }
         }
@@ -209,7 +213,7 @@ namespace EdgeRebuild
             }
         }
 
-        private void CreateNewTab(EngineType engine, string url = null)
+        private async Task CreateNewTabAsync(EngineType engine, string url = null)
         {
             if (!_isLoaded) return;
 
@@ -346,18 +350,17 @@ namespace EdgeRebuild
             tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) ForwardBtn.IsEnabled = can; };
             tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
 
-            SwitchToTab(viewItem);
+            await SwitchToTabAsync(viewItem);
 
             if (!string.IsNullOrEmpty(url))
-                tab.Navigate(url);
+                await tab.NavigateAsync(url);
 
             UpdateTabLayout();
         }
 
-        // ==================== 拖拽实现（实时交换，50%阈值，基于DragCanvas+占位符） ====================
+        // ==================== 拖拽实现（方向感知插入） ====================
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            // 只有一个标签时不允许拖拽
             if (_tabViews.Count <= 1) return;
 
             var border = sender as Border;
@@ -369,6 +372,7 @@ namespace EdgeRebuild
             _dragOffset = e.GetCurrentPoint(viewItem.Container).Position;
             _hasMoved = false;
             _isDragging = false;
+            _totalDx = 0;
 
             border.CapturePointer(e.Pointer);
             e.Handled = true;
@@ -398,7 +402,7 @@ namespace EdgeRebuild
                     return;
                 }
 
-                // 开始拖拽：提升到 DragCanvas
+                // 水平拖拽：提升到 DragCanvas
                 _isDragging = true;
 
                 int index = _tabViews.IndexOf(_dragItem);
@@ -427,41 +431,8 @@ namespace EdgeRebuild
                 if (newLeft > maxLeft) newLeft = maxLeft;
                 Canvas.SetLeft(_dragItem.Container, newLeft);
 
-                // 实时交换：检查是否超过相邻标签的50%
-                int currentIndex = _tabViews.IndexOf(_dragItem);
-                if (currentIndex < 0) return;
+                _totalDx = newLeft - (DragCanvas.ActualWidth / 2);
 
-                double itemWidth = _dragItem.Container.ActualWidth;
-                if (itemWidth <= 0) itemWidth = MaxTabWidth;
-
-                // 向右交换
-                if (dx > itemWidth * 0.5 && currentIndex < _tabViews.Count - 1)
-                {
-                    // 在数据层面交换
-                    var swapItem = _tabViews[currentIndex + 1];
-                    _tabViews[currentIndex] = swapItem;
-                    _tabViews[currentIndex + 1] = _dragItem;
-
-                    // 在UI层面交换（占位符始终在原位置，其他标签需要调整顺序）
-                    // 简单重建 TabBarPanel 以反映新顺序
-                    RebuildTabPanel();
-
-                    // 重置偏移，保持鼠标相对位置不变
-                    _dragOffset = e.GetCurrentPoint(_dragItem.Container).Position;
-                }
-                // 向左交换
-                else if (dx < -itemWidth * 0.5 && currentIndex > 0)
-                {
-                    var swapItem = _tabViews[currentIndex - 1];
-                    _tabViews[currentIndex] = swapItem;
-                    _tabViews[currentIndex - 1] = _dragItem;
-
-                    RebuildTabPanel();
-
-                    _dragOffset = e.GetCurrentPoint(_dragItem.Container).Position;
-                }
-
-                // 垂直拖出窗口检测
                 double currentDy = posInCanvas.Y - _dragOffset.Y;
                 if (Math.Abs(currentDy) > 40)
                 {
@@ -474,50 +445,6 @@ namespace EdgeRebuild
                 }
             }
             e.Handled = true;
-        }
-
-        // 辅助：按当前数据列表重建 TabBarPanel（保持占位符在原位置不变）
-        private void RebuildTabPanel()
-        {
-            if (_placeholder == null) return;
-
-            // 记录占位符当前索引
-            int placeholderIndex = TabBarPanel.Children.IndexOf(_placeholder);
-
-            // 清空所有标签（保留占位符）
-            for (int i = TabBarPanel.Children.Count - 1; i >= 0; i--)
-            {
-                if (TabBarPanel.Children[i] == _placeholder) continue;
-                TabBarPanel.Children.RemoveAt(i);
-            }
-
-            // 按数据顺序重新添加标签，但跳过拖拽项（因为它已在 DragCanvas 中）
-            foreach (var item in _tabViews)
-            {
-                if (item == _dragItem) continue; // 跳过正在拖拽的标签
-                // 插入到占位符之前或之后？应该保持占位符在原位置。
-                // 简单方式：先全部添加到临时列表，再按索引插入
-            }
-
-            // 更稳健的重建：完全重建 TabBarPanel，然后重新插入占位符到正确位置
-            TabBarPanel.Children.Clear();
-            for (int i = 0; i < _tabViews.Count; i++)
-            {
-                // 占位符应出现在拖拽项的原位置（即 _tabViews 中当前拖拽项的索引）
-                if (i == _tabViews.IndexOf(_dragItem))
-                {
-                    TabBarPanel.Children.Add(_placeholder);
-                }
-                if (_tabViews[i] != _dragItem)
-                {
-                    TabBarPanel.Children.Add(_tabViews[i].Container);
-                }
-            }
-            // 如果拖拽项在列表末尾，占位符也需要在末尾
-            if (!TabBarPanel.Children.Contains(_placeholder))
-            {
-                TabBarPanel.Children.Add(_placeholder);
-            }
         }
 
         private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
@@ -535,32 +462,50 @@ namespace EdgeRebuild
 
             if (_isDragging)
             {
-                // 最终排序已在实时交换中完成，但还需处理左右越界
                 var transform = _dragItem.Container.TransformToVisual(TabBarPanel);
                 var tabPos = transform.TransformPoint(new Point(0, 0));
                 double left = tabPos.X;
                 double width = _dragItem.Container.ActualWidth;
-                double right = left + width;
+                double centerX = left + width / 2;
                 double tabAreaWidth = TabBarPanel.ActualWidth;
 
                 int targetIndex = _tabViews.IndexOf(_dragItem);
+
                 if (left < 0)
                     targetIndex = 0;
-                else if (right > tabAreaWidth)
+                else if (left + width > tabAreaWidth)
                     targetIndex = _tabViews.Count - 1;
-                // 如果已在正确区间，保持当前索引
-
-                if (targetIndex != _tabViews.IndexOf(_dragItem))
+                else
                 {
-                    MoveTabToIndex(_tabViews.IndexOf(_dragItem), targetIndex);
+                    bool movingRight = _totalDx > 0;
+                    for (int i = 0; i < _tabViews.Count; i++)
+                    {
+                        if (_tabViews[i] == _dragItem) continue;
+                        var child = _tabViews[i].Container;
+                        var childTransform = child.TransformToVisual(TabBarPanel);
+                        var childCenterX = childTransform.TransformPoint(new Point(child.ActualWidth / 2, 0)).X;
+                        if (movingRight && centerX > childCenterX)
+                        {
+                            targetIndex = i;
+                            break;
+                        }
+                        else if (!movingRight && centerX < childCenterX)
+                        {
+                            targetIndex = i + 1;
+                        }
+                    }
+                    targetIndex = Math.Max(0, Math.Min(targetIndex, _tabViews.Count - 1));
                 }
+
+                int currentIndex = _tabViews.IndexOf(_dragItem);
+                if (targetIndex != currentIndex)
+                    MoveTabToIndex(currentIndex, targetIndex);
             }
 
             CleanupDrag();
             e.Handled = true;
         }
 
-        private int GetTargetIndex(double centerX) { /* 保留，但实际释放时可能不再需要 */ return 0; }
         private void MoveTabToIndex(int oldIndex, int newIndex)
         {
             if (oldIndex == newIndex) return;
@@ -625,7 +570,7 @@ namespace EdgeRebuild
             string url = item.Tab.CurrentUrl;
             CloseTab(item);
             if (_tabViews.Count == 0)
-                CreateNewTab(EngineType.EdgeHtml, "about:blank");
+                await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
 
             var newView = CoreApplication.CreateNewView();
             int newViewId = 0;
@@ -657,18 +602,19 @@ namespace EdgeRebuild
 
             if (_currentTab == viewItem.Tab)
             {
-                if (nextTab != null) SwitchToTab(nextTab);
-                else _currentTab = null;
+                if (nextTab != null)
+                    _ = SwitchToTabAsync(nextTab);
+                else
+                    _currentTab = null;
             }
             viewItem.Tab.Dispose();
 
             if (_tabViews.Count == 0)
-                CreateNewTab(EngineType.EdgeHtml, "about:blank");
+                _ = CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
             else
                 UpdateTabLayout();
         }
 
-        // 以下方法保持不变
         private void AttachDownloadEvents(WebView2Tab wv2Tab)
         {
             if (wv2Tab.CoreWebView2 == null) return;
@@ -699,9 +645,16 @@ namespace EdgeRebuild
                 _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => RefreshDownloadsPanel());
         }
 
-        private async void SwitchToTab(TabViewItem viewItem)
+        // 保留原有的同步 SwitchToTab，供拖拽点击使用（内部转异步）
+        private void SwitchToTab(TabViewItem viewItem)
+        {
+            _ = SwitchToTabAsync(viewItem);
+        }
+
+        private async Task SwitchToTabAsync(TabViewItem viewItem)
         {
             if (!_isLoaded || _currentTab == viewItem.Tab) return;
+
             ContentContainer.Child = null;
             _currentTab = viewItem.Tab;
             ContentContainer.Child = _currentTab.ViewElement;
@@ -720,11 +673,13 @@ namespace EdgeRebuild
             {
                 EngineLabel.Text = "E";
                 EngineLabel.Foreground = _edgeBlueBrush;
+                EngineCombo.SelectedIndex = 0;
             }
             else
             {
                 EngineLabel.Text = "W";
                 EngineLabel.Foreground = _webGreenBrush;
+                EngineCombo.SelectedIndex = 1;
             }
 
             foreach (var t in _tabViews)
@@ -770,16 +725,16 @@ namespace EdgeRebuild
                 stack.Children.Add(new TextBlock { Text = fav.Title, FontWeight = Windows.UI.Text.FontWeights.SemiBold, FontSize = 14, Foreground = new SolidColorBrush(Colors.Black) });
                 stack.Children.Add(new TextBlock { Text = fav.Url, FontSize = 12, Foreground = new SolidColorBrush(Colors.DimGray), TextTrimming = TextTrimming.CharacterEllipsis });
 
-                stack.PointerPressed += (s, e) =>
+                stack.PointerPressed += (s, ev) =>
                 {
-                    if (e.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse ||
-                        e.GetCurrentPoint(stack).Properties.IsLeftButtonPressed)
+                    if (ev.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse ||
+                        ev.GetCurrentPoint(stack).Properties.IsLeftButtonPressed)
                     {
-                        _currentTab?.Navigate(fav.Url);
+                        _currentTab?.NavigateAsync(fav.Url);
                         HubSplitView.IsPaneOpen = false;
                     }
                 };
-                stack.RightTapped += (s, e) =>
+                stack.RightTapped += (s, ev) =>
                 {
                     var flyout = new MenuFlyout();
                     var editItem = new MenuFlyoutItem { Text = "编辑" };
@@ -814,16 +769,16 @@ namespace EdgeRebuild
                 var stack = new StackPanel { Margin = new Thickness(4, 6, 4, 6) };
                 stack.Children.Add(new TextBlock { Text = item.Title, FontWeight = Windows.UI.Text.FontWeights.SemiBold, FontSize = 14, Foreground = new SolidColorBrush(Colors.Black) });
                 stack.Children.Add(new TextBlock { Text = $"{item.Url} - {item.VisitTime:g}", FontSize = 11, Foreground = new SolidColorBrush(Colors.DimGray) });
-                stack.PointerPressed += (s, e) =>
+                stack.PointerPressed += (s, ev) =>
                 {
-                    if (e.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse ||
-                        e.GetCurrentPoint(stack).Properties.IsLeftButtonPressed)
+                    if (ev.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse ||
+                        ev.GetCurrentPoint(stack).Properties.IsLeftButtonPressed)
                     {
-                        _currentTab?.Navigate(item.Url);
+                        _currentTab?.NavigateAsync(item.Url);
                         HubSplitView.IsPaneOpen = false;
                     }
                 };
-                stack.RightTapped += (s, e) =>
+                stack.RightTapped += (s, ev) =>
                 {
                     var flyout = new MenuFlyout();
                     var deleteItem = new MenuFlyoutItem { Text = "删除" };
@@ -907,17 +862,31 @@ namespace EdgeRebuild
             });
         }
 
-        private void NewTabBtn_Click(object sender, RoutedEventArgs e)
+        private async void NewTabBtn_Click(object sender, RoutedEventArgs e)
         {
             var engine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
-            CreateNewTab(engine, "about:blank");
+            await CreateNewTabAsync(engine, "about:blank");
         }
 
-        private void BackBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab?.CanGoBack == true) _currentTab.GoBack(); }
-        private void ForwardBtn_Click(object sender, RoutedEventArgs e) { if (_currentTab?.CanGoForward == true) _currentTab.GoForward(); }
-        private void RefreshBtn_Click(object sender, RoutedEventArgs e) => _currentTab?.Refresh();
+        private async void BackBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentTab?.CanGoBack == true)
+                await _currentTab.GoBackAsync();
+        }
 
-        private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
+        private async void ForwardBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentTab?.CanGoForward == true)
+                await _currentTab.GoForwardAsync();
+        }
+
+        private async void RefreshBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentTab != null)
+                await _currentTab.RefreshAsync();
+        }
+
+        private async void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key == Windows.System.VirtualKey.Enter)
             {
@@ -930,8 +899,8 @@ namespace EdgeRebuild
                         !input.StartsWith("edge:", StringComparison.OrdinalIgnoreCase) &&
                         !input.Contains("://"))
                         input = "https://" + input;
+                    await _currentTab?.NavigateAsync(input);
                 }
-                _currentTab?.Navigate(input);
             }
         }
 
@@ -939,5 +908,65 @@ namespace EdgeRebuild
             UrlBox.BorderBrush = new SolidColorBrush(Colors.DodgerBlue);
         private void UrlBox_LostFocus(object sender, RoutedEventArgs e) =>
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
+
+        // 引擎切换事件处理（实时切换当前标签引擎）
+        private async void EngineCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_isLoaded || _currentTab == null) return;
+
+            EngineType newEngine = EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml;
+            if (_currentTab.Engine == newEngine) return;
+
+            string currentUrl = _currentTab.CurrentUrl;
+            var viewItem = _tabViews.FirstOrDefault(v => v.Tab == _currentTab);
+            if (viewItem == null) return;
+
+            // 清理旧引擎
+            _currentTab.Dispose();
+            int index = _tabViews.IndexOf(viewItem);
+
+            // 创建新引擎标签
+            IBrowserTab newTab = newEngine == EngineType.WebView2
+                ? new WebView2Tab()
+                : new EdgeHtmlTab();
+
+            viewItem.Tab = newTab;
+
+            // 重新绑定事件
+            newTab.TitleChanged += (title) =>
+            {
+                _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                {
+                    viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title;
+                });
+            };
+            newTab.UrlChanged += (url) =>
+            {
+                if (_currentTab == newTab)
+                {
+                    UrlBox.Text = url;
+                    UpdateStarButton();
+                }
+                if (!string.IsNullOrEmpty(url) && url != "about:blank")
+                    HistoryManager.Add(newTab.Title ?? url, url);
+            };
+            newTab.CanGoBackChanged += (can) => { if (_currentTab == newTab) BackBtn.IsEnabled = can; };
+            newTab.CanGoForwardChanged += (can) => { if (_currentTab == newTab) ForwardBtn.IsEnabled = can; };
+            newTab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
+
+            // 更新引擎标记
+            viewItem.EngineMark.Text = newTab.Engine == EngineType.EdgeHtml ? "E" : "W";
+            viewItem.EngineMark.Foreground = newTab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush;
+
+            // 重置当前标签，强制重新切换
+            _currentTab = null;
+            await SwitchToTabAsync(viewItem);
+
+            // 恢复 URL
+            if (!string.IsNullOrEmpty(currentUrl) && currentUrl != "about:blank")
+                await newTab.NavigateAsync(currentUrl);
+            else
+                await newTab.NavigateAsync("about:blank");
+        }
     }
 }

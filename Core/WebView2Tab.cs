@@ -3,6 +3,7 @@ using Microsoft.Web.WebView2.Core;
 using System;
 using System.Threading.Tasks;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
 
 namespace EdgeRebuild.Core
 {
@@ -23,8 +24,7 @@ namespace EdgeRebuild.Core
         public string Title => _title;
         public string FaviconUri => _faviconUri;
 
-        // 公开 CoreWebView2，供外部绑定下载事件等
-        public Microsoft.Web.WebView2.Core.CoreWebView2 CoreWebView2 => _webView?.CoreWebView2;
+        public CoreWebView2 CoreWebView2 => _webView?.CoreWebView2;
 
         public event Action<string> TitleChanged;
         public event Action<string> UrlChanged;
@@ -58,10 +58,7 @@ namespace EdgeRebuild.Core
             ExtractFavicon();
         }
 
-        private void OnDocumentTitleChanged(object sender, object e)
-        {
-            UpdateTitleFromDocument();
-        }
+        private void OnDocumentTitleChanged(object sender, object e) => UpdateTitleFromDocument();
 
         private void UpdateTitleFromDocument()
         {
@@ -128,55 +125,64 @@ namespace EdgeRebuild.Core
             }
         }
 
-        public async void Navigate(string url)
+        public async Task NavigateAsync(string url)
         {
-            try
+            if (_webView == null) return;
+            await EnsureInitializedAsync();
+            if (_webView.CoreWebView2 == null) return;
+            if (string.IsNullOrWhiteSpace(url)) return;
+            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("about:", StringComparison.OrdinalIgnoreCase) &&
+                !url.StartsWith("edge:", StringComparison.OrdinalIgnoreCase) &&
+                !url.Contains("://"))
             {
-                if (_webView == null) return;
-                await EnsureInitializedAsync();
-                if (_webView.CoreWebView2 == null) return;
-                if (string.IsNullOrWhiteSpace(url)) return;
-                if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                    !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
-                    !url.StartsWith("about:", StringComparison.OrdinalIgnoreCase) &&
-                    !url.StartsWith("edge:", StringComparison.OrdinalIgnoreCase) &&
-                    !url.Contains("://"))
-                {
-                    url = "https://" + url;
-                }
-                if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                    _webView.CoreWebView2.Navigate(url);
+                url = "https://" + url;
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"WebView2Tab Navigate error: {ex.Message}");
-            }
+            if (Uri.TryCreate(url, UriKind.Absolute, out _))
+                _webView.CoreWebView2.Navigate(url);
         }
 
-        public async void GoBack()
+        public async Task GoBackAsync()
         {
             await EnsureInitializedAsync();
             _webView.CoreWebView2?.GoBack();
         }
 
-        public async void GoForward()
+        public async Task GoForwardAsync()
         {
             await EnsureInitializedAsync();
             _webView.CoreWebView2?.GoForward();
         }
 
-        public void Refresh() => _webView.CoreWebView2?.Reload();
-        public void Stop() => _webView.CoreWebView2?.Stop();
+        public Task RefreshAsync()
+        {
+            _webView.CoreWebView2?.Reload();
+            return Task.CompletedTask;
+        }
+
+        public Task StopAsync()
+        {
+            _webView.CoreWebView2?.Stop();
+            return Task.CompletedTask;
+        }
 
         public void Dispose()
         {
+            if (_webView == null) return;
             _webView.NavigationCompleted -= OnNavigationCompleted;
             if (_webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.DocumentTitleChanged -= OnDocumentTitleChanged;
                 _webView.CoreWebView2.HistoryChanged -= OnHistoryChanged;
             }
-            _webView.Close();
+            try
+            {
+                var parent = _webView.Parent as Panel;
+                parent?.Children.Remove(_webView);
+                _webView.Close();
+            }
+            catch { }
             _webView = null;
         }
     }

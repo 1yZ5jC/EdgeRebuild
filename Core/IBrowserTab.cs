@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using Windows.UI.Xaml;
 
 namespace EdgeRebuild.Core
@@ -15,11 +16,12 @@ namespace EdgeRebuild.Core
         string Title { get; }
         string FaviconUri { get; }
 
-        void Navigate(string url);
-        void GoBack();
-        void GoForward();
-        void Refresh();
-        void Stop();
+        // 改为异步方法
+        Task NavigateAsync(string url);
+        Task GoBackAsync();
+        Task GoForwardAsync();
+        Task RefreshAsync();
+        Task StopAsync();
         void Dispose();
 
         event Action<string> TitleChanged;
