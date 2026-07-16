@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Windows.Data.Json;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -32,16 +31,9 @@ namespace EdgeRebuild.Core
         public EdgeHtmlTab()
         {
             _webView = new WebView();
-            // 启用任意来源的脚本通知
-            foreach (var uri in WebView.AnyScriptNotifyUri)
-            {
-                _webView.AllowedScriptNotifyUris.Add(uri);
-            }
-
             _webView.NavigationCompleted += OnNavigationCompleted;
             _webView.DOMContentLoaded += OnDOMContentLoaded;
             _webView.NavigationFailed += OnNavigationFailed;
-            _webView.ScriptNotify += OnScriptNotify;
         }
 
         private void UpdateTitle()
@@ -70,7 +62,6 @@ namespace EdgeRebuild.Core
         {
             UpdateTitle();
             TryExtractFavicon();
-            InjectContextMenuScript();
         }
 
         private void OnNavigationCompleted(WebView sender, WebViewNavigationCompletedEventArgs args)
@@ -109,7 +100,7 @@ namespace EdgeRebuild.Core
 
             try
             {
-                var result = await _webView.InvokeScriptAsync("eval", new[] { script });
+                var result = await _webView.InvokeScriptAsync("eval", new string[] { script });
                 result = result?.Trim('"', ' ');
                 if (!string.IsNullOrEmpty(result) && result.StartsWith("http"))
                 {
@@ -130,89 +121,12 @@ namespace EdgeRebuild.Core
             FaviconChanged?.Invoke(url);
         }
 
-        private async void InjectContextMenuScript()
-        {
-            try
-            {
-                string script = @"
-document.addEventListener('contextmenu', function(e) {
-    e.preventDefault();
-    var target = e.target;
-    var info = {
-        type: 'page',
-        linkUrl: '',
-        imageUrl: '',
-        x: e.clientX,
-        y: e.clientY,
-        selectionText: window.getSelection().toString(),
-        hasSelection: !window.getSelection().isCollapsed,
-        isEditable: target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
-    };
-    var link = target.closest('a');
-    if (link && link.href && !link.href.startsWith('javascript:')) {
-        info.type = 'link';
-        info.linkUrl = link.href;
-    }
-    if (target.tagName === 'IMG' && target.src) {
-        info.type = 'image';
-        info.imageUrl = target.src;
-    }
-    window.external.notify(JSON.stringify(info));
-}, true);
-";
-                await _webView.InvokeScriptAsync("eval", new[] { script });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"InjectContextMenuScript error: {ex.Message}");
-            }
-        }
-
-        private void OnScriptNotify(object sender, NotifyEventArgs e)
-        {
-            try
-            {
-                JsonObject info = JsonObject.Parse(e.Value);
-                var args = new TabContextMenuEventArgs
-                {
-                    Location = new Windows.Foundation.Point(info.GetNamedNumber("x"), info.GetNamedNumber("y")),
-                    CanGoBack = _webView.CanGoBack,
-                    CanGoForward = _webView.CanGoForward,
-                    HasSelection = info.GetNamedBoolean("hasSelection"),
-                    SelectionText = info.GetNamedString("selectionText"),
-                    IsEditable = info.GetNamedBoolean("isEditable")
-                };
-
-                string type = info.GetNamedString("type");
-                if (type == "link")
-                {
-                    args.MenuType = ContextMenuType.Link;
-                    args.LinkUrl = info.GetNamedString("linkUrl");
-                }
-                else if (type == "image")
-                {
-                    args.MenuType = ContextMenuType.Image;
-                    args.ImageUrl = info.GetNamedString("imageUrl");
-                }
-                else
-                {
-                    args.MenuType = ContextMenuType.Page;
-                }
-
-                ContextMenuRequested?.Invoke(args);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"OnScriptNotify error: {ex.Message}");
-            }
-        }
-
         public async Task<string> ExecuteScriptAsync(string script)
         {
             if (_webView == null) return "";
             try
             {
-                return await _webView.InvokeScriptAsync("eval", new[] { script });
+                return await _webView.InvokeScriptAsync("eval", new string[] { script });
             }
             catch
             {
@@ -246,7 +160,6 @@ document.addEventListener('contextmenu', function(e) {
             _webView.NavigationCompleted -= OnNavigationCompleted;
             _webView.DOMContentLoaded -= OnDOMContentLoaded;
             _webView.NavigationFailed -= OnNavigationFailed;
-            _webView.ScriptNotify -= OnScriptNotify;
             _webView = null;
         }
     }

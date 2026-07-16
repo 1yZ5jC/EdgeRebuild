@@ -346,10 +346,14 @@ namespace EdgeRebuild
 
             closeBtn.Click += (s, ev) => CloseTab(viewItem);
 
+            // 拖拽事件
             tabBorder.PointerPressed += OnTabPointerPressed;
             tabBorder.PointerMoved += OnTabPointerMoved;
             tabBorder.PointerReleased += OnTabPointerReleased;
             tabBorder.PointerCanceled += OnTabPointerReleased;
+
+            // 标签右键菜单
+            tabBorder.RightTapped += OnTabRightTapped;
 
             tabBorder.PointerEntered += (s, ev) =>
             {
@@ -381,7 +385,7 @@ namespace EdgeRebuild
             tab.CanGoBackChanged += (can) => { if (_currentTab == tab) BackBtn.IsEnabled = can; };
             tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) ForwardBtn.IsEnabled = can; };
             tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
-            tab.ContextMenuRequested += OnTabContextMenuRequested; // 绑定右键菜单
+            tab.ContextMenuRequested += OnTabContextMenuRequested; // 网页右键菜单
 
             await SwitchToTabAsync(viewItem);
 
@@ -391,9 +395,87 @@ namespace EdgeRebuild
             UpdateTabLayout();
         }
 
+        // ==================== 标签右键菜单 ====================
+        private void OnTabRightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var border = sender as Border;
+            var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
+            if (viewItem == null) return;
+
+            var menu = new MenuFlyout();
+
+            // 新建标签页
+            var newTabItem = new MenuFlyoutItem { Text = "新建标签页" };
+            newTabItem.Click += async (s, ev) =>
+                await CreateNewTabAsync(EngineCombo.SelectedIndex == 1 ? EngineType.WebView2 : EngineType.EdgeHtml, "about:blank");
+            menu.Items.Add(newTabItem);
+
+            // 重新加载
+            var reloadItem = new MenuFlyoutItem { Text = "重新加载" };
+            reloadItem.Click += (s, ev) => viewItem.Tab?.RefreshAsync();
+            menu.Items.Add(reloadItem);
+
+            // 关闭标签页
+            var closeItem = new MenuFlyoutItem { Text = "关闭标签页" };
+            closeItem.Click += (s, ev) => CloseTab(viewItem);
+            menu.Items.Add(closeItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // 关闭其他标签页
+            var closeOthersItem = new MenuFlyoutItem { Text = "关闭其他标签页" };
+            closeOthersItem.Click += (s, ev) => CloseOtherTabs(viewItem);
+            menu.Items.Add(closeOthersItem);
+
+            // 关闭右侧标签页
+            var closeRightItem = new MenuFlyoutItem { Text = "关闭右侧标签页" };
+            closeRightItem.Click += (s, ev) => CloseTabsToRight(viewItem);
+            menu.Items.Add(closeRightItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // 移动到新窗口
+            var moveItem = new MenuFlyoutItem { Text = "移动到新窗口" };
+            moveItem.Click += (s, ev) =>
+            {
+                // 立即切换到该标签（确保内容已加载）
+                _ = SwitchToTabAsync(viewItem);
+                MoveTabToNewWindow(viewItem);
+            };
+            menu.Items.Add(moveItem);
+
+            // 显示菜单
+            menu.ShowAt(border, e.GetPosition(border));
+        }
+
+        private void CloseOtherTabs(TabViewItem keepItem)
+        {
+            var tabsToClose = _tabViews.Where(t => t != keepItem).ToList();
+            foreach (var item in tabsToClose)
+            {
+                CloseTab(item);
+            }
+        }
+
+        private void CloseTabsToRight(TabViewItem startItem)
+        {
+            int index = _tabViews.IndexOf(startItem);
+            if (index < 0) return;
+            var tabsToClose = _tabViews.Skip(index + 1).ToList();
+            foreach (var item in tabsToClose)
+            {
+                CloseTab(item);
+            }
+        }
+
         // ==================== 拖拽实现 ====================
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
+            // 右键按下时不启动拖拽，让 RightTapped 事件正常工作
+            var properties = e.GetCurrentPoint((UIElement)sender).Properties;
+            if (properties.IsRightButtonPressed)
+                return;
+
             ResetDragState();
 
             if (_tabViews.Count <= 1) return;
@@ -974,7 +1056,7 @@ namespace EdgeRebuild
             newTab.CanGoBackChanged += (can) => { if (_currentTab == newTab) BackBtn.IsEnabled = can; };
             newTab.CanGoForwardChanged += (can) => { if (_currentTab == newTab) ForwardBtn.IsEnabled = can; };
             newTab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
-            newTab.ContextMenuRequested += OnTabContextMenuRequested; // 重新绑定右键
+            newTab.ContextMenuRequested += OnTabContextMenuRequested;
 
             viewItem.EngineMark.Text = newTab.Engine == EngineType.EdgeHtml ? "E" : "W";
             viewItem.EngineMark.Foreground = newTab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush;
@@ -988,26 +1070,27 @@ namespace EdgeRebuild
                 await newTab.NavigateAsync("about:blank");
         }
 
-        // ==================== 右键菜单处理（增强版） ====================
+        // ==================== 网页右键菜单（仅 WebView2） ====================
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
+            // EdgeHTML 使用系统默认菜单
+            if (_currentTab is EdgeHtmlTab)
+                return;
+
             var flyout = new MenuFlyout();
 
-            // --- 复制 / 粘贴 / 全选 ---
             var copyItem = new MenuFlyoutItem { Text = "复制" };
             copyItem.Click += async (s, e) =>
             {
-                string selectedText = "";
-                if (_currentTab is EdgeHtmlTab edgeTab)
-                    selectedText = await edgeTab.ExecuteScriptAsync("window.getSelection().toString();");
-                else if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                    selectedText = await wv2.CoreWebView2.ExecuteScriptAsync("window.getSelection().toString();");
-
-                if (!string.IsNullOrEmpty(selectedText))
+                if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                 {
-                    var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                    dataPackage.SetText(selectedText);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+                    string selectedText = await wv2.CoreWebView2.ExecuteScriptAsync("window.getSelection().toString();");
+                    if (!string.IsNullOrEmpty(selectedText))
+                    {
+                        var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                        dataPackage.SetText(selectedText);
+                        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+                    }
                 }
             };
             copyItem.IsEnabled = args.HasSelection;
@@ -1030,16 +1113,13 @@ namespace EdgeRebuild
             var selectAllItem = new MenuFlyoutItem { Text = "全选" };
             selectAllItem.Click += async (s, e) =>
             {
-                if (_currentTab is EdgeHtmlTab edgeTab)
-                    await edgeTab.ExecuteScriptAsync("document.execCommand('selectAll');");
-                else if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                     await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');");
             };
             flyout.Items.Add(selectAllItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // --- 导航操作 ---
             var backItem = new MenuFlyoutItem { Text = "后退", IsEnabled = args.CanGoBack };
             backItem.Click += (s, e) => _currentTab?.GoBackAsync();
             flyout.Items.Add(backItem);
@@ -1054,7 +1134,6 @@ namespace EdgeRebuild
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // --- 链接 / 图片操作 ---
             if (args.MenuType == ContextMenuType.Link && !string.IsNullOrEmpty(args.LinkUrl))
             {
                 var openInNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
@@ -1085,19 +1164,14 @@ namespace EdgeRebuild
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // --- 通用页面操作 ---
-            // 打印
             var printItem = new MenuFlyoutItem { Text = "打印" };
-            printItem.Click += async (s, e) =>
+            printItem.Click += (s, e) =>
             {
-                if (_currentTab is EdgeHtmlTab edgeTab)
-                    await edgeTab.ExecuteScriptAsync("window.print();");
-                else if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                    wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser); // 传递参数
+                if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                    wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
             };
             flyout.Items.Add(printItem);
 
-            // 查看源代码
             var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
             sourceItem.Click += async (s, ev) =>
             {
@@ -1106,7 +1180,6 @@ namespace EdgeRebuild
                     try
                     {
                         var html = await wv2.CoreWebView2.ExecuteScriptAsync("document.documentElement.outerHTML;");
-                        // 简单清理转义
                         html = html?.Trim('"').Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t");
                         var dialog = new ContentDialog
                         {
@@ -1122,45 +1195,18 @@ namespace EdgeRebuild
                         await errDlg.ShowAsync();
                     }
                 }
-                else
-                {
-                    var dialog = new ContentDialog
-                    {
-                        Title = "提示",
-                        Content = "EdgeHTML 不支持查看源代码。请切换到 WebView2 引擎。",
-                        CloseButtonText = "确定"
-                    };
-                    await dialog.ShowAsync();
-                }
             };
             flyout.Items.Add(sourceItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // --- 开发者工具 ---
             if (_currentTab is WebView2Tab wv2Tab && wv2Tab.CoreWebView2 != null)
             {
                 var inspectItem = new MenuFlyoutItem { Text = "检查元素 (F12)" };
                 inspectItem.Click += (s, e) => wv2Tab.CoreWebView2.OpenDevToolsWindow();
                 flyout.Items.Add(inspectItem);
             }
-            else
-            {
-                var noInspectItem = new MenuFlyoutItem { Text = "检查元素（切换到WebView2）" };
-                noInspectItem.Click += (s, e) =>
-                {
-                    var dialog = new ContentDialog
-                    {
-                        Title = "提示",
-                        Content = "EdgeHTML 不支持开发者工具。请切换到 WebView2 引擎。",
-                        CloseButtonText = "确定"
-                    };
-                    _ = dialog.ShowAsync();
-                };
-                flyout.Items.Add(noInspectItem);
-            }
 
-            // 显示菜单
             var targetElement = _currentTab?.ViewElement;
             if (targetElement != null)
             {

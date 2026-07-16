@@ -13,6 +13,9 @@
     <DisableRuntimeMarshalling>true</DisableRuntimeMarshalling>
     <EnableMsixTooling>true</EnableMsixTooling>
     <PlatformTarget>x86</PlatformTarget>
+    <PackageCertificateThumbprint>EE817596AA84FD7F5A8B7B4A8E73F26CC79E3758</PackageCertificateThumbprint>
+    <PackageCertificateKeyFile>EdgeRebuild_TemporaryKey.pfx</PackageCertificateKeyFile>
+    <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x86'">
     <Optimize>False</Optimize>
