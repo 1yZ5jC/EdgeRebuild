@@ -94,7 +94,7 @@
             <!-- 内容区 -->
         </Grid.RowDefinitions>
 
-        <!-- 标签栏：四列布局，拖拽区独立 -->
+        <!-- 标签栏：四列布局，包含拖拽用 Canvas 覆盖层 -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{ThemeResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -104,19 +104,15 @@
                     <ColumnDefinition Width="Auto"/>
                     <!-- 标签滚动区 -->
                     <ColumnDefinition Width="Auto"/>
-                    <!-- 右按钮组（左移50px） -->
+                    <!-- 右按钮组 -->
                     <ColumnDefinition Width="*"/>
                     <!-- 拖拽区 -->
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
-                        Style="{StaticResource ToolButtonStyle}"
-                        Width="24" Height="24"
-                        Click="ScrollLeftBtn_Click"
-                        Foreground="{ThemeResource MutedForeground}"
-                        VerticalAlignment="Center"
-                        Margin="2,0,0,0"
-                        Visibility="Collapsed"/>
+                        Style="{StaticResource ToolButtonStyle}" Width="24" Height="24"
+                        Click="ScrollLeftBtn_Click" Foreground="{ThemeResource MutedForeground}"
+                        VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"/>
 
                 <ScrollViewer x:Name="TabScrollViewer" Grid.Column="1"
                               HorizontalScrollBarVisibility="Hidden"
@@ -133,22 +129,22 @@
                             Orientation="Horizontal" VerticalAlignment="Center"
                             Background="Transparent" Margin="0,0,50,0">
                     <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
-                            Style="{StaticResource ToolButtonStyle}"
-                            Width="24" Height="24"
-                            Click="ScrollRightBtn_Click"
-                            Foreground="{ThemeResource MutedForeground}"
-                            Visibility="Collapsed"
-                            Margin="0,0,0,0"/>
+                            Style="{StaticResource ToolButtonStyle}" Width="24" Height="24"
+                            Click="ScrollRightBtn_Click" Foreground="{ThemeResource MutedForeground}"
+                            Visibility="Collapsed" Margin="0,0,0,0"/>
                     <Button x:Name="NewTabButton" Content="&#xE710;"
-                            Style="{StaticResource ToolButtonStyle}"
-                            Width="32" Height="32"
-                            Click="NewTabBtn_Click"
-                            Foreground="{ThemeResource MutedForeground}"
+                            Style="{StaticResource ToolButtonStyle}" Width="32" Height="32"
+                            Click="NewTabBtn_Click" Foreground="{ThemeResource MutedForeground}"
                             Margin="0,0,0,0"/>
                 </StackPanel>
 
                 <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
                            Grid.Column="3" VerticalAlignment="Stretch"/>
+
+                <!-- 拖拽覆盖层 Canvas，用于置顶标签 -->
+                <Canvas x:Name="DragCanvas" Background="Transparent" IsHitTestVisible="False"
+                        Grid.ColumnSpan="4" Grid.Column="0" HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" Canvas.ZIndex="1000"/>
             </Grid>
         </Border>
 
@@ -208,7 +204,7 @@
             </Grid>
         </Border>
 
-        <!-- 右侧 Hub 面板（Pivot 三合一） -->
+        <!-- 右侧 Hub 面板 -->
         <SplitView x:Name="HubSplitView" Grid.Row="2" DisplayMode="Overlay"
                    OpenPaneLength="360" PanePlacement="Right"
                    PaneBackground="{ThemeResource ToolbarAcrylicBrush}">
