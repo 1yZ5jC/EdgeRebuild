@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Storage;
-using Windows.UI.Notifications;
 using Microsoft.Web.WebView2.Core;
 using SQLite;
 
@@ -33,6 +31,7 @@ namespace EdgeRebuild.Services
         private bool _indeterminate = true;
         private bool _deleted = false;
         private bool _isCompleted = false;
+        private Action _cleanupAction;
 
         public int Id { get; set; }
         public string Url { get; set; }
@@ -43,7 +42,26 @@ namespace EdgeRebuild.Services
 
         public long TotalBytesToReceive { get => _totalBytes; set { _totalBytes = value; OnPropertyChanged(nameof(TotalBytesToReceive)); Indeterminate = (value <= 0); } }
         public bool Indeterminate { get => _indeterminate; set { _indeterminate = value; OnPropertyChanged(nameof(Indeterminate)); } }
-        public string Status { get => _status; set { if (_status != value) { _status = value; OnPropertyChanged(nameof(Status)); } } }
+
+        public string Status
+        {
+            get => _status;
+            set
+            {
+                if (_status != value)
+                {
+                    _status = value;
+                    OnPropertyChanged(nameof(Status));
+                    // 终态时自动调用清理回调
+                    if ((value == "已完成" || value == "已取消" || value == "已中断") && _cleanupAction != null)
+                    {
+                        _cleanupAction?.Invoke();
+                        _cleanupAction = null;
+                    }
+                }
+            }
+        }
+
         public double Progress { get => _progress; set { if (Math.Abs(_progress - value) > 0.05) { _progress = value; OnPropertyChanged(nameof(Progress)); } } }
         public bool Deleted { get => _deleted; set { _deleted = value; OnPropertyChanged(nameof(Deleted)); } }
         public bool IsCompleted { get => _isCompleted; set { _isCompleted = value; OnPropertyChanged(nameof(IsCompleted)); } }
@@ -51,47 +69,27 @@ namespace EdgeRebuild.Services
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
-        public void Pause() { if (WebViewOperation != null && Status == "下载中") { WebViewOperation.Pause(); Status = "已暂停"; } }
-        public void Resume() { if (WebViewOperation != null && Status == "已暂停") { WebViewOperation.Resume(); Status = "下载中"; } }
-        public void Cancel() { if (WebViewOperation != null) { WebViewOperation.Cancel(); Status = "已取消"; } }
+        public void SetCleanupAction(Action cleanup) => _cleanupAction = cleanup;
 
-        public async Task RetryAsync()
+        public void Pause()
         {
-            if (Status != "已中断" && Status != "已取消" && Status != "下载失败") return;
-            string url = Url;
-            string targetPath = FullPath;
-            WebViewOperation = null;
-            Status = "下载中"; Progress = 0; Indeterminate = true; IsCompleted = false;
-            try
-            {
-                using (var httpClient = new Windows.Web.Http.HttpClient())
-                {
-                    var response = await httpClient.GetAsync(new Uri(url));
-                    response.EnsureSuccessStatusCode();
-                    var totalSize = response.Content.Headers.ContentLength;
-                    TotalBytesToReceive = totalSize.HasValue ? (long)totalSize.Value : 0;
-                    using (var stream = await response.Content.ReadAsInputStreamAsync())
-                    {
-                        var file = await StorageFile.GetFileFromPathAsync(targetPath);
-                        using (var fileStream = await file.OpenStreamForWriteAsync())
-                        {
-                            var buffer = new byte[8192]; long totalRead = 0;
-                            while (true)
-                            {
-                                int read = await stream.AsStreamForRead().ReadAsync(buffer, 0, buffer.Length);
-                                if (read == 0) break;
-                                await fileStream.WriteAsync(buffer, 0, read);
-                                totalRead += read;
-                                if (totalSize.HasValue && totalSize.Value > 0) { Progress = (double)totalRead / totalSize.Value * 100.0; DownloadManager.DownloadProgressChanged?.Invoke(this); }
-                            }
-                        }
-                    }
-                    Status = "已完成"; Progress = 100; IsCompleted = true;
-                    DownloadManager.DownloadStatusChanged?.Invoke(this);
-                    NotificationService.ShowToast("下载完成", FileName);
-                }
-            }
-            catch (Exception) { Status = "下载失败"; Progress = 0; DownloadManager.DownloadStatusChanged?.Invoke(this); NotificationService.ShowToast("下载失败", $"无法重新下载 {FileName}"); }
+            if (WebViewOperation == null || Status != "下载中") return;
+            try { WebViewOperation.Pause(); Status = "已暂停"; }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"暂停失败: {ex.Message}"); }
+        }
+
+        public void Resume()
+        {
+            if (WebViewOperation == null || Status != "已暂停") return;
+            try { WebViewOperation.Resume(); Status = "下载中"; }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"继续失败: {ex.Message}"); }
+        }
+
+        public void Cancel()
+        {
+            if (WebViewOperation == null) return;
+            try { WebViewOperation.Cancel(); Status = "已取消"; }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"取消失败: {ex.Message}"); }
         }
     }
 
@@ -104,35 +102,20 @@ namespace EdgeRebuild.Services
         private static bool _checkedSystemFolder = false;
         private static readonly SQLiteAsyncConnection _db = DatabaseService.Database;
 
-        // 缓存的系统下载文件夹路径（EdgeRebuild 子文件夹）
         public static string SystemDownloadFolderPath { get; private set; }
 
         public static async Task<StorageFolder> GetDownloadFolderAsync()
         {
-            try
-            {
-                Debug.WriteLine("[DownloadManager] Trying DownloadsFolder.CreateFolderAsync...");
-                var folder = await DownloadsFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists);
-                Debug.WriteLine($"[DownloadManager] Success: {folder.Path}");
-                return folder;
-            }
-            catch (Exception ex) { Debug.WriteLine($"[DownloadManager] DownloadsFolder failed: {ex.Message}"); }
-
+            try { return await DownloadsFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists); }
+            catch { }
             try
             {
                 string downloadsPath = Windows.Storage.UserDataPaths.GetDefault().Downloads;
-                Debug.WriteLine($"[DownloadManager] Trying UserDataPaths: {downloadsPath}");
                 var parentFolder = await StorageFolder.GetFolderFromPathAsync(downloadsPath);
-                var folder = await parentFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists);
-                Debug.WriteLine($"[DownloadManager] Success: {folder.Path}");
-                return folder;
+                return await parentFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists);
             }
-            catch (Exception ex) { Debug.WriteLine($"[DownloadManager] UserDataPaths failed: {ex.Message}"); }
-
-            Debug.WriteLine("[DownloadManager] Falling back to local folder.");
-            var localFolder = await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
-            Debug.WriteLine($"[DownloadManager] Local folder: {localFolder.Path}");
-            return localFolder;
+            catch { }
+            return await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
         }
 
         public static async Task UpdateSystemDownloadFolderAccessAsync()
@@ -156,37 +139,56 @@ namespace EdgeRebuild.Services
                 SystemDownloadFolderPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "Downloads");
             }
             _checkedSystemFolder = true;
-            Debug.WriteLine($"[DownloadManager] CanUseSystemDownloadFolder: {_canUseSystemFolder}, Path: {SystemDownloadFolderPath}");
         }
 
         public static bool CanUseSystemDownloadFolder => _checkedSystemFolder && _canUseSystemFolder;
 
         public static async Task LoadDownloadsAsync()
         {
+            await UpdateSystemDownloadFolderAccessAsync();
             var records = await _db.Table<DownloadRecord>().ToListAsync();
             Downloads.Clear();
+
             foreach (var rec in records)
             {
+                bool fileExists = false;
+                string realPath = rec.FullPath;
+
+                if (File.Exists(realPath))
+                    fileExists = true;
+                else if (!string.IsNullOrEmpty(SystemDownloadFolderPath))
+                {
+                    string potentialPath = Path.Combine(SystemDownloadFolderPath, rec.FileName);
+                    if (File.Exists(potentialPath))
+                    {
+                        realPath = potentialPath;
+                        fileExists = true;
+                    }
+                }
+
                 var item = new DownloadItem
                 {
                     Id = rec.Id,
                     Url = rec.Url,
                     FileName = rec.FileName,
-                    FullPath = rec.FullPath,
+                    FullPath = realPath,
                     Status = rec.Status,
                     Progress = rec.Progress,
-                    Deleted = rec.Deleted,
+                    Deleted = !fileExists && rec.IsCompleted,
                     IsCompleted = rec.IsCompleted
                 };
-                if (File.Exists(rec.FullPath))
-                    item.Deleted = false;
-                else if (rec.IsCompleted)
-                {
-                    item.Deleted = true;
-                    item.Status = "已完成";
-                    item.IsCompleted = true;
-                }
+
                 Downloads.Add(item);
+            }
+
+            foreach (var item in Downloads.Where(d => d.Id > 0))
+            {
+                var record = records.FirstOrDefault(r => r.Id == item.Id);
+                if (record != null && record.FullPath != item.FullPath)
+                {
+                    record.FullPath = item.FullPath;
+                    await _db.UpdateAsync(record);
+                }
             }
         }
 
@@ -213,101 +215,26 @@ namespace EdgeRebuild.Services
             Downloads.Remove(item);
         }
 
-        public static DownloadItem FindCompletedByFileName(string fileName)
-        {
-            return Downloads.FirstOrDefault(d =>
-                d.IsCompleted && !d.Deleted && File.Exists(d.FullPath) && d.FileName == fileName);
-        }
-
-        public static DownloadItem FindCompletedByFileNameSync(string fileName)
+        public static DownloadItem FindCompletedByFileNameSync(string fileName, string url = null)
         {
             return Downloads.FirstOrDefault(d =>
                 d.IsCompleted && !d.Deleted && File.Exists(d.FullPath) &&
-                (d.FileName == fileName || d.FullPath.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)));
+                d.FileName == fileName &&
+                (url == null || d.Url == url));
         }
 
-        public static async Task<DownloadItem> EnqueueDownloadAsync(string url, string suggestedFileName = null)
+        public static DownloadItem Add(string url, string fullPath, string fileName)
         {
-            string fileName = suggestedFileName ?? Path.GetFileName(new Uri(url).LocalPath);
-            if (string.IsNullOrWhiteSpace(fileName)) fileName = "download";
-
-            var existing = FindCompletedByFileName(fileName);
-            if (existing != null)
-            {
-                Debug.WriteLine($"[DownloadManager] Found completed download: {existing.FullPath}");
-                try
-                {
-                    var file = await StorageFile.GetFileFromPathAsync(existing.FullPath);
-                    await Windows.System.Launcher.LaunchFileAsync(file);
-                }
-                catch { }
-                return existing;
-            }
-
-            return await StartHttpDownloadAsync(url, fileName);
-        }
-
-        private static async Task<DownloadItem> StartHttpDownloadAsync(string url, string fileName)
-        {
-            var downloadsFolder = await GetDownloadFolderAsync();
-            var file = await downloadsFolder.CreateFileAsync(fileName, CreationCollisionOption.GenerateUniqueName);
-            Debug.WriteLine($"[DownloadManager] New download file: {file.Path}");
-
             var item = new DownloadItem
             {
                 Url = url,
-                FullPath = file.Path,
-                FileName = file.Name,
+                FullPath = fullPath,
+                FileName = fileName,
                 Status = "下载中",
                 Progress = 0,
                 StartTime = DateTime.Now,
                 IsCompleted = false
             };
-            Downloads.Insert(0, item);
-            await SaveDownloadAsync(item);
-            NotificationService.ShowToast("下载开始", item.FileName);
-
-            try
-            {
-                using (var httpClient = new Windows.Web.Http.HttpClient())
-                {
-                    var response = await httpClient.GetAsync(new Uri(url));
-                    response.EnsureSuccessStatusCode();
-                    var totalSize = response.Content.Headers.ContentLength;
-                    item.TotalBytesToReceive = totalSize.HasValue ? (long)totalSize.Value : 0;
-                    using (var stream = await response.Content.ReadAsInputStreamAsync())
-                    using (var fileStream = await file.OpenStreamForWriteAsync())
-                    {
-                        var buffer = new byte[8192]; long totalRead = 0;
-                        while (true)
-                        {
-                            int read = await stream.AsStreamForRead().ReadAsync(buffer, 0, buffer.Length);
-                            if (read == 0) break;
-                            await fileStream.WriteAsync(buffer, 0, read);
-                            totalRead += read;
-                            if (totalSize.HasValue && totalSize.Value > 0) { item.Progress = (double)totalRead / totalSize.Value * 100.0; DownloadProgressChanged?.Invoke(item); }
-                        }
-                    }
-                    item.Status = "已完成"; item.Progress = 100; item.IsCompleted = true;
-                    await SaveDownloadAsync(item);
-                    DownloadStatusChanged?.Invoke(item);
-                    NotificationService.ShowToast("下载完成", item.FileName);
-                }
-            }
-            catch (Exception)
-            {
-                item.Status = "下载失败"; item.IsCompleted = false;
-                await SaveDownloadAsync(item);
-                DownloadStatusChanged?.Invoke(item);
-                NotificationService.ShowToast("下载失败", $"无法下载 {item.FileName}");
-                try { if (File.Exists(file.Path)) File.Delete(file.Path); } catch { }
-            }
-            return item;
-        }
-
-        public static DownloadItem Add(string url, string fullPath, string fileName)
-        {
-            var item = new DownloadItem { Url = url, FullPath = fullPath, FileName = fileName, Status = "下载中", Progress = 0, StartTime = DateTime.Now, IsCompleted = false };
             Downloads.Insert(0, item);
             _ = SaveDownloadAsync(item);
             return item;
@@ -326,4 +253,4 @@ namespace EdgeRebuild.Services
             }
         }
     }
-} 
+}

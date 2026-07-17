@@ -21,21 +21,14 @@ using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 
+// 解决命名冲突
+using TabViewItem = EdgeRebuild.Core.TabViewItem;
+using WebView2 = Microsoft.UI.Xaml.Controls.WebView2;
+
 namespace EdgeRebuild
 {
     public sealed partial class MainPage : Page
     {
-        private class TabViewItem
-        {
-            public IBrowserTab Tab { get; set; }
-            public TextBlock TitleText { get; set; }
-            public Button CloseButton { get; set; }
-            public Border Container { get; set; }
-            public Image FaviconImage { get; set; }
-            public FontIcon FaviconPlaceholder { get; set; }
-            public TextBlock EngineMark { get; set; }
-        }
-
         private readonly List<TabViewItem> _tabViews = new List<TabViewItem>();
         private IBrowserTab _currentTab;
         private bool _isLoaded;
@@ -70,10 +63,35 @@ namespace EdgeRebuild
         private bool _hasMoved;
         private double _totalDx;
 
+        // 隐蔽下载器：按需创建，用完即毁
+        private WebView2 _stealthDownloader;
+
         public MainPage()
         {
             this.InitializeComponent();
             this.Loaded += OnLoaded;
+            this.Unloaded += OnUnloaded;
+            _foregroundBrush = new SolidColorBrush(Colors.Black);
+            _mutedForegroundBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x66, 0x66, 0x66));
+        }
+
+        protected override void OnNavigatedFrom(NavigationEventArgs e)
+        {
+            base.OnNavigatedFrom(e);
+            CleanupStaticEvents();
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            CleanupStaticEvents();
+            DestroyStealthDownloader();
+        }
+
+        private void CleanupStaticEvents()
+        {
+            DownloadManager.DownloadProgressChanged -= OnDownloadProgress;
+            DownloadManager.DownloadStatusChanged -= OnDownloadStatusChanged;
+            EdgeHtmlTab.DownloadRequested -= OnEdgeHtmlDownloadRequested;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -99,10 +117,9 @@ namespace EdgeRebuild
                 await DownloadManager.UpdateSystemDownloadFolderAccessAsync();
                 await DownloadManager.LoadDownloadsAsync();
 
-                DownloadManager.DownloadProgressChanged += (item) =>
-                    _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshDownloadsPanel);
-                DownloadManager.DownloadStatusChanged += (item) =>
-                    _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshDownloadsPanel);
+                DownloadManager.DownloadProgressChanged += OnDownloadProgress;
+                DownloadManager.DownloadStatusChanged += OnDownloadStatusChanged;
+                EdgeHtmlTab.DownloadRequested += OnEdgeHtmlDownloadRequested;
 
                 if (_tabViews.Count == 0)
                 {
@@ -125,6 +142,155 @@ namespace EdgeRebuild
                     Content = ex.ToString(),
                     CloseButtonText = "确定"
                 }.ShowAsync();
+            }
+        }
+
+        private void OnDownloadProgress(DownloadItem item)
+        {
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshDownloadsPanel);
+        }
+
+        private void OnDownloadStatusChanged(DownloadItem item)
+        {
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshDownloadsPanel);
+        }
+
+        // ========== 隐蔽下载器 ==========
+        private async void OnEdgeHtmlDownloadRequested(string url)
+        {
+            await PrepareStealthDownloaderAsync(url);
+        }
+
+        private async Task PrepareStealthDownloaderAsync(string url)
+        {
+            if (_stealthDownloader != null)
+            {
+                DestroyStealthDownloader();
+            }
+
+            _stealthDownloader = new WebView2
+            {
+                Width = 0,
+                Height = 0,
+                Visibility = Visibility.Collapsed
+            };
+
+            RootGrid.Children.Add(_stealthDownloader);
+
+            try
+            {
+                await _stealthDownloader.EnsureCoreWebView2Async();
+                _stealthDownloader.CoreWebView2.DownloadStarting += OnStealthDownloadStarting;
+                _stealthDownloader.CoreWebView2.Navigate(url);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"隐蔽下载器创建失败: {ex.Message}");
+                DestroyStealthDownloader();
+            }
+        }
+
+        private void OnStealthDownloadStarting(object sender, CoreWebView2DownloadStartingEventArgs args)
+        {
+            var op = args.DownloadOperation;
+            string url = op.Uri ?? "";
+            string fileName = Path.GetFileName(op.ResultFilePath);
+
+            var existing = DownloadManager.FindCompletedByFileNameSync(fileName, url);
+            if (existing != null)
+            {
+                args.Cancel = true;
+                args.Handled = true;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var file = await StorageFile.GetFileFromPathAsync(existing.FullPath);
+                        await Windows.System.Launcher.LaunchFileAsync(file);
+                    }
+                    catch { }
+                });
+                DestroyStealthDownloader();
+                return;
+            }
+
+            args.Handled = true;
+
+            string edgeFolder = DownloadManager.SystemDownloadFolderPath;
+            if (string.IsNullOrEmpty(edgeFolder))
+                edgeFolder = Path.Combine(ApplicationData.Current.LocalFolder.Path, "Downloads");
+
+            string filePath = Path.Combine(edgeFolder, fileName);
+            if (File.Exists(filePath))
+            {
+                string ext = Path.GetExtension(fileName);
+                string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                int counter = 1;
+                do
+                {
+                    filePath = Path.Combine(edgeFolder, $"{nameWithoutExt} ({counter}){ext}");
+                    counter++;
+                } while (File.Exists(filePath));
+            }
+
+            args.ResultFilePath = filePath;
+
+            var item = DownloadManager.Add(url, filePath, Path.GetFileName(filePath));
+            item.WebViewOperation = op;
+            item.TotalBytesToReceive = op.TotalBytesToReceive;
+
+            // 设置清理回调：当下载状态变为终态时自动销毁隐蔽下载器
+            item.SetCleanupAction(() => DestroyStealthDownloader());
+
+            NotificationService.ShowToast("下载开始", item.FileName);
+
+            op.BytesReceivedChanged += (s, _) =>
+            {
+                if (op.TotalBytesToReceive > 0)
+                {
+                    item.TotalBytesToReceive = op.TotalBytesToReceive;
+                    double progress = (double)op.BytesReceived / op.TotalBytesToReceive * 100.0;
+                    item.Progress = Math.Min(progress, 100);
+                }
+                else item.Indeterminate = true;
+                DownloadManager.DownloadProgressChanged?.Invoke(item);
+            };
+
+            op.StateChanged += async (s, stateArgs) =>
+            {
+                if (op.State == CoreWebView2DownloadState.Completed)
+                {
+                    item.Status = "已完成";
+                    item.Progress = 100;
+                    item.IsCompleted = true;
+                    await DownloadManager.SaveDownloadAsync(item);
+                    DownloadManager.DownloadStatusChanged?.Invoke(item);
+                    NotificationService.ShowToast("下载完成", item.FileName);
+                }
+                else if (op.State == CoreWebView2DownloadState.Interrupted)
+                {
+                    item.Status = "已中断";
+                    DownloadManager.DownloadStatusChanged?.Invoke(item);
+                }
+            };
+        }
+
+        private void DestroyStealthDownloader()
+        {
+            if (_stealthDownloader != null)
+            {
+                try
+                {
+                    if (_stealthDownloader.CoreWebView2 != null)
+                    {
+                        _stealthDownloader.CoreWebView2.DownloadStarting -= OnStealthDownloadStarting;
+                    }
+                    if (_stealthDownloader.Parent is Panel panel)
+                        panel.Children.Remove(_stealthDownloader);
+                    _stealthDownloader.Close();
+                }
+                catch { }
+                _stealthDownloader = null;
             }
         }
 
@@ -293,11 +459,15 @@ namespace EdgeRebuild
         private async Task SwitchToTabAsync(TabViewItem viewItem)
         {
             if (!_isLoaded || _currentTab == viewItem.Tab) return;
+
             ContentContainer.Child = null;
             _currentTab = viewItem.Tab;
             ContentContainer.Child = _currentTab.ViewElement;
 
-            if (_currentTab is WebView2Tab wv2Tab) { await wv2Tab.EnsureInitializedAsync(); AttachDownloadEvents(wv2Tab); }
+            if (_currentTab is WebView2Tab wv2Tab)
+            {
+                await wv2Tab.EnsureInitializedAsync();
+            }
 
             toolbarControl.SetEngine(_currentTab.Engine);
             toolbarControl.UpdateNavState(_currentTab.CanGoBack, _currentTab.CanGoForward, _currentTab.CurrentUrl);
@@ -431,6 +601,7 @@ namespace EdgeRebuild
             if (!_isLoaded) return;
             int index = _tabViews.IndexOf(viewItem); if (index < 0) return;
             string url = viewItem.Tab.CurrentUrl; if (!string.IsNullOrEmpty(url) && url != "about:blank") _closedTabUrls.Push(url);
+
             (viewItem.Container.Parent as Panel)?.Children.Remove(viewItem.Container);
             TabViewItem nextTab = null;
             if (_tabViews.Count > 1) nextTab = (index > 0) ? _tabViews[index - 1] : _tabViews[1];
@@ -615,7 +786,7 @@ namespace EdgeRebuild
         private void CloseOtherTabs(TabViewItem keepItem) { foreach (var item in _tabViews.Where(t => t != keepItem).ToList()) CloseTab(item); }
         private void CloseTabsToRight(TabViewItem startItem) { int index = _tabViews.IndexOf(startItem); if (index < 0) return; foreach (var item in _tabViews.Skip(index + 1).ToList()) CloseTab(item); }
 
-        // ========== 网页右键菜单（仅 WebView2） ==========
+        // ========== 网页右键菜单 ==========
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
             if (_currentTab is EdgeHtmlTab) return;
@@ -664,7 +835,7 @@ namespace EdgeRebuild
             if (targetElement != null) flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
         }
 
-        // ========== 菜单中的引擎切换 ==========
+        // ========== 引擎切换等辅助 ==========
         private async Task SwitchCurrentTabEngine(EngineType newEngine)
         {
             if (_currentTab == null || _currentTab.Engine == newEngine) return;
@@ -677,7 +848,6 @@ namespace EdgeRebuild
             await RebindTabAndSwitch(viewItem, newTab, currentUrl);
         }
 
-        // ========== 缩放、打印、查找等 ==========
         private async void AdjustZoom(double delta) { _zoomFactor = Math.Max(0.25, Math.Min(5.0, _zoomFactor + delta)); if (_currentTab is EdgeHtmlTab edgeTab) await edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';"); else if (_currentTab is WebView2Tab wv2) await wv2.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';"); }
         private async void ResetZoom() { _zoomFactor = 1.0; if (_currentTab is EdgeHtmlTab edgeTab) await edgeTab.ExecuteScriptAsync("document.body.style.zoom = '1';"); else if (_currentTab is WebView2Tab wv2) await wv2.ExecuteScriptAsync("document.body.style.zoom = '1';"); }
         private void PrintCurrentPage() { if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser); else if (_currentTab is EdgeHtmlTab edgeTab) _ = edgeTab.ExecuteScriptAsync("window.print();"); }
@@ -720,95 +890,6 @@ namespace EdgeRebuild
         }
         private void ShowAboutDialog() => _ = new ContentDialog { Title = "Edge Rebuild", Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。", CloseButtonText = "确定" }.ShowAsync();
         private async void ShowNotImplementedDialog(string feature) => await new ContentDialog { Title = "即将推出", Content = $"功能“{feature}”尚未实现。", CloseButtonText = "确定" }.ShowAsync();
-
-        // ========== 下载事件（WebView2） ==========
-        private void AttachDownloadEvents(WebView2Tab wv2Tab)
-        {
-            if (wv2Tab.CoreWebView2 == null) return;
-
-            wv2Tab.CoreWebView2.DownloadStarting += (sender, args) =>
-            {
-                var op = args.DownloadOperation;
-                string url = op.Uri ?? "";
-                string fileName = Path.GetFileName(op.ResultFilePath);
-
-                // 重复检测
-                var existing = DownloadManager.FindCompletedByFileNameSync(fileName);
-                if (existing != null)
-                {
-                    args.Cancel = true;
-                    args.Handled = true;
-                    try
-                    {
-                        var storageFile = StorageFile.GetFileFromPathAsync(existing.FullPath).GetAwaiter().GetResult();
-                        Windows.System.Launcher.LaunchFileAsync(storageFile).GetAwaiter().GetResult();
-                    }
-                    catch { }
-                    return;
-                }
-
-                args.Handled = true;
-
-                // 使用缓存的系统下载文件夹路径（已在启动时确定）
-                string edgeFolder = DownloadManager.SystemDownloadFolderPath;
-                if (string.IsNullOrEmpty(edgeFolder))
-                {
-                    edgeFolder = Path.Combine(ApplicationData.Current.LocalFolder.Path, "Downloads");
-                }
-
-                // 生成唯一文件路径
-                string filePath = Path.Combine(edgeFolder, fileName);
-                if (File.Exists(filePath))
-                {
-                    string ext = Path.GetExtension(fileName);
-                    string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-                    int counter = 1;
-                    do
-                    {
-                        filePath = Path.Combine(edgeFolder, $"{nameWithoutExt} ({counter}){ext}");
-                        counter++;
-                    } while (File.Exists(filePath));
-                }
-
-                args.ResultFilePath = filePath;
-
-                var item = DownloadManager.Add(url, filePath, Path.GetFileName(filePath));
-                item.WebViewOperation = op;
-                item.TotalBytesToReceive = op.TotalBytesToReceive;
-
-                NotificationService.ShowToast("下载开始", item.FileName);
-
-                op.BytesReceivedChanged += (s, _) =>
-                {
-                    if (op.TotalBytesToReceive > 0)
-                    {
-                        item.TotalBytesToReceive = op.TotalBytesToReceive;
-                        double progress = (double)op.BytesReceived / op.TotalBytesToReceive * 100.0;
-                        item.Progress = Math.Min(progress, 100);
-                    }
-                    else item.Indeterminate = true;
-                    DownloadManager.DownloadProgressChanged?.Invoke(item);
-                };
-
-                op.StateChanged += async (s, stateArgs) =>
-                {
-                    if (op.State == CoreWebView2DownloadState.Completed)
-                    {
-                        item.Status = "已完成";
-                        item.Progress = 100;
-                        item.IsCompleted = true;
-                        await DownloadManager.SaveDownloadAsync(item);
-                        DownloadManager.DownloadStatusChanged?.Invoke(item);
-                        NotificationService.ShowToast("下载完成", item.FileName);
-                    }
-                    else if (op.State == CoreWebView2DownloadState.Interrupted)
-                    {
-                        item.Status = "已中断";
-                        DownloadManager.DownloadStatusChanged?.Invoke(item);
-                    }
-                };
-            };
-        }
 
         // ========== 打开文件/文件夹 ==========
         private async void OpenFile(string filePath)
@@ -967,7 +1048,7 @@ namespace EdgeRebuild
 
                 if (!item.Deleted && item.Status != "已完成" && item.Status != "下载失败")
                 {
-                    var progress = new ProgressBar
+                    var progress = new Windows.UI.Xaml.Controls.ProgressBar
                     {
                         Maximum = 100,
                         Value = item.Progress,
@@ -1010,7 +1091,6 @@ namespace EdgeRebuild
                 if (item.Status == "已中断" || item.Status == "下载失败" || item.Status == "已取消")
                 {
                     var retry = CreateIconButton("\uE72C", "重试", 28);
-                    retry.Click += async (s, e) => { await item.RetryAsync(); RefreshDownloadsPanel(); };
                     btns.Children.Add(retry);
                 }
 
