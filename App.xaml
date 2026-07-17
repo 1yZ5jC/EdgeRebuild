@@ -7,7 +7,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <muxc:XamlControlsResources />
+                <muxc:XamlControlsResources ControlsResourcesVersion="Version1" />
             </ResourceDictionary.MergedDictionaries>
 
             <!-- 去掉常见控件的圆角 -->

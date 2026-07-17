@@ -1,4 +1,5 @@
 ﻿using EdgeRebuild.Services;
+using Microsoft.UI.Xaml.Controls;
 using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -10,6 +11,9 @@ namespace EdgeRebuild.Controls
         public event EventHandler CloseRequested;
 
         private UIElement[] _panels;
+        private RadioButton _spartanRadio, _modernIERadio;
+        private RadioButton _edgeRadio, _webviewRadio;
+        private ToggleSwitch _askToggle;
 
         public SettingsPane()
         {
@@ -25,35 +29,27 @@ namespace EdgeRebuild.Controls
             // 外观面板
             var appearancePanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
             var skinLabel = new TextBlock { Text = "皮肤", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness { Bottom = 8 } };
-            var spartanRadio = new RadioButton { Content = "经典 Edge", GroupName = "Skin" };
-            var modernIERadio = new RadioButton { Content = "Modern IE", GroupName = "Skin", Margin = new Thickness { Top = 4 } };
-            LoadSkinSettings(spartanRadio, modernIERadio);
-            spartanRadio.Checked += (s, e) => SaveSkin(modernIERadio.IsChecked == true ? "ModernIE" : "Spartan");
-            modernIERadio.Checked += (s, e) => SaveSkin(modernIERadio.IsChecked == true ? "ModernIE" : "Spartan");
+            _spartanRadio = new RadioButton { Content = "经典 Edge", GroupName = "Skin" };
+            _modernIERadio = new RadioButton { Content = "Modern IE", GroupName = "Skin", Margin = new Thickness { Top = 4 } };
             appearancePanel.Children.Add(skinLabel);
-            appearancePanel.Children.Add(spartanRadio);
-            appearancePanel.Children.Add(modernIERadio);
+            appearancePanel.Children.Add(_spartanRadio);
+            appearancePanel.Children.Add(_modernIERadio);
             _panels[0] = appearancePanel;
 
             // 下载面板
             var downloadPanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
-            var askToggle = new ToggleSwitch { Header = "下载前询问" };
-            LoadDownloadSettings(askToggle);
-            askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", askToggle.IsOn.ToString());
-            downloadPanel.Children.Add(askToggle);
+            _askToggle = new ToggleSwitch { Header = "下载前询问" };
+            downloadPanel.Children.Add(_askToggle);
             _panels[1] = downloadPanel;
 
             // 引擎面板
             var enginePanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
             var engineLabel = new TextBlock { Text = "默认渲染引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness { Bottom = 8 } };
-            var edgeRadio = new RadioButton { Content = "EdgeHTML", GroupName = "DefaultEngine" };
-            var webviewRadio = new RadioButton { Content = "WebView2", GroupName = "DefaultEngine", Margin = new Thickness { Top = 4 } };
-            LoadEngineSettings(edgeRadio, webviewRadio);
-            edgeRadio.Checked += (s, e) => SaveEngine(webviewRadio.IsChecked == true ? "WebView2" : "EdgeHtml");
-            webviewRadio.Checked += (s, e) => SaveEngine(webviewRadio.IsChecked == true ? "WebView2" : "EdgeHtml");
+            _edgeRadio = new RadioButton { Content = "EdgeHTML", GroupName = "DefaultEngine" };
+            _webviewRadio = new RadioButton { Content = "WebView2", GroupName = "DefaultEngine", Margin = new Thickness { Top = 4 } };
             enginePanel.Children.Add(engineLabel);
-            enginePanel.Children.Add(edgeRadio);
-            enginePanel.Children.Add(webviewRadio);
+            enginePanel.Children.Add(_edgeRadio);
+            enginePanel.Children.Add(_webviewRadio);
             _panels[2] = enginePanel;
 
             // 隐私面板
@@ -80,30 +76,37 @@ namespace EdgeRebuild.Controls
             aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness { Top = 8 }, TextWrapping = TextWrapping.Wrap });
             _panels[4] = aboutPanel;
 
+            // 加载初始值（在绑定事件之前）
+            LoadSettingsAsync();
+
+            // 绑定事件（加载完成后绑定，避免初始化触发保存）
+            _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
+            _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
+            _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
+            _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
+            _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
+
             ContentArea.Content = _panels[0];
         }
 
-        private async void LoadSkinSettings(RadioButton spartan, RadioButton modernIE)
+        private async void LoadSettingsAsync()
         {
-            string skin = await SettingsManager.GetAsync("Skin");
-            spartan.IsChecked = (skin != "ModernIE");
-            modernIE.IsChecked = (skin == "ModernIE");
+            // 皮肤
+            string skin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
+            _spartanRadio.IsChecked = (skin != "ModernIE");
+            _modernIERadio.IsChecked = (skin == "ModernIE");
+
+            // 下载前询问
+            string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
+            _askToggle.IsOn = (ask == "True" || ask == "true");
+
+            // 默认引擎
+            string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
+            _edgeRadio.IsChecked = (engine != "WebView2");
+            _webviewRadio.IsChecked = (engine == "WebView2");
         }
 
         private async void SaveSkin(string skin) => await SettingsManager.SetAsync("Skin", skin);
-
-        private async void LoadDownloadSettings(ToggleSwitch toggle)
-        {
-            string ask = await SettingsManager.GetAsync("AskBeforeDownload");
-            toggle.IsOn = (ask == "True" || ask == "true");
-        }
-
-        private async void LoadEngineSettings(RadioButton edge, RadioButton webview)
-        {
-            string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
-            edge.IsChecked = (engine != "WebView2");
-            webview.IsChecked = (engine == "WebView2");
-        }
 
         private async void SaveEngine(string engine) => await SettingsManager.SetAsync("DefaultEngine", engine);
 
