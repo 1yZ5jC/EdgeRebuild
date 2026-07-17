@@ -101,6 +101,11 @@ namespace EdgeRebuild
             SettingsManager.SettingChanged -= OnSettingChanged;
         }
 
+        private void SettingsPane_CloseRequested(object sender, EventArgs e)
+        {
+            SettingsSplitView.IsPaneOpen = false;
+        }
+
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
@@ -569,7 +574,7 @@ namespace EdgeRebuild
 
             // 设置入口
             var settingsItem = new MenuFlyoutItem { Text = "设置" };
-            settingsItem.Click += (s, ev) => this.Frame.Navigate(typeof(SettingsPage));
+            settingsItem.Click += (s, ev) => SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen;
             menu.Items.Add(settingsItem);
 
             var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" }; aboutItem.Click += (s, ev) => ShowAboutDialog();

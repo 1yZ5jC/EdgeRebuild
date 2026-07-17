@@ -5,9 +5,12 @@ using Windows.UI.Xaml.Controls;
 
 namespace EdgeRebuild.Controls
 {
-    public sealed partial class SettingsPage : Page
+    public sealed partial class SettingsPane : UserControl
     {
-        public SettingsPage()
+        // 改为 EventHandler，与 MainPage 的处理程序签名一致
+        public event EventHandler CloseRequested;
+
+        public SettingsPane()
         {
             this.InitializeComponent();
             LoadCurrentSettings();
@@ -15,16 +18,13 @@ namespace EdgeRebuild.Controls
 
         private async void LoadCurrentSettings()
         {
-            // 皮肤
             string skin = await SettingsManager.GetAsync("Skin");
             SpartanRadio.IsChecked = (skin != "ModernIE");
             ModernIERadio.IsChecked = (skin == "ModernIE");
 
-            // 下载前询问
             string ask = await SettingsManager.GetAsync("AskBeforeDownload");
             AskBeforeDownloadToggle.IsOn = (ask == "True" || ask == "true");
 
-            // 默认引擎
             string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
             EdgeHtmlDefaultRadio.IsChecked = (engine != "WebView2");
             WebView2DefaultRadio.IsChecked = (engine == "WebView2");
@@ -59,10 +59,9 @@ namespace EdgeRebuild.Controls
             }.ShowAsync();
         }
 
-        private void BackButton_Click(object sender, RoutedEventArgs e)
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
-            if (Frame.CanGoBack)
-                Frame.GoBack();
+            CloseRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 }

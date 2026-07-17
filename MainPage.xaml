@@ -22,11 +22,9 @@
         <SolidColorBrush x:Key="ForegroundBrush" Color="#000000"/>
         <SolidColorBrush x:Key="MutedForegroundBrush" Color="#666666"/>
 
-        <!-- Hub 面板动态文字颜色 -->
         <SolidColorBrush x:Key="HubForegroundBrush" Color="Black"/>
         <SolidColorBrush x:Key="HubMutedForegroundBrush" Color="DimGray"/>
 
-        <!-- 工具按钮样式（供标签栏和 Hub 面板使用） -->
         <Style x:Key="ToolButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
@@ -89,7 +87,6 @@
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
             <Setter Property="SelectionHighlightColor" Value="#0078D7"/>
         </Style>
-        
     </Page.Resources>
 
     <Grid x:Name="RootGrid" Background="Transparent">
@@ -99,7 +96,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 标签栏（恢复为原始 XAML） -->
+        <!-- 标签栏 -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{StaticResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -144,7 +141,7 @@
             </Grid>
         </Border>
 
-        <!-- 工具栏（使用 ToolbarControl） -->
+        <!-- 工具栏 -->
         <controls:ToolbarControl x:Name="toolbarControl"
                                  Grid.Row="1"
                                  UrlSubmitted="ToolbarControl_UrlSubmitted"
@@ -156,66 +153,82 @@
                                  MenuClicked="ToolbarControl_MenuClicked"
                                  EngineSwitched="ToolbarControl_EngineSwitched"/>
 
-        <!-- 右侧 Hub 面板 -->
-        <SplitView x:Name="HubSplitView" Grid.Row="2" DisplayMode="Overlay"
-                   OpenPaneLength="360" PanePlacement="Right"
-                   PaneBackground="{StaticResource ToolbarAcrylicBrush}">
-            <SplitView.Pane>
-                <Grid Width="360" VerticalAlignment="Stretch">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-                    <Button x:Name="CloseHubBtn" Grid.Row="0" Content="&#xE711;"
-                            HorizontalAlignment="Right" Margin="0,8,8,0"
-                            Click="CloseHubBtn_Click" Style="{StaticResource ToolButtonStyle}"
-                            Foreground="{StaticResource MutedForegroundBrush}"/>
-                    <Pivot x:Name="HubPivot" Grid.Row="1" Margin="0,0,0,0">
-                        <PivotItem>
-                            <PivotItem.Header>
-                                <TextBlock Text="收藏夹" FontSize="14"/>
-                            </PivotItem.Header>
-                            <ScrollViewer Margin="8,0">
-                                <StackPanel x:Name="HubFavStackPanel" Orientation="Vertical"/>
-                            </ScrollViewer>
-                        </PivotItem>
-                        <PivotItem>
-                            <PivotItem.Header>
-                                <TextBlock Text="历史记录" FontSize="14"/>
-                            </PivotItem.Header>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <Button x:Name="ClearHistoryBtn" Content="清空历史" HorizontalAlignment="Right" Margin="8"
-                                        Click="ClearHistoryBtn_Click"/>
-                                <ScrollViewer Grid.Row="1" Margin="8,0">
-                                    <StackPanel x:Name="HubHistoryStackPanel" Orientation="Vertical"/>
+        <!-- 网页区域（包含 Hub 和设置面板） -->
+        <Grid Grid.Row="2">
+            <!-- 右侧 Hub 面板 -->
+            <SplitView x:Name="HubSplitView" DisplayMode="Overlay"
+                       OpenPaneLength="360" PanePlacement="Right"
+                       PaneBackground="{StaticResource ToolbarAcrylicBrush}">
+                <SplitView.Pane>
+                    <Grid Width="360" VerticalAlignment="Stretch">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Button x:Name="CloseHubBtn" Grid.Row="0" Content="&#xE711;"
+                                HorizontalAlignment="Right" Margin="0,8,8,0"
+                                Click="CloseHubBtn_Click" Style="{StaticResource ToolButtonStyle}"
+                                Foreground="{StaticResource MutedForegroundBrush}"/>
+                        <Pivot x:Name="HubPivot" Grid.Row="1" Margin="0,0,0,0">
+                            <PivotItem>
+                                <PivotItem.Header>
+                                    <TextBlock Text="收藏夹" FontSize="14"/>
+                                </PivotItem.Header>
+                                <ScrollViewer Margin="8,0">
+                                    <StackPanel x:Name="HubFavStackPanel" Orientation="Vertical"/>
                                 </ScrollViewer>
-                            </Grid>
-                        </PivotItem>
-                        <PivotItem>
-                            <PivotItem.Header>
-                                <TextBlock Text="下载" FontSize="14"/>
-                            </PivotItem.Header>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
-                                </Grid.RowDefinitions>
-                                <Button x:Name="ClearDownloadsBtn" Content="清除已完成" HorizontalAlignment="Right" Margin="8"
-                                        Click="ClearDownloadsBtn_Click"/>
-                                <ScrollViewer Grid.Row="1" Margin="8,0">
-                                    <StackPanel x:Name="HubDownloadsStackPanel" Orientation="Vertical"/>
-                                </ScrollViewer>
-                            </Grid>
-                        </PivotItem>
-                    </Pivot>
-                </Grid>
-            </SplitView.Pane>
-            <Border x:Name="ContentContainer" Background="White"/>
-        </SplitView>
+                            </PivotItem>
+                            <PivotItem>
+                                <PivotItem.Header>
+                                    <TextBlock Text="历史记录" FontSize="14"/>
+                                </PivotItem.Header>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Button x:Name="ClearHistoryBtn" Content="清空历史" HorizontalAlignment="Right" Margin="8"
+                                            Click="ClearHistoryBtn_Click"/>
+                                    <ScrollViewer Grid.Row="1" Margin="8,0">
+                                        <StackPanel x:Name="HubHistoryStackPanel" Orientation="Vertical"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </PivotItem>
+                            <PivotItem>
+                                <PivotItem.Header>
+                                    <TextBlock Text="下载" FontSize="14"/>
+                                </PivotItem.Header>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <Button x:Name="ClearDownloadsBtn" Content="清除已完成" HorizontalAlignment="Right" Margin="8"
+                                            Click="ClearDownloadsBtn_Click"/>
+                                    <ScrollViewer Grid.Row="1" Margin="8,0">
+                                        <StackPanel x:Name="HubDownloadsStackPanel" Orientation="Vertical"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </PivotItem>
+                        </Pivot>
+                    </Grid>
+                </SplitView.Pane>
+                <Border x:Name="ContentContainer" Background="White"/>
+            </SplitView>
+
+            <!-- 右侧设置面板（汉堡菜单风格，与 Hub 同层） -->
+            <SplitView x:Name="SettingsSplitView" DisplayMode="Overlay"
+                       OpenPaneLength="360" PanePlacement="Right"
+                       PaneBackground="{StaticResource ToolbarAcrylicBrush}"
+                       Canvas.ZIndex="60">
+                <SplitView.Content>
+                    <Grid Background="Transparent"/>
+                </SplitView.Content>
+                <SplitView.Pane>
+                    <controls:SettingsPane x:Name="SettingsPaneControl" CloseRequested="SettingsPane_CloseRequested"/>
+                </SplitView.Pane>
+            </SplitView>
+        </Grid>
 
         <!-- 全页面拖拽覆盖层 -->
         <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"
