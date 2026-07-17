@@ -69,6 +69,9 @@ namespace EdgeRebuild
         // 下载前询问设置缓存
         private bool _askBeforeDownload;
 
+        // 默认引擎缓存
+        private EngineType _defaultEngine = EngineType.EdgeHtml;
+
         public MainPage()
         {
             this.InitializeComponent();
@@ -95,6 +98,7 @@ namespace EdgeRebuild
             DownloadManager.DownloadProgressChanged -= OnDownloadProgress;
             DownloadManager.DownloadStatusChanged -= OnDownloadStatusChanged;
             EdgeHtmlTab.DownloadRequested -= OnEdgeHtmlDownloadRequested;
+            SettingsManager.SettingChanged -= OnSettingChanged;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -113,13 +117,16 @@ namespace EdgeRebuild
                 UpdateTabLayout();
                 Window.Current.SizeChanged += OnWindowSizeChanged;
 
+                // 加载持久化设置
                 string savedSkin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
                 _currentSkin = savedSkin;
                 ApplySkinColors(savedSkin);
 
-                // 加载“下载前询问”设置
                 string askSetting = await SettingsManager.GetAsync("AskBeforeDownload");
                 _askBeforeDownload = (askSetting == "True" || askSetting == "true");
+
+                string engineSetting = await SettingsManager.GetAsync("DefaultEngine");
+                _defaultEngine = (engineSetting == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
 
                 await DownloadManager.UpdateSystemDownloadFolderAccessAsync();
                 await DownloadManager.LoadDownloadsAsync();
@@ -127,17 +134,18 @@ namespace EdgeRebuild
                 DownloadManager.DownloadProgressChanged += OnDownloadProgress;
                 DownloadManager.DownloadStatusChanged += OnDownloadStatusChanged;
                 EdgeHtmlTab.DownloadRequested += OnEdgeHtmlDownloadRequested;
+                SettingsManager.SettingChanged += OnSettingChanged;
 
                 if (_tabViews.Count == 0)
                 {
                     if (!string.IsNullOrEmpty(_pendingUrl))
                     {
-                        await CreateNewTabAsync(EngineType.EdgeHtml, _pendingUrl);
+                        await CreateNewTabAsync(_defaultEngine, _pendingUrl);
                         _pendingUrl = null;
                     }
                     else
                     {
-                        await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
+                        await CreateNewTabAsync(_defaultEngine, "about:blank");
                     }
                 }
             }
@@ -150,6 +158,27 @@ namespace EdgeRebuild
                     CloseButtonText = "确定"
                 }.ShowAsync();
             }
+        }
+
+        // 设置变更时的处理
+        private async void OnSettingChanged(string key, string newValue)
+        {
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                switch (key)
+                {
+                    case "Skin":
+                        _currentSkin = newValue;
+                        ApplySkinColors(_currentSkin);
+                        break;
+                    case "AskBeforeDownload":
+                        _askBeforeDownload = (newValue == "True" || newValue == "true");
+                        break;
+                    case "DefaultEngine":
+                        _defaultEngine = (newValue == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
+                        break;
+                }
+            });
         }
 
         private void OnDownloadProgress(DownloadItem item)
@@ -203,7 +232,6 @@ namespace EdgeRebuild
             string url = op.Uri ?? "";
             string fileName = Path.GetFileName(op.ResultFilePath);
 
-            // 检查是否启用下载前询问
             if (_askBeforeDownload)
             {
                 args.Cancel = true;
@@ -231,7 +259,6 @@ namespace EdgeRebuild
                 return;
             }
 
-            // 原有直接下载逻辑
             var existing = DownloadManager.FindCompletedByFileNameSync(fileName, url);
             if (existing != null)
             {
@@ -492,53 +519,62 @@ namespace EdgeRebuild
         private void ToolbarControl_MenuClicked()
         {
             var menu = new MenuFlyout();
+
             var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
             var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" }; edgeHtmlItem.Click += async (s, ev) => await SwitchCurrentTabEngine(EngineType.EdgeHtml);
             var webView2Item = new MenuFlyoutItem { Text = "WebView2" }; webView2Item.Click += async (s, ev) => await SwitchCurrentTabEngine(EngineType.WebView2);
-            if (_currentTab?.Engine == EngineType.EdgeHtml) edgeHtmlItem.IsEnabled = false; else if (_currentTab?.Engine == EngineType.WebView2) webView2Item.IsEnabled = false;
-            engineSub.Items.Add(edgeHtmlItem); engineSub.Items.Add(webView2Item); menu.Items.Add(engineSub);
+            if (_currentTab?.Engine == EngineType.EdgeHtml) edgeHtmlItem.IsEnabled = false;
+            else if (_currentTab?.Engine == EngineType.WebView2) webView2Item.IsEnabled = false;
+            engineSub.Items.Add(edgeHtmlItem); engineSub.Items.Add(webView2Item);
+            menu.Items.Add(engineSub);
+
             menu.Items.Add(new MenuFlyoutSeparator());
+
             var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
             var zoomIn = new MenuFlyoutItem { Text = "放大" }; zoomIn.Click += (s, ev) => AdjustZoom(0.1);
             var zoomOut = new MenuFlyoutItem { Text = "缩小" }; zoomOut.Click += (s, ev) => AdjustZoom(-0.1);
             var zoomReset = new MenuFlyoutItem { Text = "重置" }; zoomReset.Click += (s, ev) => ResetZoom();
-            zoomSub.Items.Add(zoomIn); zoomSub.Items.Add(zoomOut); zoomSub.Items.Add(zoomReset); menu.Items.Add(zoomSub);
-            var printItem = new MenuFlyoutItem { Text = "打印" }; printItem.Click += (s, ev) => PrintCurrentPage(); menu.Items.Add(printItem);
-            var findItem = new MenuFlyoutItem { Text = "查找" }; findItem.Click += (s, ev) => FindOnPage(); menu.Items.Add(findItem);
-            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" }; sourceItem.Click += async (s, ev) => await ViewSourceAsync(); menu.Items.Add(sourceItem);
-            var skinSub = new MenuFlyoutSubItem { Text = "皮肤" };
-            var classicSkin = new MenuFlyoutItem { Text = "经典 Edge" }; classicSkin.Click += (s, ev) => SwitchSkin(SkinManager.SkinSpartan);
-            var modernIeSkin = new MenuFlyoutItem { Text = "Modern IE" }; modernIeSkin.Click += (s, ev) => SwitchSkin(SkinManager.SkinModernIE);
-            var mobileSkin = new MenuFlyoutItem { Text = "Windows 10 Mobile (即将推出)" }; mobileSkin.IsEnabled = false;
-            skinSub.Items.Add(classicSkin); skinSub.Items.Add(modernIeSkin); skinSub.Items.Add(mobileSkin); menu.Items.Add(skinSub);
+            zoomSub.Items.Add(zoomIn); zoomSub.Items.Add(zoomOut); zoomSub.Items.Add(zoomReset);
+            menu.Items.Add(zoomSub);
+
+            var printItem = new MenuFlyoutItem { Text = "打印" }; printItem.Click += (s, ev) => PrintCurrentPage();
+            menu.Items.Add(printItem);
+            var findItem = new MenuFlyoutItem { Text = "查找" }; findItem.Click += (s, ev) => FindOnPage();
+            menu.Items.Add(findItem);
+            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" }; sourceItem.Click += async (s, ev) => await ViewSourceAsync();
+            menu.Items.Add(sourceItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
             var toolsSub = new MenuFlyoutSubItem { Text = "更多工具" };
             var extensionsItem = new MenuFlyoutItem { Text = "扩展管理器" }; extensionsItem.Click += (s, ev) => ShowNotImplementedDialog("扩展管理器");
             var taskManagerItem = new MenuFlyoutItem { Text = "任务管理器" }; taskManagerItem.Click += (s, ev) => ShowNotImplementedDialog("任务管理器");
             var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" }; devToolsItem.Click += (s, ev) => OpenDevTools();
-            toolsSub.Items.Add(extensionsItem); toolsSub.Items.Add(taskManagerItem); toolsSub.Items.Add(devToolsItem); menu.Items.Add(toolsSub);
+            toolsSub.Items.Add(extensionsItem); toolsSub.Items.Add(taskManagerItem); toolsSub.Items.Add(devToolsItem);
+            menu.Items.Add(toolsSub);
+
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // 下载前询问开关
-            var askBeforeDownloadItem = new MenuFlyoutItem
-            {
-                Text = "下载前询问: " + (_askBeforeDownload ? "开" : "关")
-            };
-            askBeforeDownloadItem.Click += async (s, ev) =>
-            {
-                _askBeforeDownload = !_askBeforeDownload;
-                await SettingsManager.SetAsync("AskBeforeDownload", _askBeforeDownload.ToString());
-                
-            };
-            menu.Items.Add(askBeforeDownloadItem);
-
-            var reopenTab = new MenuFlyoutItem { Text = "重新打开关闭的标签" }; reopenTab.Click += async (s, ev) => await ReopenClosedTabAsync(); menu.Items.Add(reopenTab);
-            var bookmarkAll = new MenuFlyoutItem { Text = "将所有标签加入收藏" }; bookmarkAll.Click += (s, ev) => BookmarkAllTabs(); menu.Items.Add(bookmarkAll);
+            var reopenTab = new MenuFlyoutItem { Text = "重新打开关闭的标签" }; reopenTab.Click += async (s, ev) => await ReopenClosedTabAsync();
+            menu.Items.Add(reopenTab);
+            var bookmarkAll = new MenuFlyoutItem { Text = "将所有标签加入收藏" }; bookmarkAll.Click += (s, ev) => BookmarkAllTabs();
+            menu.Items.Add(bookmarkAll);
             var historyItem = new MenuFlyoutItem { Text = "历史记录" };
             historyItem.Click += (s, ev) => { HubSplitView.IsPaneOpen = true; HubPivot.SelectedIndex = 1; RefreshHistoryPanel(); };
-            var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" }; clearDataItem.Click += async (s, ev) => await ClearBrowsingDataAsync(); menu.Items.Add(clearDataItem);
+            menu.Items.Add(historyItem);
+            var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" }; clearDataItem.Click += async (s, ev) => await ClearBrowsingDataAsync();
+            menu.Items.Add(clearDataItem);
+
             menu.Items.Add(new MenuFlyoutSeparator());
-            var settingsItem = new MenuFlyoutItem { Text = "设置" }; settingsItem.Click += (s, ev) => ShowNotImplementedDialog("设置"); menu.Items.Add(settingsItem);
-            var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" }; aboutItem.Click += (s, ev) => ShowAboutDialog(); menu.Items.Add(aboutItem);
+
+            // 设置入口
+            var settingsItem = new MenuFlyoutItem { Text = "设置" };
+            settingsItem.Click += (s, ev) => this.Frame.Navigate(typeof(SettingsPage));
+            menu.Items.Add(settingsItem);
+
+            var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" }; aboutItem.Click += (s, ev) => ShowAboutDialog();
+            menu.Items.Add(aboutItem);
+
             toolbarControl.ShowMenu(menu);
         }
 
@@ -743,7 +779,7 @@ namespace EdgeRebuild
             _tabViews.RemoveAt(index);
             if (_currentTab == viewItem.Tab) { if (nextTab != null) _ = SwitchToTabAsync(nextTab); else _currentTab = null; }
             viewItem.Tab.Dispose();
-            if (_tabViews.Count == 0) _ = CreateNewTabAsync(EngineType.EdgeHtml, "about:blank"); else UpdateTabLayout();
+            if (_tabViews.Count == 0) _ = CreateNewTabAsync(_defaultEngine, "about:blank"); else UpdateTabLayout();
         }
 
         // ========== 拖拽实现 ==========
@@ -877,7 +913,7 @@ namespace EdgeRebuild
         {
             string url = item.Tab.CurrentUrl;
             CloseTab(item);
-            if (_tabViews.Count == 0) await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
+            if (_tabViews.Count == 0) await CreateNewTabAsync(_defaultEngine, "about:blank");
             else UpdateTabLayout();
             try
             {
@@ -906,7 +942,7 @@ namespace EdgeRebuild
             if (viewItem == null) return;
             var menu = new MenuFlyout();
             var newTabItem = new MenuFlyoutItem { Text = "新建标签页" };
-            newTabItem.Click += async (s, ev) => await CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
+            newTabItem.Click += async (s, ev) => await CreateNewTabAsync(_defaultEngine, "about:blank");
             menu.Items.Add(newTabItem);
             var reloadItem = new MenuFlyoutItem { Text = "重新加载" }; reloadItem.Click += (s, ev) => viewItem.Tab?.RefreshAsync(); menu.Items.Add(reloadItem);
             var closeItem = new MenuFlyoutItem { Text = "关闭标签页" }; closeItem.Click += (s, ev) => CloseTab(viewItem); menu.Items.Add(closeItem);
@@ -954,7 +990,7 @@ namespace EdgeRebuild
             if (args.MenuType == ContextMenuType.Link && !string.IsNullOrEmpty(args.LinkUrl))
             {
                 var openInNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
-                openInNewTabItem.Click += async (s, e) => await CreateNewTabAsync(_currentTab?.Engine ?? EngineType.EdgeHtml, args.LinkUrl); flyout.Items.Add(openInNewTabItem);
+                openInNewTabItem.Click += async (s, e) => await CreateNewTabAsync(_currentTab?.Engine ?? _defaultEngine, args.LinkUrl); flyout.Items.Add(openInNewTabItem);
                 var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" }; copyLinkItem.Click += (s, e) => { var dp = new Windows.ApplicationModel.DataTransfer.DataPackage(); dp.SetText(args.LinkUrl); Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp); }; flyout.Items.Add(copyLinkItem);
             }
             if (args.MenuType == ContextMenuType.Image && !string.IsNullOrEmpty(args.ImageUrl))
@@ -1002,7 +1038,7 @@ namespace EdgeRebuild
             else ShowNotImplementedDialog("查看源代码（请切换到 WebView2）");
         }
         private void OpenDevTools() { if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.OpenDevToolsWindow(); else ShowNotImplementedDialog("开发者工具（请切换到 WebView2）"); }
-        private async Task ReopenClosedTabAsync() { if (_closedTabUrls.Count > 0) await CreateNewTabAsync(EngineType.WebView2, _closedTabUrls.Pop()); else await new ContentDialog { Title = "提示", Content = "没有可恢复的标签页。", CloseButtonText = "确定" }.ShowAsync(); }
+        private async Task ReopenClosedTabAsync() { if (_closedTabUrls.Count > 0) await CreateNewTabAsync(_defaultEngine, _closedTabUrls.Pop()); else await new ContentDialog { Title = "提示", Content = "没有可恢复的标签页。", CloseButtonText = "确定" }.ShowAsync(); }
         private void BookmarkAllTabs()
         {
             int count = 0;
@@ -1250,7 +1286,7 @@ namespace EdgeRebuild
         }
 
         // ========== 其他按钮事件 ==========
-        private void NewTabBtn_Click(object sender, RoutedEventArgs e) => _ = CreateNewTabAsync(EngineType.EdgeHtml, "about:blank");
+        private void NewTabBtn_Click(object sender, RoutedEventArgs e) => _ = CreateNewTabAsync(_defaultEngine, "about:blank");
         private void CloseHubBtn_Click(object sender, RoutedEventArgs e) => HubSplitView.IsPaneOpen = false;
         private void ClearHistoryBtn_Click(object sender, RoutedEventArgs e) { HistoryManager.Clear(); RefreshHistoryPanel(); }
         private void ClearDownloadsBtn_Click(object sender, RoutedEventArgs e) { DownloadManager.ClearCompleted(); RefreshDownloadsPanel(); }
