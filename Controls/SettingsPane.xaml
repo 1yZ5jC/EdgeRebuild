@@ -22,7 +22,6 @@
         SelectionChanged="SettingsNavView_SelectionChanged"
         Background="{StaticResource SettingsAcrylicBrush}">
 
-        <!-- 顶部标题栏 -->
         <muxc:NavigationView.HeaderTemplate>
             <DataTemplate>
                 <Border Padding="12,8">
@@ -43,32 +42,27 @@
             </DataTemplate>
         </muxc:NavigationView.HeaderTemplate>
 
-        <!-- 菜单项 -->
         <muxc:NavigationView.MenuItems>
             <muxc:NavigationViewItem Content="外观" Tag="Appearance">
                 <muxc:NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE790;" FontFamily="Segoe MDL2 Assets"/>
                 </muxc:NavigationViewItem.Icon>
             </muxc:NavigationViewItem>
-
             <muxc:NavigationViewItem Content="下载" Tag="Download">
                 <muxc:NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE896;" FontFamily="Segoe MDL2 Assets"/>
                 </muxc:NavigationViewItem.Icon>
             </muxc:NavigationViewItem>
-
             <muxc:NavigationViewItem Content="引擎" Tag="Engine">
                 <muxc:NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE943;" FontFamily="Segoe MDL2 Assets"/>
                 </muxc:NavigationViewItem.Icon>
             </muxc:NavigationViewItem>
-
             <muxc:NavigationViewItem Content="隐私" Tag="Privacy">
                 <muxc:NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE7EB;" FontFamily="Segoe MDL2 Assets"/>
                 </muxc:NavigationViewItem.Icon>
             </muxc:NavigationViewItem>
-
             <muxc:NavigationViewItem Content="关于" Tag="About">
                 <muxc:NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE946;" FontFamily="Segoe MDL2 Assets"/>
@@ -76,7 +70,6 @@
             </muxc:NavigationViewItem>
         </muxc:NavigationView.MenuItems>
 
-        <!-- 右侧内容区域 -->
         <ContentControl x:Name="ContentArea" 
                         HorizontalContentAlignment="Stretch" 
                         VerticalContentAlignment="Stretch"/>
