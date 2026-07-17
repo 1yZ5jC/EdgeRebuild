@@ -22,19 +22,24 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
 
+            <muxc:NavigationView.Resources>
+                <Style TargetType="muxc:NavigationViewItem">
+                    <Setter Property="Background" Value="#30FFFFFF"/>
+                    <Setter Property="Foreground" Value="Black"/>
+                </Style>
+            </muxc:NavigationView.Resources>
+
             <muxc:NavigationView.MenuItems>
                 <muxc:NavigationViewItem Content="收藏夹" Tag="Favorites">
                     <muxc:NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE734;" FontFamily="Segoe MDL2 Assets"/>
                     </muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
-
                 <muxc:NavigationViewItem Content="历史记录" Tag="History">
                     <muxc:NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE81C;" FontFamily="Segoe MDL2 Assets"/>
                     </muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
-
                 <muxc:NavigationViewItem Content="下载" Tag="Downloads">
                     <muxc:NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE896;" FontFamily="Segoe MDL2 Assets"/>
@@ -42,16 +47,54 @@
                 </muxc:NavigationViewItem>
             </muxc:NavigationView.MenuItems>
 
-            <ScrollViewer IsHitTestVisible="True" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                <StackPanel x:Name="ContentPanel" Orientation="Vertical"
-                            HorizontalAlignment="Stretch">
-                    <StackPanel x:Name="FavStackPanel" Visibility="Visible" Orientation="Vertical"
-                                HorizontalAlignment="Stretch"/>
-                    <StackPanel x:Name="HistoryStackPanel" Visibility="Collapsed" Orientation="Vertical"
-                                HorizontalAlignment="Stretch"/>
-                    <StackPanel x:Name="DownloadsStackPanel" Visibility="Collapsed" Orientation="Vertical"
-                                HorizontalAlignment="Stretch"/>
-                </StackPanel>
+            <ScrollViewer>
+                <Grid>
+                    <!-- 收藏夹 ListView -->
+                    <ListView x:Name="FavListView" Visibility="Visible" SelectionMode="None"
+                          IsItemClickEnabled="True" ItemClick="FavListView_ItemClick"
+                          ItemsSource="{Binding FavItems}"
+                          Background="Transparent" HorizontalAlignment="Stretch">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="12,8" Background="Transparent">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                              Foreground="Gold" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
+                                        <TextBlock Text="{Binding Url}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <!-- 历史记录 ListView -->
+                    <ListView x:Name="HistoryListView" Visibility="Collapsed" SelectionMode="None"
+                              IsItemClickEnabled="True" ItemClick="HistoryListView_ItemClick"
+                          ItemsSource="{Binding HistoryItems}"
+                           Background="Transparent" HorizontalAlignment="Stretch">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="12,8" Background="Transparent">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
+                                        <TextBlock Text="{Binding Url}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <!-- 下载容器 -->
+                    <ScrollViewer x:Name="DownloadsContainer" Visibility="Collapsed"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <StackPanel x:Name="DownloadsStackPanel" Orientation="Vertical" HorizontalAlignment="Stretch"/>
+                    </ScrollViewer>
+                </Grid>
             </ScrollViewer>
         </muxc:NavigationView>
     </Grid>

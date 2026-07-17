@@ -318,7 +318,6 @@ namespace EdgeRebuild
             if (FavoritesManager.Instance.ContainsUrl(url)) { var item = FavoritesManager.Instance.Favorites.FirstOrDefault(f => f.Url == url); if (item != null) FavoritesManager.Instance.Remove(item); }
             else FavoritesManager.Instance.Add(!string.IsNullOrEmpty(_currentTab.Title) ? _currentTab.Title : url, url);
             UpdateStarButton();
-            if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
         }
 
         private void ToolbarControl_HubClicked()
@@ -670,8 +669,19 @@ namespace EdgeRebuild
             if (targetElement != null) flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
         }
 
-        // ========== 辅助方法 ==========
-        private async Task SwitchCurrentTabEngine(EngineType newEngine) { /* 同上 */ }
+        // ========== 引擎切换等辅助 ==========
+        private async Task SwitchCurrentTabEngine(EngineType newEngine)
+        {
+            if (_currentTab == null || _currentTab.Engine == newEngine) return;
+            var viewItem = _tabViews.FirstOrDefault(v => v.Tab == _currentTab);
+            if (viewItem == null) return;
+            string currentUrl = _currentTab.CurrentUrl;
+            _currentTab.Dispose();
+            IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
+            viewItem.Tab = newTab;
+            await RebindTabAndSwitch(viewItem, newTab, currentUrl);
+        }
+
         private async void AdjustZoom(double delta) { _zoomFactor = Math.Max(0.25, Math.Min(5.0, _zoomFactor + delta)); if (_currentTab is EdgeHtmlTab edgeTab) await edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';"); else if (_currentTab is WebView2Tab wv2) await wv2.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';"); }
         private async void ResetZoom() { _zoomFactor = 1.0; if (_currentTab is EdgeHtmlTab edgeTab) await edgeTab.ExecuteScriptAsync("document.body.style.zoom = '1';"); else if (_currentTab is WebView2Tab wv2) await wv2.ExecuteScriptAsync("document.body.style.zoom = '1';"); }
         private void PrintCurrentPage() { if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser); else if (_currentTab is EdgeHtmlTab edgeTab) _ = edgeTab.ExecuteScriptAsync("window.print();"); }
@@ -702,13 +712,12 @@ namespace EdgeRebuild
                 { FavoritesManager.Instance.Add(string.IsNullOrEmpty(item.Tab.Title) ? url : item.Tab.Title, url); count++; }
             }
             UpdateStarButton();
-            if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
             _ = new ContentDialog { Title = "完成", Content = $"已将 {count} 个标签页加入收藏。", CloseButtonText = "确定" }.ShowAsync();
         }
         private async Task ClearBrowsingDataAsync()
         {
             HistoryManager.Clear(); DownloadManager.ClearCompleted();
-            if (HubSplitView.IsPaneOpen) { hubPane.RefreshHistory(); hubPane.RefreshDownloads(); }
+            if (HubSplitView.IsPaneOpen) hubPane.RefreshAll();
             if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.Profile.CookieManager.DeleteAllCookies();
             await new ContentDialog { Title = "已清除", Content = "浏览数据已清除。", CloseButtonText = "确定" }.ShowAsync();
         }
@@ -727,7 +736,6 @@ namespace EdgeRebuild
         private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) => TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset - 100, null, null);
         private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) => TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset + 100, null, null);
         private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
-
         private void SettingsPane_CloseRequested(object sender, EventArgs e) => SettingsSplitView.IsPaneOpen = false;
 
         // ========== 布局 ==========
