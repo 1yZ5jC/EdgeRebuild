@@ -31,6 +31,7 @@ namespace EdgeRebuild.Services
             await _database.CreateTableAsync<FavoriteItem>();
             await _database.CreateTableAsync<HistoryItem>();
             await _database.CreateTableAsync<SettingItem>();
+            await _database.CreateTableAsync<DownloadRecord>();
         }
     }
 }

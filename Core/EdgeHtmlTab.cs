@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -39,7 +40,6 @@ namespace EdgeRebuild.Core
 
         private void OnNavigationStarting(WebView sender, WebViewNavigationStartingEventArgs args)
         {
-            // 简单判断：以常见文件扩展名结尾的 URL 视为下载
             string[] downloadExtensions = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
             string url = args.Uri?.ToString() ?? "";
             bool isDownload = false;
@@ -55,7 +55,7 @@ namespace EdgeRebuild.Core
             if (isDownload)
             {
                 args.Cancel = true;
-                _ = Services.DownloadManager.StartHttpDownloadAsync(url);
+                _ = Services.DownloadManager.EnqueueDownloadAsync(url);
             }
         }
 
@@ -69,15 +69,12 @@ namespace EdgeRebuild.Core
                     string host = _webView.Source?.Host;
                     _title = string.IsNullOrEmpty(host) ? "新标签页" : host;
                 }
-                else
-                {
-                    _title = docTitle;
-                }
+                else _title = docTitle;
                 TitleChanged?.Invoke(_title);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"UpdateTitle error: {ex.Message}");
+                Debug.WriteLine($"UpdateTitle error: {ex.Message}");
             }
         }
 
@@ -97,7 +94,7 @@ namespace EdgeRebuild.Core
 
         private void OnNavigationFailed(object sender, WebViewNavigationFailedEventArgs e)
         {
-            System.Diagnostics.Debug.WriteLine($"Navigation failed: {e.Uri} - {e.WebErrorStatus}");
+            Debug.WriteLine($"Navigation failed: {e.Uri} - {e.WebErrorStatus}");
         }
 
         private void CheckNavigationState()
@@ -111,16 +108,7 @@ namespace EdgeRebuild.Core
             if (_webView?.Source == null || _webView.Source.AbsoluteUri == "about:blank")
                 return;
 
-            string script = @"
-(function() {
-    var links = document.querySelectorAll('link[rel*=""icon""]');
-    if (links.length > 0) {
-        var href = links[0].href;
-        if (href) return href;
-    }
-    return '';
-})()";
-
+            string script = @"(function() { var links = document.querySelectorAll('link[rel*=""icon""]'); if (links.length > 0) { var href = links[0].href; if (href) return href; } return ''; })()";
             try
             {
                 var result = await _webView.InvokeScriptAsync("eval", new string[] { script });
@@ -147,14 +135,8 @@ namespace EdgeRebuild.Core
         public async Task<string> ExecuteScriptAsync(string script)
         {
             if (_webView == null) return "";
-            try
-            {
-                return await _webView.InvokeScriptAsync("eval", new string[] { script });
-            }
-            catch
-            {
-                return "";
-            }
+            try { return await _webView.InvokeScriptAsync("eval", new string[] { script }); }
+            catch { return ""; }
         }
 
         public Task NavigateAsync(string url)
@@ -165,9 +147,7 @@ namespace EdgeRebuild.Core
                 !url.StartsWith("about:", StringComparison.OrdinalIgnoreCase) &&
                 !url.StartsWith("edge:", StringComparison.OrdinalIgnoreCase) &&
                 !url.Contains("://"))
-            {
                 url = "https://" + url;
-            }
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 _webView.Navigate(uri);
             return Task.CompletedTask;

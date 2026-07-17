@@ -4,6 +4,7 @@ using EdgeRebuild.Services;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
@@ -94,6 +95,9 @@ namespace EdgeRebuild
                 string savedSkin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
                 _currentSkin = savedSkin;
                 ApplySkinColors(savedSkin);
+
+                await DownloadManager.UpdateSystemDownloadFolderAccessAsync();
+                await DownloadManager.LoadDownloadsAsync();
 
                 DownloadManager.DownloadProgressChanged += (item) =>
                     _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshDownloadsPanel);
@@ -717,31 +721,58 @@ namespace EdgeRebuild
         private void ShowAboutDialog() => _ = new ContentDialog { Title = "Edge Rebuild", Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。", CloseButtonText = "确定" }.ShowAsync();
         private async void ShowNotImplementedDialog(string feature) => await new ContentDialog { Title = "即将推出", Content = $"功能“{feature}”尚未实现。", CloseButtonText = "确定" }.ShowAsync();
 
-        // ========== 下载事件 ==========
+        // ========== 下载事件（WebView2） ==========
         private void AttachDownloadEvents(WebView2Tab wv2Tab)
         {
             if (wv2Tab.CoreWebView2 == null) return;
 
-            wv2Tab.CoreWebView2.DownloadStarting += async (sender, args) =>
+            wv2Tab.CoreWebView2.DownloadStarting += (sender, args) =>
             {
                 var op = args.DownloadOperation;
+                string url = op.Uri ?? "";
+                string fileName = Path.GetFileName(op.ResultFilePath);
+
+                // 重复检测
+                var existing = DownloadManager.FindCompletedByFileNameSync(fileName);
+                if (existing != null)
+                {
+                    args.Cancel = true;
+                    args.Handled = true;
+                    try
+                    {
+                        var storageFile = StorageFile.GetFileFromPathAsync(existing.FullPath).GetAwaiter().GetResult();
+                        Windows.System.Launcher.LaunchFileAsync(storageFile).GetAwaiter().GetResult();
+                    }
+                    catch { }
+                    return;
+                }
+
                 args.Handled = true;
 
-                StorageFolder downloadsFolder;
-                try
+                // 使用缓存的系统下载文件夹路径（已在启动时确定）
+                string edgeFolder = DownloadManager.SystemDownloadFolderPath;
+                if (string.IsNullOrEmpty(edgeFolder))
                 {
-                    downloadsFolder = await DownloadsFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists);
-                }
-                catch
-                {
-                    downloadsFolder = await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
+                    edgeFolder = Path.Combine(ApplicationData.Current.LocalFolder.Path, "Downloads");
                 }
 
-                var file = await downloadsFolder.CreateFileAsync(
-                    System.IO.Path.GetFileName(op.ResultFilePath), CreationCollisionOption.GenerateUniqueName);
-                args.ResultFilePath = file.Path;
+                // 生成唯一文件路径
+                string filePath = Path.Combine(edgeFolder, fileName);
+                if (File.Exists(filePath))
+                {
+                    string ext = Path.GetExtension(fileName);
+                    string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                    int counter = 1;
+                    do
+                    {
+                        filePath = Path.Combine(edgeFolder, $"{nameWithoutExt} ({counter}){ext}");
+                        counter++;
+                    } while (File.Exists(filePath));
+                }
 
-                var item = DownloadManager.Add(op.ResultFilePath, file.Path, file.Name);
+                args.ResultFilePath = filePath;
+
+                var item = DownloadManager.Add(url, filePath, Path.GetFileName(filePath));
                 item.WebViewOperation = op;
                 item.TotalBytesToReceive = op.TotalBytesToReceive;
 
@@ -755,19 +786,18 @@ namespace EdgeRebuild
                         double progress = (double)op.BytesReceived / op.TotalBytesToReceive * 100.0;
                         item.Progress = Math.Min(progress, 100);
                     }
-                    else
-                    {
-                        item.Indeterminate = true;
-                    }
+                    else item.Indeterminate = true;
                     DownloadManager.DownloadProgressChanged?.Invoke(item);
                 };
 
-                op.StateChanged += (s, stateArgs) =>
+                op.StateChanged += async (s, stateArgs) =>
                 {
                     if (op.State == CoreWebView2DownloadState.Completed)
                     {
                         item.Status = "已完成";
                         item.Progress = 100;
+                        item.IsCompleted = true;
+                        await DownloadManager.SaveDownloadAsync(item);
                         DownloadManager.DownloadStatusChanged?.Invoke(item);
                         NotificationService.ShowToast("下载完成", item.FileName);
                     }
@@ -788,10 +818,7 @@ namespace EdgeRebuild
                 var file = await StorageFile.GetFileFromPathAsync(filePath);
                 await Windows.System.Launcher.LaunchFileAsync(file);
             }
-            catch (Exception ex)
-            {
-                NotificationService.ShowToast("打开失败", ex.Message);
-            }
+            catch (Exception ex) { NotificationService.ShowToast("打开失败", ex.Message); }
         }
 
         private async void OpenFolder(string filePath)
@@ -800,13 +827,9 @@ namespace EdgeRebuild
             {
                 var file = await StorageFile.GetFileFromPathAsync(filePath);
                 var folder = await file.GetParentAsync();
-                if (folder != null)
-                    await Windows.System.Launcher.LaunchFolderAsync(folder);
+                if (folder != null) await Windows.System.Launcher.LaunchFolderAsync(folder);
             }
-            catch (Exception ex)
-            {
-                NotificationService.ShowToast("打开失败", ex.Message);
-            }
+            catch (Exception ex) { NotificationService.ShowToast("打开失败", ex.Message); }
         }
 
         // ========== Hub 面板刷新 ==========
@@ -853,14 +876,52 @@ namespace EdgeRebuild
             }
         }
 
+        private Button CreateIconButton(string glyph, string tooltip, double height)
+        {
+            var btn = new Button
+            {
+                Content = glyph,
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 16,
+                Foreground = _foregroundBrush,
+                Width = height,
+                Height = height,
+                Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 4, 0),
+                HorizontalAlignment = HorizontalAlignment.Left
+            };
+            ToolTipService.SetToolTip(btn, tooltip);
+            return btn;
+        }
+
+        private async void DeleteDownloadItem(DownloadItem item)
+        {
+            await DownloadManager.DeleteDownloadAsync(item);
+            RefreshDownloadsPanel();
+        }
+
         private void RefreshDownloadsPanel()
         {
             HubDownloadsStackPanel.Children.Clear();
+
+            if (!DownloadManager.CanUseSystemDownloadFolder)
+            {
+                var warning = new TextBlock
+                {
+                    Text = "无系统下载权限，文件将保存到应用本地文件夹。可在 Windows 设置 → 隐私 → 文件系统中开启权限。",
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Colors.Orange),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(4, 0, 4, 6)
+                };
+                HubDownloadsStackPanel.Children.Add(warning);
+            }
+
             foreach (var item in DownloadManager.Downloads)
             {
                 var panel = new StackPanel { Margin = new Thickness(4, 6, 4, 6) };
 
-                var fileNameText = new TextBlock
+                var nameBlock = new TextBlock
                 {
                     Text = item.FileName,
                     FontWeight = Windows.UI.Text.FontWeights.SemiBold,
@@ -868,18 +929,21 @@ namespace EdgeRebuild
                     Foreground = _foregroundBrush,
                     TextTrimming = TextTrimming.CharacterEllipsis
                 };
-                if (item.Status == "已完成")
+                if (item.Deleted)
                 {
-                    fileNameText.Tapped += (s, e) => OpenFile(item.FullPath);
-                    fileNameText.PointerEntered += (s, e) =>
-                        fileNameText.TextDecorations = Windows.UI.Text.TextDecorations.Underline;
-                    fileNameText.PointerExited += (s, e) =>
-                        fileNameText.TextDecorations = Windows.UI.Text.TextDecorations.None;
-                    fileNameText.Foreground = new SolidColorBrush(Colors.DodgerBlue);
+                    nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.Strikethrough;
+                    nameBlock.Foreground = new SolidColorBrush(Colors.Gray);
                 }
-                panel.Children.Add(fileNameText);
+                else if (item.Status == "已完成")
+                {
+                    nameBlock.Tapped += (s, e) => OpenFile(item.FullPath);
+                    nameBlock.PointerEntered += (s, e) => nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.Underline;
+                    nameBlock.PointerExited += (s, e) => nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.None;
+                    nameBlock.Foreground = new SolidColorBrush(Colors.DodgerBlue);
+                }
+                panel.Children.Add(nameBlock);
 
-                if (item.Status == "已完成")
+                if (item.Status == "已完成" && !item.Deleted)
                 {
                     panel.Children.Add(new TextBlock
                     {
@@ -890,71 +954,82 @@ namespace EdgeRebuild
                         Margin = new Thickness(0, 0, 0, 2)
                     });
                 }
-
-                var progressBar = new ProgressBar
+                else if (item.Deleted)
                 {
-                    Maximum = 100,
-                    Value = item.Progress,
-                    IsIndeterminate = item.Indeterminate,
-                    Height = 6,
-                    Margin = new Thickness(0, 2, 0, 2)
-                };
-                panel.Children.Add(progressBar);
+                    panel.Children.Add(new TextBlock
+                    {
+                        Text = "文件已删除",
+                        FontSize = 11,
+                        Foreground = new SolidColorBrush(Colors.Red),
+                        Margin = new Thickness(0, 0, 0, 2)
+                    });
+                }
+
+                if (!item.Deleted && item.Status != "已完成" && item.Status != "下载失败")
+                {
+                    var progress = new ProgressBar
+                    {
+                        Maximum = 100,
+                        Value = item.Progress,
+                        IsIndeterminate = item.Indeterminate,
+                        Height = 6,
+                        Margin = new Thickness(0, 2, 0, 2)
+                    };
+                    panel.Children.Add(progress);
+                }
 
                 string statusText = item.Status;
                 if (item.Status == "下载中" && !item.Indeterminate)
                     statusText += $" - {item.Progress:F1}%";
                 else if (item.Status == "下载中" && item.Indeterminate)
                     statusText += " (大小未知)";
+                panel.Children.Add(new TextBlock { Text = statusText, FontSize = 11, Foreground = _mutedForegroundBrush });
 
-                panel.Children.Add(new TextBlock
-                {
-                    Text = statusText,
-                    FontSize = 11,
-                    Foreground = _mutedForegroundBrush
-                });
-
-                var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+                var btns = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
 
                 if (item.Status == "下载中")
                 {
-                    var pauseBtn = new Button { Content = "暂停", Width = 60, Height = 28, Margin = new Thickness(0, 0, 4, 0) };
-                    pauseBtn.Click += (s, e) => { item.Pause(); RefreshDownloadsPanel(); };
-                    btnPanel.Children.Add(pauseBtn);
+                    var pause = CreateIconButton("\uE769", "暂停", 28);
+                    pause.Click += (s, e) => { item.Pause(); RefreshDownloadsPanel(); };
+                    btns.Children.Add(pause);
                 }
                 else if (item.Status == "已暂停")
                 {
-                    var resumeBtn = new Button { Content = "继续", Width = 60, Height = 28, Margin = new Thickness(0, 0, 4, 0) };
-                    resumeBtn.Click += (s, e) => { item.Resume(); RefreshDownloadsPanel(); };
-                    btnPanel.Children.Add(resumeBtn);
+                    var resume = CreateIconButton("\uE768", "继续", 28);
+                    resume.Click += (s, e) => { item.Resume(); RefreshDownloadsPanel(); };
+                    btns.Children.Add(resume);
                 }
 
                 if (item.Status == "下载中" || item.Status == "已暂停")
                 {
-                    var cancelBtn = new Button { Content = "取消", Width = 60, Height = 28, Margin = new Thickness(0, 0, 4, 0) };
-                    cancelBtn.Click += (s, e) => { item.Cancel(); RefreshDownloadsPanel(); };
-                    btnPanel.Children.Add(cancelBtn);
+                    var cancel = CreateIconButton("\uE711", "取消", 28);
+                    cancel.Click += (s, e) => { item.Cancel(); RefreshDownloadsPanel(); };
+                    btns.Children.Add(cancel);
                 }
 
                 if (item.Status == "已中断" || item.Status == "下载失败" || item.Status == "已取消")
                 {
-                    var retryBtn = new Button { Content = "重试", Width = 60, Height = 28, Margin = new Thickness(0, 0, 4, 0) };
-                    retryBtn.Click += async (s, e) => { await item.RetryAsync(); RefreshDownloadsPanel(); };
-                    btnPanel.Children.Add(retryBtn);
+                    var retry = CreateIconButton("\uE72C", "重试", 28);
+                    retry.Click += async (s, e) => { await item.RetryAsync(); RefreshDownloadsPanel(); };
+                    btns.Children.Add(retry);
                 }
 
-                if (item.Status == "已完成")
+                if (item.Status == "已完成" && !item.Deleted)
                 {
-                    var openBtn = new Button { Content = "打开", Width = 60, Height = 28, Margin = new Thickness(0, 0, 4, 0) };
-                    openBtn.Click += (s, e) => OpenFile(item.FullPath);
-                    btnPanel.Children.Add(openBtn);
+                    var open = CreateIconButton("\uE8E5", "打开", 28);
+                    open.Click += (s, e) => OpenFile(item.FullPath);
+                    btns.Children.Add(open);
 
-                    var folderBtn = new Button { Content = "文件夹", Width = 60, Height = 28, Margin = new Thickness(0, 0, 4, 0) };
-                    folderBtn.Click += (s, e) => OpenFolder(item.FullPath);
-                    btnPanel.Children.Add(folderBtn);
+                    var folder = CreateIconButton("\uE838", "文件夹", 28);
+                    folder.Click += (s, e) => OpenFolder(item.FullPath);
+                    btns.Children.Add(folder);
                 }
 
-                panel.Children.Add(btnPanel);
+                var deleteBtn = CreateIconButton("\uE74D", "删除记录", 28);
+                deleteBtn.Click += (s, e) => DeleteDownloadItem(item);
+                btns.Children.Add(deleteBtn);
+
+                panel.Children.Add(btns);
                 HubDownloadsStackPanel.Children.Add(panel);
             }
         }
