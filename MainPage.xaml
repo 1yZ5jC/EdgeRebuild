@@ -12,6 +12,9 @@
                       TintOpacity="0.8"
                       FallbackColor="#F0F0F0"/>
 
+        <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#C0C0C0"/>
+        <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="#0078D7"/>
         <SolidColorBrush x:Key="TabActiveBackgroundBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="TabInactiveBackgroundBrush" Color="#60FFFFFF"/>
         <SolidColorBrush x:Key="TabHoverBackgroundBrush" Color="#C0C0C0"/>
@@ -19,7 +22,11 @@
         <SolidColorBrush x:Key="ForegroundBrush" Color="#000000"/>
         <SolidColorBrush x:Key="MutedForegroundBrush" Color="#666666"/>
 
-        <!-- 标签栏按钮也需要这个样式，但我们已经移除了，所以需要重新定义 -->
+        <!-- Hub 面板动态文字颜色 -->
+        <SolidColorBrush x:Key="HubForegroundBrush" Color="Black"/>
+        <SolidColorBrush x:Key="HubMutedForegroundBrush" Color="DimGray"/>
+
+        <!-- 工具按钮样式（供标签栏和 Hub 面板使用） -->
         <Style x:Key="ToolButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
@@ -45,7 +52,7 @@
                                             </ObjectAnimationUsingKeyFrames>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="BorderElement"
                                                                            Storyboard.TargetProperty="BorderBrush">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#0078D7"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource AddressBarFocusBorderBrush}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -70,6 +77,18 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style x:Key="AddressBarStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource AddressBarBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource AddressBarBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,8,4,0"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="SelectionHighlightColor" Value="#0078D7"/>
+        </Style>
     </Page.Resources>
 
     <Grid Background="Transparent">
@@ -79,7 +98,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 标签栏 -->
+        <!-- 标签栏（恢复为原始 XAML） -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{StaticResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -124,7 +143,7 @@
             </Grid>
         </Border>
 
-        <!-- 工具栏（注意 x:Name 改为小写避免与类名冲突） -->
+        <!-- 工具栏（使用 ToolbarControl） -->
         <controls:ToolbarControl x:Name="toolbarControl"
                                  Grid.Row="1"
                                  UrlSubmitted="ToolbarControl_UrlSubmitted"
@@ -197,6 +216,7 @@
             <Border x:Name="ContentContainer" Background="White"/>
         </SplitView>
 
+        <!-- 全页面拖拽覆盖层 -->
         <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"
                 IsHitTestVisible="False" Canvas.ZIndex="1000"/>
     </Grid>
