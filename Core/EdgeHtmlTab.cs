@@ -34,6 +34,29 @@ namespace EdgeRebuild.Core
             _webView.NavigationCompleted += OnNavigationCompleted;
             _webView.DOMContentLoaded += OnDOMContentLoaded;
             _webView.NavigationFailed += OnNavigationFailed;
+            _webView.NavigationStarting += OnNavigationStarting;
+        }
+
+        private void OnNavigationStarting(WebView sender, WebViewNavigationStartingEventArgs args)
+        {
+            // 简单判断：以常见文件扩展名结尾的 URL 视为下载
+            string[] downloadExtensions = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
+            string url = args.Uri?.ToString() ?? "";
+            bool isDownload = false;
+            foreach (var ext in downloadExtensions)
+            {
+                if (url.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                {
+                    isDownload = true;
+                    break;
+                }
+            }
+
+            if (isDownload)
+            {
+                args.Cancel = true;
+                _ = Services.DownloadManager.StartHttpDownloadAsync(url);
+            }
         }
 
         private void UpdateTitle()
@@ -160,6 +183,7 @@ namespace EdgeRebuild.Core
             _webView.NavigationCompleted -= OnNavigationCompleted;
             _webView.DOMContentLoaded -= OnDOMContentLoaded;
             _webView.NavigationFailed -= OnNavigationFailed;
+            _webView.NavigationStarting -= OnNavigationStarting;
             _webView = null;
         }
     }

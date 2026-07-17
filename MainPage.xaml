@@ -89,6 +89,7 @@
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
             <Setter Property="SelectionHighlightColor" Value="#0078D7"/>
         </Style>
+        
     </Page.Resources>
 
     <Grid Background="Transparent">

@@ -1,6 +1,7 @@
 ﻿using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -10,6 +11,7 @@ namespace EdgeRebuild.Core
     public class WebView2Tab : IBrowserTab
     {
         private WebView2 _webView;
+        private SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
         private Task _initTask;
         private string _faviconUri = "";
         private string _title = "";
@@ -41,15 +43,32 @@ namespace EdgeRebuild.Core
 
         public async Task EnsureInitializedAsync()
         {
+            // 如果已经初始化成功，直接返回
             if (_webView.CoreWebView2 != null) return;
-            if (_initTask == null)
-                _initTask = _webView.EnsureCoreWebView2Async().AsTask();
-            await _initTask;
 
-            _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
-            _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
-            _webView.CoreWebView2.ContextMenuRequested += OnContextMenuRequested;
-            CheckNavigationState();
+            await _initLock.WaitAsync();
+            try
+            {
+                // 再次检查，防止并发等待时已初始化
+                if (_webView.CoreWebView2 != null) return;
+
+                // 如果之前已经启动初始化任务，等待它完成
+                if (_initTask == null)
+                {
+                    _initTask = _webView.EnsureCoreWebView2Async().AsTask();
+                }
+                await _initTask;
+
+                // 初始化成功后绑定事件
+                _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
+                _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
+                _webView.CoreWebView2.ContextMenuRequested += OnContextMenuRequested;
+                CheckNavigationState();
+            }
+            finally
+            {
+                _initLock.Release();
+            }
         }
 
         private void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
@@ -174,9 +193,6 @@ namespace EdgeRebuild.Core
             e.Handled = true;
         }
 
-        /// <summary>
-        /// 执行 JavaScript 脚本并返回结果（供外部调用）
-        /// </summary>
         public async Task<string> ExecuteScriptAsync(string script)
         {
             if (_webView?.CoreWebView2 == null) return "";
@@ -234,6 +250,7 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
+            _initLock?.Dispose();
             if (_webView == null) return;
             _webView.NavigationCompleted -= OnNavigationCompleted;
             if (_webView.CoreWebView2 != null)
