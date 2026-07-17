@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -52,7 +53,6 @@ namespace EdgeRebuild.Services
                 {
                     _status = value;
                     OnPropertyChanged(nameof(Status));
-                    // 终态时自动调用清理回调
                     if ((value == "已完成" || value == "已取消" || value == "已中断") && _cleanupAction != null)
                     {
                         _cleanupAction?.Invoke();
@@ -143,6 +143,58 @@ namespace EdgeRebuild.Services
 
         public static bool CanUseSystemDownloadFolder => _checkedSystemFolder && _canUseSystemFolder;
 
+        // 使用 StorageFile API 检查文件是否存在，比 File.Exists 更可靠
+        private static async Task<(bool exists, string foundPath)> TryFindFileAsync(string originalPath, string fileName)
+        {
+            // 1. 直接检查原始路径
+            try
+            {
+                var file = await StorageFile.GetFileFromPathAsync(originalPath);
+                if (file != null) return (true, originalPath);
+            }
+            catch { }
+
+            // 2. 如果原始路径包含目录部分，尝试先获取文件夹再获取文件
+            string directory = Path.GetDirectoryName(originalPath);
+            if (!string.IsNullOrEmpty(directory) && !string.IsNullOrEmpty(fileName))
+            {
+                try
+                {
+                    var folder = await StorageFolder.GetFolderFromPathAsync(directory);
+                    var file = await folder.GetFileAsync(fileName);
+                    if (file != null) return (true, file.Path);
+                }
+                catch { }
+            }
+
+            // 3. 在当前系统下载文件夹下查找
+            if (!string.IsNullOrEmpty(SystemDownloadFolderPath) && !string.IsNullOrEmpty(fileName))
+            {
+                try
+                {
+                    var folder = await StorageFolder.GetFolderFromPathAsync(SystemDownloadFolderPath);
+                    var file = await folder.GetFileAsync(fileName);
+                    if (file != null) return (true, file.Path);
+                }
+                catch { }
+            }
+
+            // 4. 在应用本地下载文件夹下查找（最终回退）
+            string localDownloadsPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "Downloads");
+            if (!string.IsNullOrEmpty(fileName))
+            {
+                try
+                {
+                    var folder = await StorageFolder.GetFolderFromPathAsync(localDownloadsPath);
+                    var file = await folder.GetFileAsync(fileName);
+                    if (file != null) return (true, file.Path);
+                }
+                catch { }
+            }
+
+            return (false, originalPath);
+        }
+
         public static async Task LoadDownloadsAsync()
         {
             await UpdateSystemDownloadFolderAccessAsync();
@@ -151,36 +203,28 @@ namespace EdgeRebuild.Services
 
             foreach (var rec in records)
             {
-                bool fileExists = false;
-                string realPath = rec.FullPath;
+                string fileName = rec.FileName;
+                string originalPath = rec.FullPath;
 
-                if (File.Exists(realPath))
-                    fileExists = true;
-                else if (!string.IsNullOrEmpty(SystemDownloadFolderPath))
-                {
-                    string potentialPath = Path.Combine(SystemDownloadFolderPath, rec.FileName);
-                    if (File.Exists(potentialPath))
-                    {
-                        realPath = potentialPath;
-                        fileExists = true;
-                    }
-                }
+                var (exists, foundPath) = await TryFindFileAsync(originalPath, fileName);
 
                 var item = new DownloadItem
                 {
                     Id = rec.Id,
                     Url = rec.Url,
-                    FileName = rec.FileName,
-                    FullPath = realPath,
+                    FileName = fileName,
+                    FullPath = foundPath, // 使用实际找到的路径
                     Status = rec.Status,
                     Progress = rec.Progress,
-                    Deleted = !fileExists && rec.IsCompleted,
+                    // 只有已完成且确实找不到文件时才标记为已删除
+                    Deleted = rec.IsCompleted && !exists,
                     IsCompleted = rec.IsCompleted
                 };
 
                 Downloads.Add(item);
             }
 
+            // 将更新的路径写回数据库
             foreach (var item in Downloads.Where(d => d.Id > 0))
             {
                 var record = records.FirstOrDefault(r => r.Id == item.Id);
@@ -218,8 +262,7 @@ namespace EdgeRebuild.Services
         public static DownloadItem FindCompletedByFileNameSync(string fileName, string url = null)
         {
             return Downloads.FirstOrDefault(d =>
-                d.IsCompleted && !d.Deleted && File.Exists(d.FullPath) &&
-                d.FileName == fileName &&
+                d.IsCompleted && !d.Deleted && d.FileName == fileName &&
                 (url == null || d.Url == url));
         }
 
