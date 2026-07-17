@@ -1,7 +1,6 @@
 ﻿using EdgeRebuild.Core;
 using EdgeRebuild.Services;
 using System;
-using System.Collections.ObjectModel;
 using Windows.Storage;
 using Windows.UI;
 using Windows.UI.Xaml;
@@ -14,25 +13,48 @@ namespace EdgeRebuild.Controls
     {
         public event Action<string> NavigateRequested;
 
-        // 供 x:Bind 使用
-        public ObservableCollection<FavoriteItem> FavItems => FavoritesManager.Instance.Favorites;
-        public ObservableCollection<HistoryItem> HistoryItems => HistoryManager.History;
-
         public SolidColorBrush ForegroundBrush { get; set; } = new SolidColorBrush(Colors.Black);
         public SolidColorBrush MutedForegroundBrush { get; set; } = new SolidColorBrush(Colors.DimGray);
 
         public HubPane()
         {
             this.InitializeComponent();
-            this.DataContext = this;   // 让 {Binding} 可以找到当前 UserControl 的属性
-            // ItemsSource 已由 XAML 绑定设置
+            this.Loaded += OnHubPaneLoaded;
+        }
+
+        private void OnHubPaneLoaded(object sender, RoutedEventArgs e)
+        {
+            // 只加载一次数据
+            RefreshFavorites();
+            RefreshHistory();
+            LoadDownloads();
+
             HubNavView.SelectedItem = HubNavView.MenuItems[0];
+        }
+
+        public void RefreshAll()
+        {
+            RefreshFavorites();
+            RefreshHistory();
             LoadDownloads();
         }
 
-        public void RefreshAll() => LoadDownloads();
-        public void RefreshFavorites() { }
-        public void RefreshHistory() { }
+        public void RefreshFavorites()
+        {
+            if (FavListView == null) return;
+            FavListView.Items.Clear();
+            foreach (var fav in FavoritesManager.Instance.Favorites)
+                FavListView.Items.Add(fav);
+        }
+
+        public void RefreshHistory()
+        {
+            if (HistoryListView == null) return;
+            HistoryListView.Items.Clear();
+            foreach (var item in HistoryManager.History)
+                HistoryListView.Items.Add(item);
+        }
+
         public void RefreshDownloads() => LoadDownloads();
 
         public void ShowHistory()

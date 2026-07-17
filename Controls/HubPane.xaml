@@ -51,9 +51,8 @@
                 <Grid>
                     <!-- 收藏夹 ListView -->
                     <ListView x:Name="FavListView" Visibility="Visible" SelectionMode="None"
-                          IsItemClickEnabled="True" ItemClick="FavListView_ItemClick"
-                          ItemsSource="{Binding FavItems}"
-                          Background="Transparent" HorizontalAlignment="Stretch">
+                              IsItemClickEnabled="True" ItemClick="FavListView_ItemClick"
+                              Background="Transparent" HorizontalAlignment="Stretch">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="12,8" Background="Transparent">
@@ -75,8 +74,7 @@
                     <!-- 历史记录 ListView -->
                     <ListView x:Name="HistoryListView" Visibility="Collapsed" SelectionMode="None"
                               IsItemClickEnabled="True" ItemClick="HistoryListView_ItemClick"
-                          ItemsSource="{Binding HistoryItems}"
-                           Background="Transparent" HorizontalAlignment="Stretch">
+                              Background="Transparent" HorizontalAlignment="Stretch">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid Padding="12,8" Background="Transparent">

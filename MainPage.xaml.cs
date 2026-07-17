@@ -318,6 +318,7 @@ namespace EdgeRebuild
             if (FavoritesManager.Instance.ContainsUrl(url)) { var item = FavoritesManager.Instance.Favorites.FirstOrDefault(f => f.Url == url); if (item != null) FavoritesManager.Instance.Remove(item); }
             else FavoritesManager.Instance.Add(!string.IsNullOrEmpty(_currentTab.Title) ? _currentTab.Title : url, url);
             UpdateStarButton();
+            if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
         }
 
         private void ToolbarControl_HubClicked()
@@ -713,6 +714,7 @@ namespace EdgeRebuild
             }
             UpdateStarButton();
             _ = new ContentDialog { Title = "完成", Content = $"已将 {count} 个标签页加入收藏。", CloseButtonText = "确定" }.ShowAsync();
+            if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
         }
         private async Task ClearBrowsingDataAsync()
         {
