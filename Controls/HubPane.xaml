@@ -49,47 +49,34 @@
 
             <ScrollViewer>
                 <Grid>
-                    <!-- 收藏夹 ListView -->
-                    <ListView x:Name="FavListView" Visibility="Visible" SelectionMode="None"
-                              IsItemClickEnabled="True" ItemClick="FavListView_ItemClick"
-                              Background="Transparent" HorizontalAlignment="Stretch">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Padding="12,8" Background="Transparent">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                              Foreground="Gold" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
-                                        <TextBlock Text="{Binding Url}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
+                    <!-- 收藏夹 ListView（无 ItemTemplate） -->
+                    <ListView x:Name="FavListView" 
+                              Visibility="Visible" 
+                              SelectionMode="None"
+                              IsItemClickEnabled="True" 
+                              ItemClick="FavListView_ItemClick"
+                              Background="Transparent"
+                              MinHeight="300"
+                              HorizontalAlignment="Stretch">
                     </ListView>
 
-                    <!-- 历史记录 ListView -->
-                    <ListView x:Name="HistoryListView" Visibility="Collapsed" SelectionMode="None"
-                              IsItemClickEnabled="True" ItemClick="HistoryListView_ItemClick"
-                              Background="Transparent" HorizontalAlignment="Stretch">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Padding="12,8" Background="Transparent">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="14"/>
-                                        <TextBlock Text="{Binding Url}" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
+                    <!-- 历史记录 ListView（无 ItemTemplate） -->
+                    <ListView x:Name="HistoryListView" 
+                              Visibility="Collapsed" 
+                              SelectionMode="None"
+                              IsItemClickEnabled="True" 
+                              ItemClick="HistoryListView_ItemClick"
+                              Background="Transparent"
+                              MinHeight="300"
+                              HorizontalAlignment="Stretch">
                     </ListView>
 
                     <!-- 下载容器 -->
-                    <ScrollViewer x:Name="DownloadsContainer" Visibility="Collapsed"
-                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    <ScrollViewer x:Name="DownloadsContainer" 
+                                  Visibility="Collapsed"
+                                  MinHeight="200"
+                                  HorizontalAlignment="Stretch" 
+                                  VerticalAlignment="Stretch">
                         <StackPanel x:Name="DownloadsStackPanel" Orientation="Vertical" HorizontalAlignment="Stretch"/>
                     </ScrollViewer>
                 </Grid>

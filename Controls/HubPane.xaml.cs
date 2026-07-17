@@ -24,11 +24,9 @@ namespace EdgeRebuild.Controls
 
         private void OnHubPaneLoaded(object sender, RoutedEventArgs e)
         {
-            // 只加载一次数据
             RefreshFavorites();
             RefreshHistory();
             LoadDownloads();
-
             HubNavView.SelectedItem = HubNavView.MenuItems[0];
         }
 
@@ -43,16 +41,96 @@ namespace EdgeRebuild.Controls
         {
             if (FavListView == null) return;
             FavListView.Items.Clear();
+
             foreach (var fav in FavoritesManager.Instance.Favorites)
-                FavListView.Items.Add(fav);
+            {
+                var grid = new Grid
+                {
+                    Padding = new Thickness(12, 8, 12, 8),   // 修正：4个参数
+                    Background = new SolidColorBrush(Colors.Transparent)
+                };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                // 星标图标
+                var icon = new FontIcon
+                {
+                    Glyph = "\uE735",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 14,
+                    Foreground = new SolidColorBrush(Colors.Gold),
+                    Margin = new Thickness(0, 0, 8, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(icon, 0);
+                grid.Children.Add(icon);
+
+                // 标题与链接
+                var stack = new StackPanel();
+                Grid.SetColumn(stack, 1);
+
+                var titleBlock = new TextBlock
+                {
+                    Text = fav.Title,
+                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+                    FontSize = 14,
+                    Foreground = ForegroundBrush
+                };
+                var urlBlock = new TextBlock
+                {
+                    Text = fav.Url,
+                    FontSize = 12,
+                    Foreground = MutedForegroundBrush,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                stack.Children.Add(titleBlock);
+                stack.Children.Add(urlBlock);
+
+                grid.Children.Add(stack);
+
+                // 保存 URL 以便点击事件
+                grid.Tag = fav.Url;
+
+                FavListView.Items.Add(grid);
+            }
         }
 
         public void RefreshHistory()
         {
             if (HistoryListView == null) return;
             HistoryListView.Items.Clear();
-            foreach (var item in HistoryManager.History)
-                HistoryListView.Items.Add(item);
+
+            foreach (var hist in HistoryManager.History)
+            {
+                var grid = new Grid
+                {
+                    Padding = new Thickness(12, 8, 12, 8),   // 修正：4个参数
+                    Background = new SolidColorBrush(Colors.Transparent)
+                };
+                var stack = new StackPanel();
+
+                var titleBlock = new TextBlock
+                {
+                    Text = hist.Title,
+                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
+                    FontSize = 14,
+                    Foreground = ForegroundBrush
+                };
+                var urlBlock = new TextBlock
+                {
+                    Text = hist.Url,
+                    FontSize = 12,
+                    Foreground = MutedForegroundBrush,
+                    TextTrimming = TextTrimming.CharacterEllipsis
+                };
+                stack.Children.Add(titleBlock);
+                stack.Children.Add(urlBlock);
+
+                grid.Children.Add(stack);
+                grid.Tag = hist.Url;
+
+                HistoryListView.Items.Add(grid);
+            }
         }
 
         public void RefreshDownloads() => LoadDownloads();
@@ -63,10 +141,23 @@ namespace EdgeRebuild.Controls
                 HubNavView.SelectedItem = HubNavView.MenuItems[1];
         }
 
+        private void FavListView_ItemClick(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is FrameworkElement element && element.Tag is string url)
+                NavigateRequested?.Invoke(url);
+        }
+
+        private void HistoryListView_ItemClick(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is FrameworkElement element && element.Tag is string url)
+                NavigateRequested?.Invoke(url);
+        }
+
         public void LoadDownloads()
         {
             if (DownloadsStackPanel == null) return;
             DownloadsStackPanel.Children.Clear();
+
             if (!DownloadManager.CanUseSystemDownloadFolder)
             {
                 DownloadsStackPanel.Children.Add(new TextBlock
@@ -81,7 +172,11 @@ namespace EdgeRebuild.Controls
 
             foreach (var item in DownloadManager.Downloads)
             {
-                var container = new Grid { Margin = new Thickness(4, 6, 4, 6), HorizontalAlignment = HorizontalAlignment.Stretch };
+                var container = new Grid
+                {
+                    Margin = new Thickness(4, 6, 4, 6),
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
                 container.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 container.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -95,6 +190,7 @@ namespace EdgeRebuild.Controls
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     MaxWidth = 320
                 };
+
                 if (item.Deleted)
                 {
                     nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.Strikethrough;
@@ -103,47 +199,130 @@ namespace EdgeRebuild.Controls
                 else if (item.Status == "已完成")
                 {
                     nameBlock.Tapped += async (_, _) =>
-                    { try { var f = await StorageFile.GetFileFromPathAsync(item.FullPath); await Windows.System.Launcher.LaunchFileAsync(f); } catch { } };
-                    nameBlock.PointerEntered += (_, _) => nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.Underline;
-                    nameBlock.PointerExited += (_, _) => nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.None;
+                    {
+                        try
+                        {
+                            var f = await StorageFile.GetFileFromPathAsync(item.FullPath);
+                            await Windows.System.Launcher.LaunchFileAsync(f);
+                        }
+                        catch { }
+                    };
+                    nameBlock.PointerEntered += (_, _) =>
+                        nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.Underline;
+                    nameBlock.PointerExited += (_, _) =>
+                        nameBlock.TextDecorations = Windows.UI.Text.TextDecorations.None;
                     nameBlock.Foreground = new SolidColorBrush(Colors.DodgerBlue);
                 }
                 leftStack.Children.Add(nameBlock);
 
                 if (item.Status == "已完成" && !item.Deleted)
-                    leftStack.Children.Add(new TextBlock { Text = item.FullPath, FontSize = 10, Foreground = MutedForegroundBrush, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 0, 2) });
+                    leftStack.Children.Add(new TextBlock
+                    {
+                        Text = item.FullPath,
+                        FontSize = 10,
+                        Foreground = MutedForegroundBrush,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        Margin = new Thickness(0, 0, 0, 2)
+                    });
                 else if (item.Deleted)
-                    leftStack.Children.Add(new TextBlock { Text = "文件已删除", FontSize = 11, Foreground = new SolidColorBrush(Colors.Red), Margin = new Thickness(0, 0, 0, 2) });
+                    leftStack.Children.Add(new TextBlock
+                    {
+                        Text = "文件已删除",
+                        FontSize = 11,
+                        Foreground = new SolidColorBrush(Colors.Red),
+                        Margin = new Thickness(0, 0, 0, 2)
+                    });
 
                 if (!item.Deleted && item.Status != "已完成" && item.Status != "下载失败")
                 {
-                    var progress = new Windows.UI.Xaml.Controls.ProgressBar { Maximum = 100, Value = item.Progress, IsIndeterminate = item.Indeterminate, Height = 4, Margin = new Thickness(0, 2, 0, 2) };
+                    var progress = new Windows.UI.Xaml.Controls.ProgressBar
+                    {
+                        Maximum = 100,
+                        Value = item.Progress,
+                        IsIndeterminate = item.Indeterminate,
+                        Height = 4,
+                        Margin = new Thickness(0, 2, 0, 2)
+                    };
                     leftStack.Children.Add(progress);
                 }
 
                 string statusText = item.Status;
-                if (item.Status == "下载中" && !item.Indeterminate) statusText += $" - {item.Progress:F1}%";
-                else if (item.Status == "下载中" && item.Indeterminate) statusText += " (大小未知)";
-                leftStack.Children.Add(new TextBlock { Text = statusText, FontSize = 11, Foreground = MutedForegroundBrush });
+                if (item.Status == "下载中" && !item.Indeterminate)
+                    statusText += $" - {item.Progress:F1}%";
+                else if (item.Status == "下载中" && item.Indeterminate)
+                    statusText += " (大小未知)";
+                leftStack.Children.Add(new TextBlock
+                {
+                    Text = statusText,
+                    FontSize = 11,
+                    Foreground = MutedForegroundBrush
+                });
 
                 Grid.SetColumn(leftStack, 0);
                 container.Children.Add(leftStack);
 
-                var buttonsPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                var buttonsPanel = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+
                 if (item.Status == "下载中")
-                    buttonsPanel.Children.Add(CreateIconButton("\uE769", "暂停", () => { item.Pause(); LoadDownloads(); }));
+                    buttonsPanel.Children.Add(CreateIconButton("\uE769", "暂停", () =>
+                    {
+                        item.Pause();
+                        LoadDownloads();
+                    }));
                 else if (item.Status == "已暂停")
-                    buttonsPanel.Children.Add(CreateIconButton("\uE768", "继续", () => { item.Resume(); LoadDownloads(); }));
+                    buttonsPanel.Children.Add(CreateIconButton("\uE768", "继续", () =>
+                    {
+                        item.Resume();
+                        LoadDownloads();
+                    }));
+
                 if (item.Status == "下载中" || item.Status == "已暂停")
-                    buttonsPanel.Children.Add(CreateIconButton("\uE711", "取消", () => { item.Cancel(); LoadDownloads(); }));
+                    buttonsPanel.Children.Add(CreateIconButton("\uE711", "取消", () =>
+                    {
+                        item.Cancel();
+                        LoadDownloads();
+                    }));
+
                 if (item.Status == "已中断" || item.Status == "下载失败" || item.Status == "已取消")
-                    buttonsPanel.Children.Add(CreateIconButton("\uE72C", "重试", async () => { await item.RetryAsync(); LoadDownloads(); }));
+                    buttonsPanel.Children.Add(CreateIconButton("\uE72C", "重试", async () =>
+                    {
+                        await item.RetryAsync();
+                        LoadDownloads();
+                    }));
+
                 if (item.Status == "已完成" && !item.Deleted)
                 {
-                    buttonsPanel.Children.Add(CreateIconButton("\uE8E5", "打开", async () => { try { var f = await StorageFile.GetFileFromPathAsync(item.FullPath); await Windows.System.Launcher.LaunchFileAsync(f); } catch { } }));
-                    buttonsPanel.Children.Add(CreateIconButton("\uE838", "文件夹", async () => { try { var f = await StorageFile.GetFileFromPathAsync(item.FullPath); var folder = await f.GetParentAsync(); if (folder != null) await Windows.System.Launcher.LaunchFolderAsync(folder); } catch { } }));
+                    buttonsPanel.Children.Add(CreateIconButton("\uE8E5", "打开", async () =>
+                    {
+                        try
+                        {
+                            var f = await StorageFile.GetFileFromPathAsync(item.FullPath);
+                            await Windows.System.Launcher.LaunchFileAsync(f);
+                        }
+                        catch { }
+                    }));
+                    buttonsPanel.Children.Add(CreateIconButton("\uE838", "文件夹", async () =>
+                    {
+                        try
+                        {
+                            var f = await StorageFile.GetFileFromPathAsync(item.FullPath);
+                            var folder = await f.GetParentAsync();
+                            if (folder != null)
+                                await Windows.System.Launcher.LaunchFolderAsync(folder);
+                        }
+                        catch { }
+                    }));
                 }
-                buttonsPanel.Children.Add(CreateIconButton("\uE74D", "删除记录", async () => { await DownloadManager.DeleteDownloadAsync(item); LoadDownloads(); }));
+
+                buttonsPanel.Children.Add(CreateIconButton("\uE74D", "删除记录", async () =>
+                {
+                    await DownloadManager.DeleteDownloadAsync(item);
+                    LoadDownloads();
+                }));
 
                 Grid.SetColumn(buttonsPanel, 1);
                 container.Children.Add(buttonsPanel);
@@ -171,18 +350,6 @@ namespace EdgeRebuild.Controls
             return btn;
         }
 
-        private void FavListView_ItemClick(object sender, ItemClickEventArgs e)
-        {
-            if (e.ClickedItem is FavoriteItem fav)
-                NavigateRequested?.Invoke(fav.Url);
-        }
-
-        private void HistoryListView_ItemClick(object sender, ItemClickEventArgs e)
-        {
-            if (e.ClickedItem is HistoryItem hist)
-                NavigateRequested?.Invoke(hist.Url);
-        }
-
         private void HubNavView_SelectionChanged(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
         {
             if (args.SelectedItem is Microsoft.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
@@ -190,7 +357,9 @@ namespace EdgeRebuild.Controls
                 FavListView.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
                 HistoryListView.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
                 DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
-                if (tag == "Downloads") LoadDownloads();
+
+                if (tag == "Downloads")
+                    LoadDownloads();
             }
         }
     }
