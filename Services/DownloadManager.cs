@@ -41,16 +41,8 @@ namespace EdgeRebuild.Services
         public DateTime StartTime { get; set; } = DateTime.Now;
         public CoreWebView2DownloadOperation WebViewOperation { get; set; }
 
-        public long TotalBytesToReceive
-        {
-            get => _totalBytes;
-            set { _totalBytes = value; OnPropertyChanged(nameof(TotalBytesToReceive)); Indeterminate = (value <= 0); }
-        }
-        public bool Indeterminate
-        {
-            get => _indeterminate;
-            set { _indeterminate = value; OnPropertyChanged(nameof(Indeterminate)); }
-        }
+        public long TotalBytesToReceive { get => _totalBytes; set { _totalBytes = value; OnPropertyChanged(nameof(TotalBytesToReceive)); Indeterminate = (value <= 0); } }
+        public bool Indeterminate { get => _indeterminate; set { _indeterminate = value; OnPropertyChanged(nameof(Indeterminate)); } }
         public string Status
         {
             get => _status;
@@ -68,21 +60,9 @@ namespace EdgeRebuild.Services
                 }
             }
         }
-        public double Progress
-        {
-            get => _progress;
-            set { if (Math.Abs(_progress - value) > 0.05) { _progress = value; OnPropertyChanged(nameof(Progress)); } }
-        }
-        public bool Deleted
-        {
-            get => _deleted;
-            set { _deleted = value; OnPropertyChanged(nameof(Deleted)); }
-        }
-        public bool IsCompleted
-        {
-            get => _isCompleted;
-            set { _isCompleted = value; OnPropertyChanged(nameof(IsCompleted)); }
-        }
+        public double Progress { get => _progress; set { if (Math.Abs(_progress - value) > 0.05) { _progress = value; OnPropertyChanged(nameof(Progress)); } } }
+        public bool Deleted { get => _deleted; set { _deleted = value; OnPropertyChanged(nameof(Deleted)); } }
+        public bool IsCompleted { get => _isCompleted; set { _isCompleted = value; OnPropertyChanged(nameof(IsCompleted)); } }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
@@ -110,13 +90,11 @@ namespace EdgeRebuild.Services
             catch (Exception ex) { Debug.WriteLine($"取消失败: {ex.Message}"); }
         }
 
-        // 重试下载（简单实现：标记为下载失败，实际重新下载需外部重新触发）
-        public async Task RetryAsync()
+        public void Retry()
         {
-            if (Status != "已中断" && Status != "已取消" && Status != "下载失败") return;
-            // 由于隐蔽下载器已销毁，此处仅重置状态，由外部调用者决定是否重新下载（目前HubPane不实现重试逻辑，仅用于消除编译错误）
-            Status = "下载失败";
-            await Task.CompletedTask;
+            if (Status != "已中断" && Status != "下载失败" && Status != "已取消") return;
+            Status = "下载中";
+            DownloadManager.OnRetryRequested(this);
         }
     }
 
@@ -125,6 +103,8 @@ namespace EdgeRebuild.Services
         public static ObservableCollection<DownloadItem> Downloads { get; } = new ObservableCollection<DownloadItem>();
         public static Action<DownloadItem> DownloadProgressChanged;
         public static Action<DownloadItem> DownloadStatusChanged;
+        public static Action<DownloadItem> RetryDownloadRequested;
+
         private static bool _canUseSystemFolder = false;
         private static bool _checkedSystemFolder = false;
         private static readonly SQLiteAsyncConnection _db = DatabaseService.Database;
@@ -201,7 +181,7 @@ namespace EdgeRebuild.Services
                     FullPath = realPath,
                     Status = rec.Status,
                     Progress = rec.Progress,
-                    Deleted = !fileExists && rec.IsCompleted,
+                    Deleted = rec.Deleted,
                     IsCompleted = rec.IsCompleted
                 };
                 Downloads.Add(item);
@@ -218,7 +198,7 @@ namespace EdgeRebuild.Services
             }
         }
 
-        public static async Task SaveDownloadAsync(DownloadItem item)
+        private static async Task SaveDownloadAsync(DownloadItem item)
         {
             var record = new DownloadRecord
             {
@@ -231,8 +211,22 @@ namespace EdgeRebuild.Services
                 Deleted = item.Deleted,
                 IsCompleted = item.IsCompleted
             };
-            await _db.InsertOrReplaceAsync(record);
-            item.Id = record.Id;
+
+            if (item.Id == 0)
+            {
+                await _db.InsertAsync(record);
+                item.Id = record.Id;
+            }
+            else
+            {
+                await _db.UpdateAsync(record);
+            }
+        }
+
+        public static async Task SaveAllDownloadsAsync()
+        {
+            foreach (var item in Downloads)
+                await SaveDownloadAsync(item);
         }
 
         public static async Task DeleteDownloadAsync(DownloadItem item)
@@ -249,7 +243,7 @@ namespace EdgeRebuild.Services
                 (url == null || d.Url == url));
         }
 
-        public static DownloadItem Add(string url, string fullPath, string fileName)
+        public static async Task<DownloadItem> AddAsync(string url, string fullPath, string fileName)
         {
             var item = new DownloadItem
             {
@@ -261,9 +255,49 @@ namespace EdgeRebuild.Services
                 StartTime = DateTime.Now,
                 IsCompleted = false
             };
+            await SaveDownloadAsync(item);
             Downloads.Insert(0, item);
-            _ = SaveDownloadAsync(item);
             return item;
+        }
+
+        public static void StartDownloadOperation(DownloadItem item)
+        {
+            var op = item.WebViewOperation;
+            if (op == null) return;
+
+            op.BytesReceivedChanged += (_, _) =>
+            {
+                if (op.TotalBytesToReceive > 0)
+                {
+                    item.TotalBytesToReceive = op.TotalBytesToReceive;
+                    item.Progress = Math.Min((double)op.BytesReceived / op.TotalBytesToReceive * 100, 100);
+                }
+                else item.Indeterminate = true;
+                DownloadProgressChanged?.Invoke(item);
+            };
+            op.StateChanged += async (_, s) =>
+            {
+                if (op.State == CoreWebView2DownloadState.Completed)
+                {
+                    item.Status = "已完成";
+                    item.Progress = 100;
+                    item.IsCompleted = true;
+                    await SaveDownloadAsync(item);
+                    DownloadStatusChanged?.Invoke(item);
+                    NotificationService.ShowToast("下载完成", item.FileName);
+                }
+                else if (op.State == CoreWebView2DownloadState.Interrupted)
+                {
+                    item.Status = "已中断";
+                    await SaveDownloadAsync(item);
+                    DownloadStatusChanged?.Invoke(item);
+                }
+            };
+        }
+
+        public static void OnRetryRequested(DownloadItem item)
+        {
+            RetryDownloadRequested?.Invoke(item);
         }
 
         public static void ClearCompleted()
