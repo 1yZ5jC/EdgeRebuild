@@ -16,16 +16,19 @@ namespace EdgeRebuild.Core
         private SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
         private string _faviconUri = "";
         private string _title = "";
+        private bool _isSuspended = false;
+        private string _suspendedUrl = "";
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
         public bool CanGoBack => _webView.CoreWebView2?.CanGoBack ?? false;
         public bool CanGoForward => _webView.CoreWebView2?.CanGoForward ?? false;
-        public string CurrentUrl => _webView.Source?.ToString() ?? "";
+        public string CurrentUrl => _isSuspended ? _suspendedUrl : (_webView.Source?.ToString() ?? "");
         public EngineType Engine => EngineType.WebView2;
         public string EngineIcon => "🧬";
         public string Title => _title;
         public string FaviconUri => _faviconUri;
+        public bool IsSuspended => _isSuspended;
 
         public CoreWebView2 CoreWebView2 => _webView?.CoreWebView2;
 
@@ -64,11 +67,57 @@ namespace EdgeRebuild.Core
             finally { _initLock.Release(); }
         }
 
+        // ========== 挂起/恢复 ==========
+        public async Task SuspendAsync()
+        {
+            if (_isSuspended) return;
+            if (_webView.CoreWebView2 == null)
+            {
+                // WebView2 未初始化，保存当前 URL 然后挂起（下次恢复时重新导航）
+                _suspendedUrl = _webView.Source?.ToString() ?? "";
+                _isSuspended = true;
+                return;
+            }
+            try
+            {
+                _suspendedUrl = _webView.Source?.ToString() ?? "";
+                await _webView.CoreWebView2.TrySuspendAsync();
+                _isSuspended = true;
+                System.Diagnostics.Debug.WriteLine($"Tab {Id} suspended");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Suspend failed: {ex.Message}");
+            }
+        }
+
+        public async Task ResumeAsync()
+        {
+            if (!_isSuspended) return;
+            _isSuspended = false;
+
+            if (_webView.CoreWebView2 != null)
+            {
+                _webView.CoreWebView2.Resume();
+                // 恢复后可能需要强制刷新导航以确保界面正常
+                if (!string.IsNullOrEmpty(_suspendedUrl) && _webView.Source?.ToString() != _suspendedUrl)
+                {
+                    _webView.CoreWebView2.Navigate(_suspendedUrl);
+                }
+            }
+            else
+            {
+                // CoreWebView2 已被释放，重新导航
+                await NavigateAsync(_suspendedUrl);
+            }
+            System.Diagnostics.Debug.WriteLine($"Tab {Id} resumed");
+        }
+
         // ========== 下载拦截 ==========
         private async void OnDownloadStarting(object sender, CoreWebView2DownloadStartingEventArgs e)
         {
             var op = e.DownloadOperation;
-            e.Handled = true;               // 阻止默认下载 UI
+            e.Handled = true;
 
             string url = op.Uri ?? "";
             string fileName = Path.GetFileName(op.ResultFilePath);
@@ -81,7 +130,6 @@ namespace EdgeRebuild.Core
             }
             catch { }
 
-            // 去重：已存在的文件直接打开
             var existing = Services.DownloadManager.FindCompletedByFileNameSync(fileName, url);
             if (existing != null)
             {
@@ -95,20 +143,18 @@ namespace EdgeRebuild.Core
 
             if (askBeforeDownload)
             {
-                e.Cancel = true; // 取消本次下载，让用户通过对话框重新选择
+                e.Cancel = true;
                 var dialog = new Controls.DownloadDialog(fileName, url, defaultFolder);
                 if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                 {
                     if (dialog.SelectedFolder != null && !string.IsNullOrWhiteSpace(dialog.FileName))
                     {
-                        // 通知 MainPage 使用隐蔽下载器以自定义路径重新下载
                         DownloadRequested?.Invoke(url, dialog.SelectedFolder, dialog.FileName);
                     }
                 }
             }
             else
             {
-                // 直接设置下载路径
                 string filePath = Path.Combine(defaultFolder.Path, fileName);
                 if (File.Exists(filePath))
                 {
@@ -117,7 +163,7 @@ namespace EdgeRebuild.Core
                     int counter = 1;
                     while (File.Exists(filePath = Path.Combine(defaultFolder.Path, $"{name} ({counter++}){ext}"))) ;
                 }
-                e.ResultFilePath = filePath;            // 在事件参数中设置路径
+                e.ResultFilePath = filePath;
                 var item = await Services.DownloadManager.AddAsync(url, filePath, Path.GetFileName(filePath));
                 item.WebViewOperation = op;
                 item.TotalBytesToReceive = op.TotalBytesToReceive;
@@ -125,13 +171,16 @@ namespace EdgeRebuild.Core
             }
         }
 
-        // ========== 其余原有方法 ==========
+        // ========== 其余原有方法（保持不变） ==========
         private void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
         {
-            UrlChanged?.Invoke(sender.Source?.ToString() ?? "");
-            UpdateTitleFromDocument();
-            CheckNavigationState();
-            ExtractFavicon();
+            if (!_isSuspended)
+            {
+                UrlChanged?.Invoke(sender.Source?.ToString() ?? "");
+                UpdateTitleFromDocument();
+                CheckNavigationState();
+                ExtractFavicon();
+            }
         }
 
         private void OnDocumentTitleChanged(object sender, object e) => UpdateTitleFromDocument();

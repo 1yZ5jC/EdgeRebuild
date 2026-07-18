@@ -1,5 +1,4 @@
 ﻿using EdgeRebuild.Services;
-using Microsoft.UI.Xaml.Controls;
 using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -9,10 +8,9 @@ namespace EdgeRebuild.Controls
     public sealed partial class SettingsPane : UserControl
     {
         public event EventHandler CloseRequested;
-
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle;
+        private ToggleSwitch _askToggle, _suspendToggle;
 
         public SettingsPane()
         {
@@ -23,34 +21,34 @@ namespace EdgeRebuild.Controls
 
         private void BuildContentPanels()
         {
-            _panels = new UIElement[5];
+            _panels = new UIElement[6];
 
-            // 外观
-            var appearancePanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
-            appearancePanel.Children.Add(new TextBlock { Text = "皮肤", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness { Bottom = 8 } });
+            // 外观 (0)
+            var appearancePanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+            appearancePanel.Children.Add(new TextBlock { Text = "皮肤", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _spartanRadio = new RadioButton { Content = "经典 Edge", GroupName = "Skin" };
-            _modernIERadio = new RadioButton { Content = "Modern IE", GroupName = "Skin", Margin = new Thickness { Top = 4 } };
+            _modernIERadio = new RadioButton { Content = "Modern IE", GroupName = "Skin", Margin = new Thickness(0, 4, 0, 0) };
             appearancePanel.Children.Add(_spartanRadio);
             appearancePanel.Children.Add(_modernIERadio);
             _panels[0] = appearancePanel;
 
-            // 下载
-            var downloadPanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
+            // 下载 (1)
+            var downloadPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             _askToggle = new ToggleSwitch { Header = "下载前询问" };
             downloadPanel.Children.Add(_askToggle);
             _panels[1] = downloadPanel;
 
-            // 引擎
-            var enginePanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
-            enginePanel.Children.Add(new TextBlock { Text = "默认渲染引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness { Bottom = 8 } });
+            // 引擎 (2)
+            var enginePanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+            enginePanel.Children.Add(new TextBlock { Text = "默认渲染引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _edgeRadio = new RadioButton { Content = "EdgeHTML", GroupName = "DefaultEngine" };
-            _webviewRadio = new RadioButton { Content = "WebView2", GroupName = "DefaultEngine", Margin = new Thickness { Top = 4 } };
+            _webviewRadio = new RadioButton { Content = "WebView2", GroupName = "DefaultEngine", Margin = new Thickness(0, 4, 0, 0) };
             enginePanel.Children.Add(_edgeRadio);
             enginePanel.Children.Add(_webviewRadio);
             _panels[2] = enginePanel;
 
-            // 隐私
-            var privacyPanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
+            // 隐私 (3)
+            var privacyPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             var clearBtn = new Button { Content = "清除浏览数据" };
             clearBtn.Click += async (s, e) =>
             {
@@ -61,22 +59,25 @@ namespace EdgeRebuild.Controls
             privacyPanel.Children.Add(clearBtn);
             _panels[3] = privacyPanel;
 
-            // 关于
-            var aboutPanel = new StackPanel { Margin = new Thickness { Left = 12, Top = 8, Right = 12, Bottom = 8 } };
+            // 性能 (4) - 新增挂起开关
+            var perfPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+            _suspendToggle = new ToggleSwitch { Header = "后台标签自动挂起（节省内存）" };
+            _suspendToggle.Toggled += async (s, e) =>
+            {
+                await SettingsManager.SetAsync("EnableTabSuspend", _suspendToggle.IsOn.ToString());
+            };
+            perfPanel.Children.Add(_suspendToggle);
+            _panels[4] = perfPanel;
+
+            // 关于 (5)
+            var aboutPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             aboutPanel.Children.Add(new TextBlock { Text = "Edge Rebuild", FontWeight = Windows.UI.Text.FontWeights.SemiBold, FontSize = 16 });
-            aboutPanel.Children.Add(new TextBlock { Text = "版本 0.2 Alpha", Margin = new Thickness { Top = 4 } });
-            aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness { Top = 8 }, TextWrapping = TextWrapping.Wrap });
-            _panels[4] = aboutPanel;
+            aboutPanel.Children.Add(new TextBlock { Text = "版本 0.2 Alpha", Margin = new Thickness(0, 4, 0, 0) });
+            aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap });
+            _panels[5] = aboutPanel;
 
+            // 加载设置
             LoadSettingsAsync();
-
-            _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
-            _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
-            _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
-            _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
-            _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
-
-            ContentArea.Content = _panels[0];
         }
 
         private async void LoadSettingsAsync()
@@ -91,6 +92,16 @@ namespace EdgeRebuild.Controls
             string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
             _edgeRadio.IsChecked = (engine != "WebView2");
             _webviewRadio.IsChecked = (engine == "WebView2");
+
+            string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
+            _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
+
+            // 事件绑定
+            _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
+            _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
+            _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
+            _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
+            _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
         }
 
         private async void SaveSkin(string skin) => await SettingsManager.SetAsync("Skin", skin);
@@ -106,13 +117,17 @@ namespace EdgeRebuild.Controls
                     "Download" => 1,
                     "Engine" => 2,
                     "Privacy" => 3,
-                    "About" => 4,
+                    "Performance" => 4,
+                    "About" => 5,
                     _ => 0
                 };
                 if (index < _panels.Length) ContentArea.Content = _panels[index];
             }
         }
 
-        private void CloseButton_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke(this, EventArgs.Empty);
+        private void CloseButton_Click(object sender, RoutedEventArgs e)
+        {
+            CloseRequested?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

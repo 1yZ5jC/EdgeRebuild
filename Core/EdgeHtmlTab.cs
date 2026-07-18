@@ -11,6 +11,18 @@ namespace EdgeRebuild.Core
         private WebView _webView;
         private string _faviconUri = "";
         private string _title = "";
+        public bool IsSuspended => false;
+
+        public Task SuspendAsync()
+        {
+            // EdgeHTML 不支持挂起，简单忽略
+            return Task.CompletedTask;
+        }
+
+        public Task ResumeAsync()
+        {
+            return Task.CompletedTask;
+        }
 
         // 静态事件：通知 MainPage 有下载链接需要处理
         public static event Action<string> DownloadRequested;

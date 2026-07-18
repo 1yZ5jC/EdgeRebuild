@@ -16,6 +16,11 @@ namespace EdgeRebuild.Core
         string Title { get; }
         string FaviconUri { get; }
 
+        // 挂起相关
+        bool IsSuspended { get; }
+        Task SuspendAsync();
+        Task ResumeAsync();
+
         Task NavigateAsync(string url);
         Task GoBackAsync();
         Task GoForwardAsync();

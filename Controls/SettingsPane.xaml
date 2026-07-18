@@ -63,6 +63,11 @@
                     <FontIcon Glyph="&#xE7EB;" FontFamily="Segoe MDL2 Assets"/>
                 </muxc:NavigationViewItem.Icon>
             </muxc:NavigationViewItem>
+            <muxc:NavigationViewItem Content="性能" Tag="Performance">
+                <muxc:NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE787;" FontFamily="Segoe MDL2 Assets"/>
+                </muxc:NavigationViewItem.Icon>
+            </muxc:NavigationViewItem>
             <muxc:NavigationViewItem Content="关于" Tag="About">
                 <muxc:NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE946;" FontFamily="Segoe MDL2 Assets"/>
@@ -73,6 +78,5 @@
         <ContentControl x:Name="ContentArea" 
                         HorizontalContentAlignment="Stretch" 
                         VerticalContentAlignment="Stretch"/>
-
     </muxc:NavigationView>
 </UserControl>

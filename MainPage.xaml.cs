@@ -66,6 +66,11 @@ namespace EdgeRebuild
         private bool _askBeforeDownload;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
 
+        // 后台标签挂起相关
+        private readonly Dictionary<IBrowserTab, DispatcherTimer> _suspendTimers = new Dictionary<IBrowserTab, DispatcherTimer>();
+        private const int SuspendDelaySeconds = 120;
+        private bool _enableTabSuspend = true;
+
         public MainPage()
         {
             this.InitializeComponent();
@@ -95,6 +100,10 @@ namespace EdgeRebuild
             EdgeHtmlTab.DownloadRequested -= OnEdgeHtmlDownloadRequested;
             WebView2Tab.DownloadRequested -= OnWebView2DownloadRequested;
             SettingsManager.SettingChanged -= OnSettingChanged;
+
+            foreach (var timer in _suspendTimers.Values)
+                timer.Stop();
+            _suspendTimers.Clear();
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -123,10 +132,12 @@ namespace EdgeRebuild
                 string engineSetting = await SettingsManager.GetAsync("DefaultEngine");
                 _defaultEngine = (engineSetting == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
 
+                string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
+                _enableTabSuspend = (suspendSetting == "True" || suspendSetting == "true");
+
                 await DownloadManager.UpdateSystemDownloadFolderAccessAsync();
                 await DownloadManager.LoadDownloadsAsync();
 
-                // 事件订阅
                 DownloadManager.DownloadProgressChanged += OnDownloadProgress;
                 DownloadManager.DownloadStatusChanged += OnDownloadStatusChanged;
                 DownloadManager.RetryDownloadRequested += OnRetryDownloadRequested;
@@ -174,18 +185,26 @@ namespace EdgeRebuild
                     case "DefaultEngine":
                         _defaultEngine = (newValue == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
                         break;
+                    case "EnableTabSuspend":
+                        _enableTabSuspend = (newValue == "True" || newValue == "true");
+                        if (!_enableTabSuspend)
+                        {
+                            foreach (var timer in _suspendTimers.Values)
+                                timer.Stop();
+                            _suspendTimers.Clear();
+                        }
+                        break;
                 }
             });
         }
 
-        // ========== 下载事件处理（增量更新） ==========
+        // 下载事件处理
         private void OnDownloadProgress(DownloadItem item) => hubPane.UpdateDownloadItem(item);
         private void OnDownloadStatusChanged(DownloadItem item) => hubPane.UpdateDownloadItem(item);
 
-        // ========== 下载重试 ==========
+        // 下载重试
         private async void OnRetryDownloadRequested(DownloadItem item)
         {
-            // 删除旧文件以便覆盖
             try
             {
                 if (File.Exists(item.FullPath))
@@ -196,11 +215,10 @@ namespace EdgeRebuild
             }
             catch { }
 
-            // 使用隐蔽下载器重新下载并指定原路径
             await PrepareStealthDownloaderAsync(item.Url, item.FullPath);
         }
 
-        // ========== 隐蔽下载器（EdgeHTML & 重试 & 询问后下载） ==========
+        // 隐蔽下载器
         private async void OnEdgeHtmlDownloadRequested(string url) => await PrepareStealthDownloaderAsync(url);
 
         private async void OnWebView2DownloadRequested(string url, StorageFolder folder, string fileName)
@@ -222,7 +240,6 @@ namespace EdgeRebuild
                 {
                     if (!string.IsNullOrEmpty(targetFilePath))
                     {
-                        // 重试直接指定路径
                         args.ResultFilePath = targetFilePath;
                         args.Handled = true;
                         var op = args.DownloadOperation;
@@ -245,7 +262,6 @@ namespace EdgeRebuild
                     }
                     else
                     {
-                        // 交给标准处理
                         OnStealthDownloadStarting(s, args);
                     }
                 };
@@ -331,7 +347,7 @@ namespace EdgeRebuild
             }
         }
 
-        // ========== 皮肤 ==========
+        // 皮肤
         private async void SwitchSkin(string name) { _currentSkin = name; ApplySkinColors(name); await SettingsManager.SetAsync("Skin", name); }
         private void ApplySkinColors(string skinName)
         {
@@ -350,7 +366,7 @@ namespace EdgeRebuild
             hubPane.MutedForegroundBrush = _mutedForegroundBrush;
         }
 
-        // ========== Toolbar 事件 ==========
+        // Toolbar 事件
         private async void ToolbarControl_UrlSubmitted(string url) => await _currentTab?.NavigateAsync(url);
         private async void ToolbarControl_BackRequested() { if (_currentTab?.CanGoBack == true) await _currentTab.GoBackAsync(); }
         private async void ToolbarControl_ForwardRequested() { if (_currentTab?.CanGoForward == true) await _currentTab.GoForwardAsync(); }
@@ -418,10 +434,17 @@ namespace EdgeRebuild
             await RebindTabAndSwitch(viewItem, newTab, currentUrl);
         }
 
-        // ========== 标签事件绑定 ==========
+        // 标签事件绑定
         private void BindTabEvents(TabViewItem viewItem, IBrowserTab tab)
         {
-            tab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => viewItem.TitleText.Text = string.IsNullOrEmpty(title) ? "新标签页" : title);
+            tab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                string displayTitle = string.IsNullOrEmpty(title) ? "新标签页" : title;
+                if (tab.IsSuspended)
+                    viewItem.TitleText.Text = "[已挂起] " + displayTitle;
+                else
+                    viewItem.TitleText.Text = displayTitle;
+            });
             tab.UrlChanged += (u) => { if (_currentTab == tab) { toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, u); UpdateStarButton(); } if (!string.IsNullOrEmpty(u) && u != "about:blank") HistoryManager.Add(tab.Title ?? u, u); };
             tab.CanGoBackChanged += (can) => { if (_currentTab == tab) toolbarControl.UpdateNavState(can, tab.CanGoForward, tab.CurrentUrl); };
             tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) toolbarControl.UpdateNavState(tab.CanGoBack, can, tab.CurrentUrl); };
@@ -440,22 +463,102 @@ namespace EdgeRebuild
             else await newTab.NavigateAsync("about:blank");
         }
 
+        // 辅助：更新挂起视觉
+        private void UpdateTabSuspendedVisual(TabViewItem viewItem, bool suspended)
+        {
+            viewItem.IsSuspended = suspended;
+            if (viewItem.SuspendedIndicator != null)
+            {
+                viewItem.SuspendedIndicator.Visibility = suspended ? Visibility.Visible : Visibility.Collapsed;
+            }
+            string originalTitle = viewItem.Tab.Title ?? "";
+            if (string.IsNullOrEmpty(originalTitle)) originalTitle = "新标签页";
+            viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
+        }
+
+        // 判断是否有活跃下载
+        private bool HasActiveDownload(IBrowserTab tab)
+        {
+            return DownloadManager.Downloads.Any(d => d.Status == "下载中" || d.Status == "已暂停");
+        }
+
+        // 标签切换（含挂起逻辑与视觉更新）
         private async Task SwitchToTabAsync(TabViewItem viewItem)
         {
             if (!_isLoaded || _currentTab == viewItem.Tab) return;
+
+            if (_enableTabSuspend && _currentTab != null && _suspendTimers.ContainsKey(_currentTab))
+            {
+                _suspendTimers[_currentTab].Stop();
+                _suspendTimers.Remove(_currentTab);
+            }
+
             ContentContainer.Child = null;
+            var previousTab = _currentTab;
             _currentTab = viewItem.Tab;
+
+            if (_currentTab is WebView2Tab wv2 && wv2.IsSuspended)
+            {
+                await wv2.ResumeAsync();
+                UpdateTabSuspendedVisual(viewItem, false);
+            }
+            else if (_currentTab is EdgeHtmlTab edgeTab && edgeTab.IsSuspended)
+            {
+                await edgeTab.ResumeAsync();
+                UpdateTabSuspendedVisual(viewItem, false);
+            }
+
             ContentContainer.Child = _currentTab.ViewElement;
-            if (_currentTab is WebView2Tab wv2) await wv2.EnsureInitializedAsync();
+            if (_currentTab is WebView2Tab wv2Tab) await wv2Tab.EnsureInitializedAsync();
+
             toolbarControl.SetEngine(_currentTab.Engine);
             toolbarControl.UpdateNavState(_currentTab.CanGoBack, _currentTab.CanGoForward, _currentTab.CurrentUrl);
             UpdateStarButton();
+
             foreach (var t in _tabViews) t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
+
+            if (_enableTabSuspend && previousTab != null && previousTab != _currentTab)
+            {
+                if (_suspendTimers.ContainsKey(previousTab))
+                {
+                    _suspendTimers[previousTab].Stop();
+                    _suspendTimers.Remove(previousTab);
+                }
+
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(SuspendDelaySeconds) };
+                timer.Tick += async (s, e) =>
+                {
+                    timer.Stop();
+                    var tab = previousTab;
+                    if (tab == _currentTab || tab.IsSuspended) return;
+
+                    if (HasActiveDownload(tab))
+                    {
+                        return;
+                    }
+
+                    if (tab is WebView2Tab wv2s)
+                    {
+                        await wv2s.SuspendAsync();
+                        var vi = _tabViews.FirstOrDefault(v => v.Tab == wv2s);
+                        if (vi != null) UpdateTabSuspendedVisual(vi, true);
+                    }
+                    else if (tab is EdgeHtmlTab edgeS)
+                    {
+                        await edgeS.SuspendAsync();
+                        var vi = _tabViews.FirstOrDefault(v => v.Tab == edgeS);
+                        if (vi != null) UpdateTabSuspendedVisual(vi, true);
+                    }
+                    _suspendTimers.Remove(tab);
+                };
+                _suspendTimers[previousTab] = timer;
+                timer.Start();
+            }
         }
 
         private void UpdateStarButton() { if (_currentTab != null) toolbarControl.UpdateFavoriteButton(FavoritesManager.Instance.ContainsUrl(_currentTab.CurrentUrl)); }
 
-        // ========== 标签创建 ==========
+        // 标签创建
         private async Task CreateNewTabAsync(EngineType engine, string url = null)
         {
             if (!_isLoaded) return;
@@ -468,13 +571,37 @@ namespace EdgeRebuild
             var faviconPlaceholder = new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\xE774", FontSize = 12, Foreground = new SolidColorBrush(Colors.Gray), Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center };
             var faviconImage = new Image { Width = 14, Height = 14, Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
             var titleText = new TextBlock { Text = "新标签页", TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 10, Foreground = _foregroundBrush, VerticalAlignment = VerticalAlignment.Center };
+            var suspendedIndicator = new TextBlock
+            {
+                Text = "💤",
+                FontSize = 10,
+                Foreground = new SolidColorBrush(Colors.Gray),
+                Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = Visibility.Collapsed
+            };
             var infoPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            infoPanel.Children.Add(engineMark); infoPanel.Children.Add(faviconPlaceholder); infoPanel.Children.Add(faviconImage); infoPanel.Children.Add(titleText);
+            infoPanel.Children.Add(engineMark);
+            infoPanel.Children.Add(faviconPlaceholder);
+            infoPanel.Children.Add(faviconImage);
+            infoPanel.Children.Add(suspendedIndicator);
+            infoPanel.Children.Add(titleText);
             Grid.SetColumn(infoPanel, 0); tabPanel.Children.Add(infoPanel);
             var closeBtn = new Button { Content = "\xE711", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 10, Foreground = _mutedForegroundBrush, Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(0), Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 4, 0) };
             Grid.SetColumn(closeBtn, 1); tabPanel.Children.Add(closeBtn);
             tabBorder.Child = tabPanel; TabBarPanel.Children.Add(tabBorder);
-            var viewItem = new TabViewItem { Tab = tab, TitleText = titleText, CloseButton = closeBtn, Container = tabBorder, FaviconImage = faviconImage, FaviconPlaceholder = faviconPlaceholder, EngineMark = engineMark };
+            var viewItem = new TabViewItem
+            {
+                Tab = tab,
+                TitleText = titleText,
+                CloseButton = closeBtn,
+                Container = tabBorder,
+                FaviconImage = faviconImage,
+                FaviconPlaceholder = faviconPlaceholder,
+                EngineMark = engineMark,
+                SuspendedIndicator = suspendedIndicator,
+                IsSuspended = false
+            };
             _tabViews.Add(viewItem);
             closeBtn.Click += (_, _) => CloseTab(viewItem);
             tabBorder.PointerPressed += OnTabPointerPressed; tabBorder.PointerMoved += OnTabPointerMoved; tabBorder.PointerReleased += OnTabPointerReleased; tabBorder.PointerCanceled += OnTabPointerReleased; tabBorder.RightTapped += OnTabRightTapped;
@@ -497,10 +624,17 @@ namespace EdgeRebuild
             _tabViews.RemoveAt(index);
             if (_currentTab == viewItem.Tab) { if (nextTab != null) _ = SwitchToTabAsync(nextTab); else _currentTab = null; }
             viewItem.Tab.Dispose();
+
+            if (_suspendTimers.ContainsKey(viewItem.Tab))
+            {
+                _suspendTimers[viewItem.Tab].Stop();
+                _suspendTimers.Remove(viewItem.Tab);
+            }
+
             if (_tabViews.Count == 0) _ = CreateNewTabAsync(_defaultEngine, "about:blank"); else UpdateTabLayout();
         }
 
-        // ========== 拖拽相关 ==========
+        // 拖拽相关
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
@@ -643,7 +777,7 @@ namespace EdgeRebuild
 
         private void SwitchToTab(TabViewItem viewItem) => _ = SwitchToTabAsync(viewItem);
 
-        // ========== 标签右键菜单 ==========
+        // 标签右键菜单
         private void OnTabRightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var border = sender as Border;
@@ -666,7 +800,7 @@ namespace EdgeRebuild
         private void CloseOtherTabs(TabViewItem keepItem) { foreach (var item in _tabViews.Where(t => t != keepItem).ToList()) CloseTab(item); }
         private void CloseTabsToRight(TabViewItem startItem) { int index = _tabViews.IndexOf(startItem); if (index < 0) return; foreach (var item in _tabViews.Skip(index + 1).ToList()) CloseTab(item); }
 
-        // ========== 网页右键菜单 ==========
+        // 网页右键菜单
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
             if (_currentTab is EdgeHtmlTab) return;
@@ -715,7 +849,7 @@ namespace EdgeRebuild
             if (targetElement != null) flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
         }
 
-        // ========== 引擎切换等辅助 ==========
+        // 引擎切换辅助
         private async Task SwitchCurrentTabEngine(EngineType newEngine)
         {
             if (_currentTab == null || _currentTab.Engine == newEngine) return;
@@ -771,21 +905,21 @@ namespace EdgeRebuild
         private void ShowAboutDialog() => _ = new ContentDialog { Title = "Edge Rebuild", Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。", CloseButtonText = "确定" }.ShowAsync();
         private async void ShowNotImplementedDialog(string feature) => await new ContentDialog { Title = "即将推出", Content = $"功能“{feature}”尚未实现。", CloseButtonText = "确定" }.ShowAsync();
 
-        // ========== HubPane 事件处理 ==========
+        // HubPane 事件
         private void HubPane_NavigateRequested(string url)
         {
             _currentTab?.NavigateAsync(url);
             HubSplitView.IsPaneOpen = false;
         }
 
-        // ========== 其他按钮事件 ==========
+        // 其他按钮事件
         private void NewTabBtn_Click(object sender, RoutedEventArgs e) => _ = CreateNewTabAsync(_defaultEngine, "about:blank");
         private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) => TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset - 100, null, null);
         private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) => TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset + 100, null, null);
         private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
         private void SettingsPane_CloseRequested(object sender, EventArgs e) => SettingsSplitView.IsPaneOpen = false;
 
-        // ========== 布局 ==========
+        // 布局
         private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e) { SetSafeZonePadding(); if (!_isDragging) UpdateTabLayout(); }
         private void SetSafeZonePadding()
         {
