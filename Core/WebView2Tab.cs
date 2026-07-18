@@ -18,6 +18,7 @@ namespace EdgeRebuild.Core
         private string _title = "";
         private bool _isSuspended = false;
         private string _suspendedUrl = "";
+        private bool _httpsFailed = false;
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
@@ -38,7 +39,7 @@ namespace EdgeRebuild.Core
         public event Action<bool> CanGoForwardChanged;
         public event Action<string> FaviconChanged;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
-        public event Action<string> NewWindowRequested;   // 新增
+        public event Action<string> NewWindowRequested;
 
         public static event Action<string, StorageFolder, string> DownloadRequested;
 
@@ -75,12 +76,7 @@ namespace EdgeRebuild.Core
         public async Task SuspendAsync()
         {
             if (_isSuspended) return;
-            if (_webView.CoreWebView2 == null)
-            {
-                _suspendedUrl = _webView.Source?.ToString() ?? "";
-                _isSuspended = true;
-                return;
-            }
+            if (_webView.CoreWebView2 == null) { _suspendedUrl = _webView.Source?.ToString() ?? ""; _isSuspended = true; return; }
             try
             {
                 _suspendedUrl = _webView.Source?.ToString() ?? "";
@@ -136,14 +132,41 @@ namespace EdgeRebuild.Core
             }
         }
 
-        private void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
+        private async void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
         {
-            if (!_isSuspended)
+            if (_isSuspended) return;
+
+            if (e.IsSuccess)
             {
+                _httpsFailed = false;
                 UrlChanged?.Invoke(sender.Source?.ToString() ?? "");
                 UpdateTitleFromDocument();
                 CheckNavigationState();
                 ExtractFavicon();
+            }
+            else
+            {
+                string currentUrl = sender.Source?.ToString() ?? "";
+                if (!_httpsFailed && currentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.HostNameNotResolved ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CertificateCommonNameIsIncorrect ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CertificateExpired ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CertificateIsInvalid ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.Timeout ||
+                        e.WebErrorStatus == CoreWebView2WebErrorStatus.Unknown)
+                    {
+                        _httpsFailed = true;
+                        string httpUrl = "http://" + currentUrl.Substring("https://".Length);
+                        System.Diagnostics.Debug.WriteLine($"[HTTPS Fallback] Trying HTTP: {httpUrl}");
+                        _webView.CoreWebView2.Navigate(httpUrl);
+                        return;
+                    }
+                }
+                UrlChanged?.Invoke(currentUrl);
             }
         }
 
@@ -203,14 +226,31 @@ namespace EdgeRebuild.Core
 
         public async Task<string> ExecuteScriptAsync(string script) => (_webView?.CoreWebView2 != null) ? await _webView.CoreWebView2.ExecuteScriptAsync(script) : "";
 
+        // 修复：先判断是否已是有效的绝对 URI，再决定是否补全协议
         public async Task NavigateAsync(string url)
         {
+            if (string.IsNullOrWhiteSpace(url))
+                url = "about:blank";
+
             if (_webView == null) return;
             await EnsureInitializedAsync();
             if (_webView.CoreWebView2 == null) return;
-            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !url.Contains("://"))
-                url = "https://" + url;
-            _webView.CoreWebView2.Navigate(url);
+
+            _httpsFailed = false;
+
+            // 如果已经是有效的绝对 URI，直接使用（避免错误补全）
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                // 如果不是绝对 URI，尝试补全 "https://"
+                string candidate = "https://" + url;
+                if (!Uri.TryCreate(candidate, UriKind.Absolute, out uri))
+                {
+                    // 仍然无效，回退到 about:blank
+                    uri = new Uri("about:blank");
+                }
+            }
+
+            _webView.CoreWebView2.Navigate(uri.AbsoluteUri);
         }
 
         public async Task GoBackAsync() { await EnsureInitializedAsync(); _webView.CoreWebView2?.GoBack(); }
@@ -234,7 +274,6 @@ namespace EdgeRebuild.Core
             try { (_webView.Parent as Panel)?.Children.Remove(_webView); _webView.Close(); } catch { }
             _webView = null;
 
-            // 修复：每个事件单独置 null
             TitleChanged = null;
             UrlChanged = null;
             CanGoBackChanged = null;
