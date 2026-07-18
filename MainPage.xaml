@@ -15,7 +15,8 @@
 
         <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#C0C0C0"/>
-        <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="#0078D7"/>
+        <!-- 优化：聚焦边框使用系统主题色 -->
+        <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="{ThemeResource SystemAccentColor}"/>
         <SolidColorBrush x:Key="TabActiveBackgroundBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="TabInactiveBackgroundBrush" Color="#60FFFFFF"/>
         <SolidColorBrush x:Key="TabHoverBackgroundBrush" Color="#C0C0C0"/>
@@ -94,7 +95,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 标签栏 -->
+        <!-- 标签栏（自定义） -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{StaticResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -153,7 +154,6 @@
 
         <!-- 网页区域 -->
         <Grid Grid.Row="2">
-            <!-- 右侧 Hub 面板 -->
             <SplitView x:Name="HubSplitView" DisplayMode="Overlay"
                        OpenPaneLength="420" PanePlacement="Right"
                        PaneBackground="{StaticResource ToolbarAcrylicBrush}">
@@ -167,7 +167,6 @@
                 <Border x:Name="ContentContainer" Background="White"/>
             </SplitView>
 
-            <!-- 右侧设置面板（Content 设为不可点击，避免遮挡 Hub） -->
             <SplitView x:Name="SettingsSplitView" DisplayMode="Overlay"
                        OpenPaneLength="420" PanePlacement="Right"
                        PaneBackground="{StaticResource ToolbarAcrylicBrush}"
@@ -181,7 +180,6 @@
             </SplitView>
         </Grid>
 
-        <!-- 全页面拖拽覆盖层 -->
         <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"
                 IsHitTestVisible="False" Canvas.ZIndex="1000"/>
     </Grid>

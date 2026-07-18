@@ -30,11 +30,13 @@
     <Optimize>False</Optimize>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Controls\TabBarControl.xaml.cs" />
     <Compile Remove="FavoritesPage.xaml.cs" />
     <Compile Remove="Themes\ModernIE.xaml.cs" />
     <Compile Remove="Themes\Spartan.xaml.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Page Remove="Controls\TabBarControl.xaml" />
     <Page Remove="FavoritesPage.xaml" />
     <Page Remove="Themes\ModernIE.xaml" />
     <Page Remove="Themes\Spartan.xaml" />
