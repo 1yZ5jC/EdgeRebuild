@@ -46,7 +46,7 @@ namespace EdgeRebuild.Controls
             {
                 var grid = new Grid
                 {
-                    Padding = new Thickness(12, 8, 12, 8),   // 修正：4个参数
+                    Padding = new Thickness(12, 8, 12, 8),
                     Background = new SolidColorBrush(Colors.Transparent)
                 };
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
@@ -104,7 +104,7 @@ namespace EdgeRebuild.Controls
             {
                 var grid = new Grid
                 {
-                    Padding = new Thickness(12, 8, 12, 8),   // 修正：4个参数
+                    Padding = new Thickness(12, 8, 12, 8),
                     Background = new SolidColorBrush(Colors.Transparent)
                 };
                 var stack = new StackPanel();

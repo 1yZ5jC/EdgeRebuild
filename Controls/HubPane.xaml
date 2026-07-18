@@ -49,7 +49,7 @@
 
             <ScrollViewer>
                 <Grid>
-                    <!-- 收藏夹 ListView（无 ItemTemplate） -->
+                    <!-- 收藏夹 ListView -->
                     <ListView x:Name="FavListView" 
                               Visibility="Visible" 
                               SelectionMode="None"
@@ -60,7 +60,7 @@
                               HorizontalAlignment="Stretch">
                     </ListView>
 
-                    <!-- 历史记录 ListView（无 ItemTemplate） -->
+                    <!-- 历史记录 ListView -->
                     <ListView x:Name="HistoryListView" 
                               Visibility="Collapsed" 
                               SelectionMode="None"
