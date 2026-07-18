@@ -11,20 +11,7 @@ namespace EdgeRebuild.Core
         private WebView _webView;
         private string _faviconUri = "";
         private string _title = "";
-        public bool IsSuspended => false;
 
-        public Task SuspendAsync()
-        {
-            // EdgeHTML 不支持挂起，简单忽略
-            return Task.CompletedTask;
-        }
-
-        public Task ResumeAsync()
-        {
-            return Task.CompletedTask;
-        }
-
-        // 静态事件：通知 MainPage 有下载链接需要处理
         public static event Action<string> DownloadRequested;
 
         public string Id { get; } = Guid.NewGuid().ToString();
@@ -36,6 +23,7 @@ namespace EdgeRebuild.Core
         public string EngineIcon => "🌐";
         public string Title => _title;
         public string FaviconUri => _faviconUri;
+        public bool IsSuspended => false;
 
         public event Action<string> TitleChanged;
         public event Action<string> UrlChanged;
@@ -43,72 +31,64 @@ namespace EdgeRebuild.Core
         public event Action<bool> CanGoForwardChanged;
         public event Action<string> FaviconChanged;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
+        public event Action<string> NewWindowRequested;   // 新增
+
+        public Task SuspendAsync() => Task.CompletedTask;
+        public Task ResumeAsync() => Task.CompletedTask;
 
         public EdgeHtmlTab()
         {
             _webView = new WebView();
             _webView.NavigationCompleted += OnNavigationCompleted;
             _webView.DOMContentLoaded += OnDOMContentLoaded;
-            _webView.NavigationFailed += OnNavigationFailed;
             _webView.NavigationStarting += OnNavigationStarting;
+            _webView.NewWindowRequested += OnNewWindowRequested;   // 拦截新窗口
+        }
+
+        private void OnNewWindowRequested(WebView sender, WebViewNewWindowRequestedEventArgs args)
+        {
+            args.Handled = true;   // 阻止系统浏览器打开
+            NewWindowRequested?.Invoke(args.Uri?.ToString() ?? "");
         }
 
         private void OnNavigationStarting(WebView sender, WebViewNavigationStartingEventArgs args)
         {
-            string[] downloadExtensions = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
+            string[] exts = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
             string url = args.Uri?.ToString() ?? "";
-            if (downloadExtensions.Any(ext => url.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
-            {
-                args.Cancel = true;
-                DownloadRequested?.Invoke(url);
-            }
+            if (exts.Any(ext => url.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+            { args.Cancel = true; DownloadRequested?.Invoke(url); }
         }
 
         private void UpdateTitle()
         {
-            try
-            {
-                string docTitle = _webView.DocumentTitle;
-                _title = string.IsNullOrWhiteSpace(docTitle) ? (_webView.Source?.Host ?? "新标签页") : docTitle;
-                TitleChanged?.Invoke(_title);
-            }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"UpdateTitle error: {ex.Message}"); }
+            try { _title = _webView.DocumentTitle; if (string.IsNullOrWhiteSpace(_title)) _title = _webView.Source?.Host ?? "新标签页"; TitleChanged?.Invoke(_title); } catch { }
         }
 
         private void OnDOMContentLoaded(WebView sender, WebViewDOMContentLoadedEventArgs args) { UpdateTitle(); TryExtractFavicon(); }
         private void OnNavigationCompleted(WebView sender, WebViewNavigationCompletedEventArgs args) { UrlChanged?.Invoke(args.Uri?.ToString() ?? ""); UpdateTitle(); CheckNavigationState(); TryExtractFavicon(); }
-        private void OnNavigationFailed(object sender, WebViewNavigationFailedEventArgs e) { System.Diagnostics.Debug.WriteLine($"Navigation failed: {e.Uri} - {e.WebErrorStatus}"); }
 
         private void CheckNavigationState() { CanGoBackChanged?.Invoke(_webView.CanGoBack); CanGoForwardChanged?.Invoke(_webView.CanGoForward); }
 
         private async void TryExtractFavicon()
         {
             if (_webView?.Source == null || _webView.Source.AbsoluteUri == "about:blank") return;
-            string script = @"(function() { var links = document.querySelectorAll('link[rel*=""icon""]'); if (links.length > 0) { var href = links[0].href; if (href) return href; } return ''; })()";
             try
             {
-                var result = await _webView.InvokeScriptAsync("eval", new string[] { script });
-                result = result?.Trim('"', ' ');
-                if (!string.IsNullOrEmpty(result) && result.StartsWith("http"))
-                {
-                    SetFaviconUri(result);
-                    return;
-                }
+                var result = await _webView.InvokeScriptAsync("eval", new[] { "document.querySelector('link[rel*=\"icon\"]')?.href || ''" });
+                if (!string.IsNullOrEmpty(result)) SetFaviconUri(result.Trim('"'));
+                else SetFaviconUri($"{_webView.Source.Scheme}://{_webView.Source.Host}/favicon.ico");
             }
             catch { }
-            SetFaviconUri($"{_webView.Source.Scheme}://{_webView.Source.Host}/favicon.ico");
         }
 
         private void SetFaviconUri(string url) { if (url != _faviconUri) { _faviconUri = url; FaviconChanged?.Invoke(url); } }
 
-        public async Task<string> ExecuteScriptAsync(string script) { try { return await _webView.InvokeScriptAsync("eval", new string[] { script }); } catch { return ""; } }
+        public async Task<string> ExecuteScriptAsync(string script) { try { return await _webView.InvokeScriptAsync("eval", new[] { script }); } catch { return ""; } }
 
         public Task NavigateAsync(string url)
         {
-            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !url.Contains("://"))
-                url = "https://" + url;
-            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
-                _webView.Navigate(uri);
+            if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) && !url.Contains("://")) url = "https://" + url;
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri)) _webView.Navigate(uri);
             return Task.CompletedTask;
         }
 
@@ -119,9 +99,9 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
+            _webView.NewWindowRequested -= OnNewWindowRequested;
             _webView.NavigationCompleted -= OnNavigationCompleted;
             _webView.DOMContentLoaded -= OnDOMContentLoaded;
-            _webView.NavigationFailed -= OnNavigationFailed;
             _webView.NavigationStarting -= OnNavigationStarting;
             _webView = null;
             TitleChanged = null;
@@ -130,6 +110,7 @@ namespace EdgeRebuild.Core
             CanGoForwardChanged = null;
             FaviconChanged = null;
             ContextMenuRequested = null;
+            NewWindowRequested = null;
         }
     }
 }

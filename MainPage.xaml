@@ -15,7 +15,6 @@
 
         <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#C0C0C0"/>
-        <!-- 优化：聚焦边框使用系统主题色 -->
         <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="{ThemeResource SystemAccentColor}"/>
         <SolidColorBrush x:Key="TabActiveBackgroundBrush" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="TabInactiveBackgroundBrush" Color="#60FFFFFF"/>
@@ -23,6 +22,54 @@
         <SolidColorBrush x:Key="SeparatorBrush" Color="#CCCCCC"/>
         <SolidColorBrush x:Key="ForegroundBrush" Color="#000000"/>
         <SolidColorBrush x:Key="MutedForegroundBrush" Color="#666666"/>
+
+        <!-- Fluent Reveal 笔刷 -->
+        <SolidColorBrush x:Key="RevealHoverBrush" Color="#40FFFFFF"/>
+        <SolidColorBrush x:Key="RevealPressedBrush" Color="#80FFFFFF"/>
+
+        <!-- Fluent Reveal 按钮样式（无彩色边框） -->
+        <Style x:Key="RevealButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RevealBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource RevealHoverBrush}"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RevealBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource RevealPressedBrush}"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled"/>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border x:Name="RevealBorder" Background="Transparent" BorderBrush="Transparent" BorderThickness="{TemplateBinding BorderThickness}">
+                                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
         <Style x:Key="ToolButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -84,7 +131,7 @@
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
-            <Setter Property="SelectionHighlightColor" Value="#0078D7"/>
+            <Setter Property="SelectionHighlightColor" Value="{ThemeResource SystemAccentColor}"/>
         </Style>
     </Page.Resources>
 
@@ -95,7 +142,7 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 标签栏（自定义） -->
+        <!-- 标签栏 -->
         <Border x:Name="TabBarBorder" Grid.Row="0" Background="{StaticResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
@@ -107,7 +154,7 @@
                 </Grid.ColumnDefinitions>
 
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
-                        Style="{StaticResource ToolButtonStyle}" Width="24" Height="24"
+                        Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
                         Click="ScrollLeftBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                         VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"/>
 
@@ -126,11 +173,11 @@
                             Orientation="Horizontal" VerticalAlignment="Center"
                             Background="Transparent" Margin="0,0,50,0">
                     <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
-                            Style="{StaticResource ToolButtonStyle}" Width="24" Height="24"
+                            Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
                             Click="ScrollRightBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                             Visibility="Collapsed" Margin="0,0,0,0"/>
                     <Button x:Name="NewTabButton" Content="&#xE710;"
-                            Style="{StaticResource ToolButtonStyle}" Width="32" Height="32"
+                            Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"
                             Click="NewTabBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                             Margin="0,0,0,0"/>
                 </StackPanel>

@@ -9,10 +9,10 @@
     VerticalAlignment="Stretch">
 
     <UserControl.Resources>
-        <!-- 优化：列表项选中样式淡化 -->
         <Style x:Key="HubListViewItemStyle" TargetType="ListViewItem">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Height" Value="36"/>
+            <Setter Property="Height" Value="64"/>
+            <!-- 高度增加到 64，更宽松 -->
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
@@ -132,17 +132,18 @@
                                   ItemContainerStyle="{StaticResource HubListViewItemStyle}">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid x:Name="RootGrid" Padding="12,8" Background="Transparent"
+                                    <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
                                           RightTapped="FavItem_RightTapped">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <FontIcon x:Name="FavIcon" Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                                  Foreground="Gold" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="14" Foreground="Black"/>
-                                            <TextBlock x:Name="UrlText" FontSize="12" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
+                                        <FontIcon x:Name="FavIcon" Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                                  Foreground="Gold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14" Foreground="Black" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="UrlText" FontSize="11" Foreground="#666666" TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                                            <TextBlock x:Name="DateText" FontSize="10" Foreground="#999999"/>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
@@ -171,11 +172,12 @@
                                   ItemContainerStyle="{StaticResource HubListViewItemStyle}">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid x:Name="RootGrid" Padding="12,8" Background="Transparent"
+                                    <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
                                           RightTapped="HistoryItem_RightTapped">
-                                        <StackPanel>
-                                            <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="14" Foreground="Black"/>
-                                            <TextBlock x:Name="UrlText" FontSize="12" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
+                                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14" Foreground="Black" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="UrlText" FontSize="11" Foreground="#666666" TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                                            <TextBlock x:Name="TimeText" FontSize="10" Foreground="#999999"/>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>

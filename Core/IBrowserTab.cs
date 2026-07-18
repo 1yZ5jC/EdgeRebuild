@@ -16,7 +16,6 @@ namespace EdgeRebuild.Core
         string Title { get; }
         string FaviconUri { get; }
 
-        // 挂起相关
         bool IsSuspended { get; }
         Task SuspendAsync();
         Task ResumeAsync();
@@ -34,5 +33,8 @@ namespace EdgeRebuild.Core
         event Action<bool> CanGoForwardChanged;
         event Action<string> FaviconChanged;
         event Action<TabContextMenuEventArgs> ContextMenuRequested;
+
+        // 新增：当页面请求打开新窗口时触发（例如 window.open 或 target="_blank"）
+        event Action<string> NewWindowRequested;
     }
 }
