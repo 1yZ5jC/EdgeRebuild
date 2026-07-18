@@ -40,97 +40,18 @@ namespace EdgeRebuild.Controls
         public void RefreshFavorites()
         {
             if (FavListView == null) return;
+            // 向 Items 添加纯数据对象，保留虚拟化
             FavListView.Items.Clear();
-
             foreach (var fav in FavoritesManager.Instance.Favorites)
-            {
-                var grid = new Grid
-                {
-                    Padding = new Thickness(12, 8, 12, 8),
-                    Background = new SolidColorBrush(Colors.Transparent)
-                };
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                // 星标图标
-                var icon = new FontIcon
-                {
-                    Glyph = "\uE735",
-                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                    FontSize = 14,
-                    Foreground = new SolidColorBrush(Colors.Gold),
-                    Margin = new Thickness(0, 0, 8, 0),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                Grid.SetColumn(icon, 0);
-                grid.Children.Add(icon);
-
-                // 标题与链接
-                var stack = new StackPanel();
-                Grid.SetColumn(stack, 1);
-
-                var titleBlock = new TextBlock
-                {
-                    Text = fav.Title,
-                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
-                    FontSize = 14,
-                    Foreground = ForegroundBrush
-                };
-                var urlBlock = new TextBlock
-                {
-                    Text = fav.Url,
-                    FontSize = 12,
-                    Foreground = MutedForegroundBrush,
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                };
-                stack.Children.Add(titleBlock);
-                stack.Children.Add(urlBlock);
-
-                grid.Children.Add(stack);
-
-                // 保存 URL 以便点击事件
-                grid.Tag = fav.Url;
-
-                FavListView.Items.Add(grid);
-            }
+                FavListView.Items.Add(fav);
         }
 
         public void RefreshHistory()
         {
             if (HistoryListView == null) return;
             HistoryListView.Items.Clear();
-
             foreach (var hist in HistoryManager.History)
-            {
-                var grid = new Grid
-                {
-                    Padding = new Thickness(12, 8, 12, 8),
-                    Background = new SolidColorBrush(Colors.Transparent)
-                };
-                var stack = new StackPanel();
-
-                var titleBlock = new TextBlock
-                {
-                    Text = hist.Title,
-                    FontWeight = Windows.UI.Text.FontWeights.SemiBold,
-                    FontSize = 14,
-                    Foreground = ForegroundBrush
-                };
-                var urlBlock = new TextBlock
-                {
-                    Text = hist.Url,
-                    FontSize = 12,
-                    Foreground = MutedForegroundBrush,
-                    TextTrimming = TextTrimming.CharacterEllipsis
-                };
-                stack.Children.Add(titleBlock);
-                stack.Children.Add(urlBlock);
-
-                grid.Children.Add(stack);
-                grid.Tag = hist.Url;
-
-                HistoryListView.Items.Add(grid);
-            }
+                HistoryListView.Items.Add(hist);
         }
 
         public void RefreshDownloads() => LoadDownloads();
@@ -141,18 +62,64 @@ namespace EdgeRebuild.Controls
                 HubNavView.SelectedItem = HubNavView.MenuItems[1];
         }
 
+        // ========== 收藏夹容器填充（虚拟化 + 手动赋值） ==========
+        private void FavListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.InRecycleQueue)
+                return;
+
+            // 获取数据对象
+            var fav = args.Item as FavoriteItem;
+            if (fav == null) return;
+
+            // 从模板根元素查找命名控件
+            var root = args.ItemContainer.ContentTemplateRoot as Grid;
+            if (root == null) return;
+
+            var titleText = root.FindName("TitleText") as TextBlock;
+            var urlText = root.FindName("UrlText") as TextBlock;
+
+            if (titleText != null) titleText.Text = fav.Title ?? "";
+            if (urlText != null) urlText.Text = fav.Url ?? "";
+
+            args.Handled = true;
+        }
+
+        // ========== 历史记录容器填充 ==========
+        private void HistoryListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+        {
+            if (args.InRecycleQueue)
+                return;
+
+            var hist = args.Item as HistoryItem;
+            if (hist == null) return;
+
+            var root = args.ItemContainer.ContentTemplateRoot as Grid;
+            if (root == null) return;
+
+            var titleText = root.FindName("TitleText") as TextBlock;
+            var urlText = root.FindName("UrlText") as TextBlock;
+
+            if (titleText != null) titleText.Text = hist.Title ?? "";
+            if (urlText != null) urlText.Text = hist.Url ?? "";
+
+            args.Handled = true;
+        }
+
+        // ========== 点击事件 ==========
         private void FavListView_ItemClick(object sender, ItemClickEventArgs e)
         {
-            if (e.ClickedItem is FrameworkElement element && element.Tag is string url)
-                NavigateRequested?.Invoke(url);
+            if (e.ClickedItem is FavoriteItem fav)
+                NavigateRequested?.Invoke(fav.Url);
         }
 
         private void HistoryListView_ItemClick(object sender, ItemClickEventArgs e)
         {
-            if (e.ClickedItem is FrameworkElement element && element.Tag is string url)
-                NavigateRequested?.Invoke(url);
+            if (e.ClickedItem is HistoryItem hist)
+                NavigateRequested?.Invoke(hist.Url);
         }
 
+        // ========== 下载面板（完整保留） ==========
         public void LoadDownloads()
         {
             if (DownloadsStackPanel == null) return;
