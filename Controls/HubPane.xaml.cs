@@ -1,10 +1,14 @@
 ﻿using EdgeRebuild.Core;
 using EdgeRebuild.Services;
 using System;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using Windows.Storage.Pickers;
+using Windows.System;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 
 namespace EdgeRebuild.Controls
@@ -40,7 +44,6 @@ namespace EdgeRebuild.Controls
         public void RefreshFavorites()
         {
             if (FavListView == null) return;
-            // 向 Items 添加纯数据对象，保留虚拟化
             FavListView.Items.Clear();
             foreach (var fav in FavoritesManager.Instance.Favorites)
                 FavListView.Items.Add(fav);
@@ -62,47 +65,163 @@ namespace EdgeRebuild.Controls
                 HubNavView.SelectedItem = HubNavView.MenuItems[1];
         }
 
-        // ========== 收藏夹容器填充（虚拟化 + 手动赋值） ==========
+        // ========== 收藏夹 HTML 导入 ==========
+        private async void ImportFavBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var picker = new FileOpenPicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+            };
+            picker.FileTypeFilter.Add(".html");
+            picker.FileTypeFilter.Add(".htm");
+
+            var file = await picker.PickSingleFileAsync();
+            if (file != null)
+            {
+                int imported = await FavoritesManager.ImportFromHtmlAsync(file);
+                await new ContentDialog
+                {
+                    Title = "导入完成",
+                    Content = $"成功导入 {imported} 个书签。",
+                    CloseButtonText = "确定"
+                }.ShowAsync();
+                RefreshFavorites();
+            }
+        }
+
+        // ========== 收藏夹 HTML 导出（直接保存到下载文件夹，并提供“打开文件夹”按钮） ==========
+        private async void ExportFavBtn_Click(object sender, RoutedEventArgs e)
+        {
+            StorageFolder folder;
+            try
+            {
+                folder = await DownloadsFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists);
+            }
+            catch
+            {
+                folder = ApplicationData.Current.LocalFolder;
+            }
+
+            var file = await folder.CreateFileAsync("favorites.html", CreationCollisionOption.GenerateUniqueName);
+            await FavoritesManager.ExportToHtmlAsync(file);
+
+            var dialog = new ContentDialog
+            {
+                Title = "导出成功",
+                Content = $"收藏夹已导出为 HTML 书签文件。\n保存位置：{file.Path}",
+                PrimaryButtonText = "打开文件夹",
+                CloseButtonText = "确定"
+            };
+
+            var result = await dialog.ShowAsync();
+            if (result == ContentDialogResult.Primary)
+            {
+                var parentFolder = await file.GetParentAsync();
+                await Launcher.LaunchFolderAsync(parentFolder);
+            }
+        }
+
+        // ========== 清除全部历史记录 ==========
+        private void ClearHistoryBtn_Click(object sender, RoutedEventArgs e)
+        {
+            HistoryManager.Clear();
+            RefreshHistory();
+        }
+
+        // ========== 收藏夹右键菜单 ==========
+        private void FavItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var grid = sender as Grid;
+            if (grid == null) return;
+            var fav = grid.DataContext as FavoriteItem;
+            if (fav == null) return;
+
+            var menu = new MenuFlyout();
+
+            var deleteItem = new MenuFlyoutItem { Text = "删除" };
+            deleteItem.Click += (s, args) =>
+            {
+                FavoritesManager.Instance.Remove(fav);
+                RefreshFavorites();
+            };
+            menu.Items.Add(deleteItem);
+
+            var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" };
+            copyLinkItem.Click += (s, args) =>
+            {
+                var dataPackage = new DataPackage();
+                dataPackage.SetText(fav.Url);
+                Clipboard.SetContent(dataPackage);
+            };
+            menu.Items.Add(copyLinkItem);
+
+            menu.ShowAt(grid, e.GetPosition(grid));
+        }
+
+        // ========== 历史记录右键菜单 ==========
+        private void HistoryItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var grid = sender as Grid;
+            if (grid == null) return;
+            var hist = grid.DataContext as HistoryItem;
+            if (hist == null) return;
+
+            var menu = new MenuFlyout();
+
+            var deleteItem = new MenuFlyoutItem { Text = "删除" };
+            deleteItem.Click += (s, args) =>
+            {
+                HistoryManager.Remove(hist);
+                RefreshHistory();
+            };
+            menu.Items.Add(deleteItem);
+
+            var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" };
+            copyLinkItem.Click += (s, args) =>
+            {
+                var dataPackage = new DataPackage();
+                dataPackage.SetText(hist.Url);
+                Clipboard.SetContent(dataPackage);
+            };
+            menu.Items.Add(copyLinkItem);
+
+            menu.ShowAt(grid, e.GetPosition(grid));
+        }
+
+        // ========== 虚拟化容器生成（关键修复：设置 DataContext） ==========
         private void FavListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
-            if (args.InRecycleQueue)
-                return;
-
-            // 获取数据对象
+            if (args.InRecycleQueue) return;
             var fav = args.Item as FavoriteItem;
             if (fav == null) return;
 
-            // 从模板根元素查找命名控件
+            // **修复：将数据对象赋给容器的 DataContext，确保右键菜单能获取到**
+            args.ItemContainer.DataContext = fav;
+
             var root = args.ItemContainer.ContentTemplateRoot as Grid;
             if (root == null) return;
-
             var titleText = root.FindName("TitleText") as TextBlock;
             var urlText = root.FindName("UrlText") as TextBlock;
-
             if (titleText != null) titleText.Text = fav.Title ?? "";
             if (urlText != null) urlText.Text = fav.Url ?? "";
-
             args.Handled = true;
         }
 
-        // ========== 历史记录容器填充 ==========
         private void HistoryListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
-            if (args.InRecycleQueue)
-                return;
-
+            if (args.InRecycleQueue) return;
             var hist = args.Item as HistoryItem;
             if (hist == null) return;
 
+            // **修复：设置 DataContext**
+            args.ItemContainer.DataContext = hist;
+
             var root = args.ItemContainer.ContentTemplateRoot as Grid;
             if (root == null) return;
-
             var titleText = root.FindName("TitleText") as TextBlock;
             var urlText = root.FindName("UrlText") as TextBlock;
-
             if (titleText != null) titleText.Text = hist.Title ?? "";
             if (urlText != null) urlText.Text = hist.Url ?? "";
-
             args.Handled = true;
         }
 
@@ -119,7 +238,7 @@ namespace EdgeRebuild.Controls
                 NavigateRequested?.Invoke(hist.Url);
         }
 
-        // ========== 下载面板（完整保留） ==========
+        // ========== 下载面板（完整逻辑，保持不变） ==========
         public void LoadDownloads()
         {
             if (DownloadsStackPanel == null) return;
@@ -321,8 +440,8 @@ namespace EdgeRebuild.Controls
         {
             if (args.SelectedItem is Microsoft.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
             {
-                FavListView.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
-                HistoryListView.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
+                FavPanel.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
+                HistoryPanel.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
                 DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
 
                 if (tag == "Downloads")

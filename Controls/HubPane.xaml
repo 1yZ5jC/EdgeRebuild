@@ -49,57 +49,82 @@
 
             <ScrollViewer>
                 <Grid>
-                    <!-- 收藏夹 ListView（模板仅占位，无绑定） -->
-                    <ListView x:Name="FavListView" 
-                              Visibility="Visible" 
-                              SelectionMode="None"
-                              IsItemClickEnabled="True" 
-                              ItemClick="FavListView_ItemClick"
-                              ContainerContentChanging="FavListView_ContainerContentChanging"
-                              Background="Transparent"
-                              MinHeight="300"
-                              HorizontalAlignment="Stretch">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid x:Name="RootGrid" Padding="12,8" Background="Transparent">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <FontIcon x:Name="FavIcon" Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                              Foreground="Gold" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="14" Foreground="Black"/>
-                                        <TextBlock x:Name="UrlText" FontSize="12" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                    <!-- 收藏夹面板 -->
+                    <StackPanel x:Name="FavPanel" Visibility="Visible">
+                        <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                            <Button x:Name="ImportFavBtn" Content="导入"
+                                    Background="Transparent" Foreground="Black"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="12,4" FontSize="12"
+                                    Click="ImportFavBtn_Click"/>
+                            <Button x:Name="ExportFavBtn" Content="导出"
+                                    Background="Transparent" Foreground="Black"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="12,4" FontSize="12"
+                                    Click="ExportFavBtn_Click"/>
+                        </StackPanel>
 
-                    <!-- 历史记录 ListView（模板仅占位，无绑定） -->
-                    <ListView x:Name="HistoryListView" 
-                              Visibility="Collapsed" 
-                              SelectionMode="None"
-                              IsItemClickEnabled="True" 
-                              ItemClick="HistoryListView_ItemClick"
-                              ContainerContentChanging="HistoryListView_ContainerContentChanging"
-                              Background="Transparent"
-                              MinHeight="300"
-                              HorizontalAlignment="Stretch">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid x:Name="RootGrid" Padding="12,8" Background="Transparent">
-                                    <StackPanel>
-                                        <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="14" Foreground="Black"/>
-                                        <TextBlock x:Name="UrlText" FontSize="12" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
-                                    </StackPanel>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
+                        <ListView x:Name="FavListView" 
+                                  SelectionMode="None"
+                                  IsItemClickEnabled="True" 
+                                  ItemClick="FavListView_ItemClick"
+                                  ContainerContentChanging="FavListView_ContainerContentChanging"
+                                  Background="Transparent"
+                                  MinHeight="300"
+                                  HorizontalAlignment="Stretch">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid x:Name="RootGrid" Padding="12,8" Background="Transparent"
+                                          RightTapped="FavItem_RightTapped">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon x:Name="FavIcon" Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                                  Foreground="Gold" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="14" Foreground="Black"/>
+                                            <TextBlock x:Name="UrlText" FontSize="12" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
 
-                    <!-- 下载容器 -->
+                    <!-- 历史记录面板 -->
+                    <StackPanel x:Name="HistoryPanel" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                            <Button x:Name="ClearHistoryBtn" Content="清除全部历史"
+                                    Background="Transparent" Foreground="Black"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="12,4" FontSize="12"
+                                    Click="ClearHistoryBtn_Click"/>
+                        </StackPanel>
+
+                        <ListView x:Name="HistoryListView" 
+                                  SelectionMode="None"
+                                  IsItemClickEnabled="True" 
+                                  ItemClick="HistoryListView_ItemClick"
+                                  ContainerContentChanging="HistoryListView_ContainerContentChanging"
+                                  Background="Transparent"
+                                  MinHeight="300"
+                                  HorizontalAlignment="Stretch">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid x:Name="RootGrid" Padding="12,8" Background="Transparent"
+                                          RightTapped="HistoryItem_RightTapped">
+                                        <StackPanel>
+                                            <TextBlock x:Name="TitleText" FontWeight="SemiBold" FontSize="14" Foreground="Black"/>
+                                            <TextBlock x:Name="UrlText" FontSize="12" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+
+                    <!-- 下载面板（不变） -->
                     <ScrollViewer x:Name="DownloadsContainer" 
                                   Visibility="Collapsed"
                                   MinHeight="200"

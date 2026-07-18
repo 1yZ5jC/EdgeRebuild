@@ -25,11 +25,9 @@ namespace EdgeRebuild.Services
                 Url = url,
                 VisitTime = DateTime.Now
             };
-            // 异步写入数据库
             _ = DatabaseService.Database.InsertAsync(item);
             History.Insert(0, item);
 
-            // 最多保留 1000 条，同时清理数据库
             while (History.Count > 1000)
             {
                 var last = History.Last();
@@ -47,6 +45,13 @@ namespace EdgeRebuild.Services
         public static void Clear()
         {
             _ = ClearAsync();
+        }
+
+        // 新增：删除单条历史记录
+        public static async void Remove(HistoryItem item)
+        {
+            History.Remove(item);
+            await DatabaseService.Database.DeleteAsync(item);
         }
     }
 }
