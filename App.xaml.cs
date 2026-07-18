@@ -15,6 +15,7 @@ namespace EdgeRebuild
         {
             this.InitializeComponent();
             this.Suspending += OnSuspending;
+            this.UnhandledException += OnUnhandledException;
         }
 
         protected override async void OnLaunched(LaunchActivatedEventArgs e)
@@ -69,11 +70,25 @@ namespace EdgeRebuild
             {
                 await DownloadManager.SaveAllDownloadsAsync();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Suspending save error: {ex.Message}");
+            }
             finally
             {
                 deferral.Complete();
             }
+        }
+
+        private void OnUnhandledException(object sender, Windows.UI.Xaml.UnhandledExceptionEventArgs e)
+        {
+            System.Diagnostics.Debug.WriteLine($"=== Unhandled Exception ===");
+            System.Diagnostics.Debug.WriteLine($"Message: {e.Exception?.Message}");
+            System.Diagnostics.Debug.WriteLine($"Stack: {e.Exception?.StackTrace}");
+
+#if DEBUG
+            e.Handled = true;
+#endif
         }
     }
 }

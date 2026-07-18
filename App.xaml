@@ -10,10 +10,43 @@
                 <muxc:XamlControlsResources ControlsResourcesVersion="Version1" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 去掉常见控件的圆角 -->
+            <!-- 全局去圆角 -->
             <Style TargetType="muxc:NavigationView">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
+            <Style TargetType="muxc:TabView">
+                <Setter Property="CornerRadius" Value="0" />
+            </Style>
+
+            <!-- 关键修复：重写 TabViewItem 默认样式，强制所有角半径为 0 -->
+            <Style TargetType="muxc:TabViewItem">
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="muxc:TabViewItem">
+                            <Grid x:Name="LayoutRoot" Background="{TemplateBinding Background}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <!-- 移除所有涉及圆角的视觉状态，仅保留基本状态 -->
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver" />
+                                        <VisualState x:Name="Pressed" />
+                                        <VisualState x:Name="Selected" />
+                                        <VisualState x:Name="Disabled" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  HorizontalAlignment="Stretch"
+                                                  VerticalAlignment="Stretch"
+                                                  Margin="{TemplateBinding Padding}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style TargetType="Button">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
@@ -41,7 +74,7 @@
                 </Setter>
             </Style>
 
-            <!-- 恢复紧凑 Windows 10 间距（可选） -->
+            <!-- 恢复紧凑 Windows 10 间距 -->
             <x:Double x:Key="ControlContentThemeFontSize">14</x:Double>
             <Thickness x:Key="ButtonPadding">8,4,8,4</Thickness>
             <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>
