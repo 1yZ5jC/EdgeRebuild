@@ -35,6 +35,10 @@ namespace EdgeRebuild.Controls
         private const string SearchEngineUrl = "https://www.google.com/search?q={0}";
         private static readonly IdnMapping _idn = new IdnMapping();
 
+        private Brush _foregroundBrush;
+        private Brush _mutedForegroundBrush;
+        private bool _isDarkTheme;
+
         public ToolbarControl()
         {
             this.InitializeComponent();
@@ -46,12 +50,8 @@ namespace EdgeRebuild.Controls
             _suggestionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             _suggestionTimer.Tick += OnSuggestionTimerTick;
             SuggestionsFlyout.Closed += (_, _) => _isSuggestionsVisible = false;
-
-            // 订阅地址栏右键菜单事件
-            UrlBox.ContextRequested += UrlBox_ContextRequested;
         }
 
-        // ---- 公开方法 ----
         public void FocusAddressBarAndClear()
         {
             UrlBox.Text = string.Empty;
@@ -73,6 +73,12 @@ namespace EdgeRebuild.Controls
             AddFavBtn.Foreground = colors.MutedForegroundBrush;
             HubBtn.Foreground = colors.MutedForegroundBrush;
             MenuBtn.Foreground = colors.MutedForegroundBrush;
+
+            _foregroundBrush = colors.ForegroundBrush;
+            _mutedForegroundBrush = colors.MutedForegroundBrush;
+            _isDarkTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+
+            SuggestionsFlyout.FlyoutPresenterStyle = null;
         }
 
         public void UpdateNavState(bool canGoBack, bool canGoForward, string currentUrl)
@@ -115,92 +121,6 @@ namespace EdgeRebuild.Controls
         private void HubBtn_Click(object sender, RoutedEventArgs e) => HubClicked?.Invoke();
         private void MenuBtn_Click(object sender, RoutedEventArgs e) => MenuClicked?.Invoke();
 
-        // ---- 地址栏右键菜单 ----
-        private void UrlBox_ContextRequested(UIElement sender, ContextRequestedEventArgs args)
-        {
-            args.Handled = true; // 阻止系统默认菜单
-
-            var flyout = new MenuFlyout();
-
-            // 复制
-            var copyItem = new MenuFlyoutItem { Text = "复制" };
-            copyItem.Click += (s, e) =>
-            {
-                if (!string.IsNullOrEmpty(UrlBox.SelectedText))
-                {
-                    var dp = new DataPackage();
-                    dp.SetText(UrlBox.SelectedText);
-                    Clipboard.SetContent(dp);
-                }
-                else
-                {
-                    var dp = new DataPackage();
-                    dp.SetText(UrlBox.Text);
-                    Clipboard.SetContent(dp);
-                }
-            };
-            flyout.Items.Add(copyItem);
-
-            // 粘贴
-            var pasteItem = new MenuFlyoutItem { Text = "粘贴" };
-            pasteItem.Click += async (s, e) =>
-            {
-                var content = Clipboard.GetContent();
-                if (content.Contains(StandardDataFormats.Text))
-                {
-                    string text = await content.GetTextAsync();
-                    // 将粘贴内容插入到光标位置或替换选中文本
-                    int selStart = UrlBox.SelectionStart;
-                    int selLength = UrlBox.SelectionLength;
-                    string currentText = UrlBox.Text;
-                    string newText = currentText.Substring(0, selStart) + text + currentText.Substring(selStart + selLength);
-                    UrlBox.Text = newText;
-                    UrlBox.SelectionStart = selStart + text.Length;
-                }
-            };
-            flyout.Items.Add(pasteItem);
-
-            // 粘贴并转到
-            var pasteAndGoItem = new MenuFlyoutItem { Text = "粘贴并转到" };
-            pasteAndGoItem.Click += async (s, e) =>
-            {
-                var content = Clipboard.GetContent();
-                if (content.Contains(StandardDataFormats.Text))
-                {
-                    string text = await content.GetTextAsync();
-                    if (!string.IsNullOrWhiteSpace(text))
-                    {
-                        string url = ResolveInputToUrl(text.Trim());
-                        UrlSubmitted?.Invoke(url);
-                    }
-                }
-            };
-            flyout.Items.Add(pasteAndGoItem);
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            // 全选
-            var selectAllItem = new MenuFlyoutItem { Text = "全选" };
-            selectAllItem.Click += (s, e) => UrlBox.SelectAll();
-            flyout.Items.Add(selectAllItem);
-
-            // 清除
-            var clearItem = new MenuFlyoutItem { Text = "清除" };
-            clearItem.Click += (s, e) => UrlBox.Text = "";
-            flyout.Items.Add(clearItem);
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            // 重做（Ctrl+Y 通常对应重做，这里简单实现为撤销重做，但 TextBox 有内置撤销支持，我们只提供菜单项调用）
-            // 由于 TextBox 的 Redo 方法可能不可用，我们省略具体功能，仅示意。
-            var redoItem = new MenuFlyoutItem { Text = "重做" };
-            redoItem.IsEnabled = false; // 暂不可用，可后续完善
-            flyout.Items.Add(redoItem);
-
-            flyout.ShowAt(UrlBox, new Point(0, 0));
-        }
-
-        // ---- 键盘事件 ----
         private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key == Windows.System.VirtualKey.Enter)
@@ -233,7 +153,15 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        // ---- 输入解析与搜索 ----
+        private void EnsureFlyoutPresenterStyle(double width)
+        {
+            var style = new Style(typeof(FlyoutPresenter));
+            style.Setters.Add(new Setter(FlyoutPresenter.MinWidthProperty, width));
+            style.Setters.Add(new Setter(FlyoutPresenter.PaddingProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(FlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
+            SuggestionsFlyout.FlyoutPresenterStyle = style;
+        }
+
         private string ResolveInputToUrl(string raw)
         {
             if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -342,7 +270,6 @@ namespace EdgeRebuild.Controls
             return url;
         }
 
-        // ---- 焦点 ----
         private void UrlBox_GotFocus(object sender, RoutedEventArgs e)
         {
             var accentColor = (Color)Application.Current.Resources["SystemAccentColor"];
@@ -353,7 +280,6 @@ namespace EdgeRebuild.Controls
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
         }
 
-        // ---- 文字变化 ----
         private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_isSuggestionsVisible)
@@ -373,7 +299,6 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        // ---- 建议 ----
         private void ShowSuggestionsManually()
         {
             if (string.IsNullOrWhiteSpace(UrlBox.Text)) { CloseSuggestions(); return; }
@@ -382,7 +307,7 @@ namespace EdgeRebuild.Controls
             {
                 if (!_isSuggestionsVisible)
                 {
-                    SuggestionBorder.MinWidth = UrlBox.ActualWidth;
+                    EnsureFlyoutPresenterStyle(UrlBox.ActualWidth);
                     FlyoutBase.ShowAttachedFlyout(UrlBox);
                     _isSuggestionsVisible = true;
                 }
@@ -415,7 +340,7 @@ namespace EdgeRebuild.Controls
             {
                 Glyph = item.IsFavorite ? "\uE734" : "\uE81C",
                 FontSize = 14,
-                Foreground = new SolidColorBrush(Color.FromArgb(0xFF, 0x66, 0x66, 0x66)),
+                Foreground = _mutedForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 10, 0)
             };
@@ -425,7 +350,7 @@ namespace EdgeRebuild.Controls
             {
                 Text = $"{item.DisplayTitle}  —  {item.Url}",
                 FontSize = 13,
-                Foreground = new SolidColorBrush(Colors.Black),
+                Foreground = _foregroundBrush,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 MaxWidth = maxWidth
@@ -437,8 +362,12 @@ namespace EdgeRebuild.Controls
             border.Child = grid;
 
             border.Tapped += (s, e) => { SubmitUrl(item.Url); e.Handled = true; };
-            border.PointerEntered += (s, e) => border.Background = new SolidColorBrush(Color.FromArgb(0xFF, 0xF3, 0xF3, 0xF3));
-            border.PointerExited += (s, e) => border.Background = new SolidColorBrush(Colors.Transparent);
+
+            Color hoverColor = _isDarkTheme ? Color.FromArgb(0xFF, 0x1A, 0x3A, 0x5C) : Color.FromArgb(0xFF, 0xD9, 0xEA, 0xF7);
+            Color normalColor = Colors.Transparent;
+            border.PointerEntered += (s, e) => border.Background = new SolidColorBrush(hoverColor);
+            border.PointerExited += (s, e) => border.Background = new SolidColorBrush(normalColor);
+
             return border;
         }
 

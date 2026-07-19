@@ -4,14 +4,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls">
 
-    <UserControl.Resources>
-        <AcrylicBrush x:Key="SettingsAcrylicBrush"
-                      BackgroundSource="HostBackdrop"
-                      TintColor="#F0F0F0"
-                      TintOpacity="0.8"
-                      FallbackColor="#F0F0F0"/>
-    </UserControl.Resources>
-
     <muxc:NavigationView
         x:Name="SettingsNavView"
         PaneDisplayMode="Left"
@@ -20,7 +12,7 @@
         IsSettingsVisible="False"
         AlwaysShowHeader="True"
         SelectionChanged="SettingsNavView_SelectionChanged"
-        Background="{StaticResource SettingsAcrylicBrush}">
+        Background="Transparent">
 
         <muxc:NavigationView.HeaderTemplate>
             <DataTemplate>

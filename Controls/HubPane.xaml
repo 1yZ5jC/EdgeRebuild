@@ -9,10 +9,10 @@
     VerticalAlignment="Stretch">
 
     <UserControl.Resources>
-        <Style x:Key="HubListViewItemStyle" TargetType="ListViewItem">
+        <!-- 亮色主题：淡蓝悬停/选中 -->
+        <Style x:Key="HubListViewItemStyleLight" TargetType="ListViewItem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Height" Value="64"/>
-            <!-- 高度增加到 64，更宽松 -->
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListViewItem">
@@ -23,41 +23,96 @@
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#F3F3F3"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#D9EAF7"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#EAEAEA"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#C0DDF2"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Selected">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#D6E4F0"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#B3D4ED"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="SelectedPointerOver">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#C5D5E5"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#A0C8E6"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="SelectedPressed">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#B5C5D5"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#8CB9D9"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
-                            <ContentPresenter x:Name="ContentPresenter" Margin="12,0"/>
+                            <ContentPresenter Margin="12,0"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 暗色主题：深蓝悬停/选中 -->
+        <Style x:Key="HubListViewItemStyleDark" TargetType="ListViewItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Height" Value="64"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Grid x:Name="ContentBorder" Background="{TemplateBinding Background}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#1A3A5C"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#0F2A45"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Selected">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#0D2540"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="SelectedPointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#0B1E35"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="SelectedPressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#08182A"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter Margin="12,0"/>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -79,12 +134,7 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
 
-            <muxc:NavigationView.Resources>
-                <Style TargetType="muxc:NavigationViewItem">
-                    <Setter Property="Background" Value="#30FFFFFF"/>
-                    <Setter Property="Foreground" Value="Black"/>
-                </Style>
-            </muxc:NavigationView.Resources>
+            <!-- 已删除 NavigationView.Resources 中的自定义 Style，使用默认透明背景 -->
 
             <muxc:NavigationView.MenuItems>
                 <muxc:NavigationViewItem Content="收藏夹" Tag="Favorites">
@@ -110,12 +160,12 @@
                     <StackPanel x:Name="FavPanel" Visibility="Visible">
                         <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
                             <Button x:Name="ImportFavBtn" Content="导入"
-                                    Background="Transparent" Foreground="Black"
+                                    Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
                                     Padding="12,4" FontSize="12"
                                     Click="ImportFavBtn_Click"/>
                             <Button x:Name="ExportFavBtn" Content="导出"
-                                    Background="Transparent" Foreground="Black"
+                                    Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
                                     Padding="12,4" FontSize="12"
                                     Click="ExportFavBtn_Click"/>
@@ -128,8 +178,7 @@
                                   ContainerContentChanging="FavListView_ContainerContentChanging"
                                   Background="Transparent"
                                   MinHeight="300"
-                                  HorizontalAlignment="Stretch"
-                                  ItemContainerStyle="{StaticResource HubListViewItemStyle}">
+                                  HorizontalAlignment="Stretch">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
@@ -141,9 +190,11 @@
                                         <FontIcon x:Name="FavIcon" Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                                                   Foreground="Gold" Margin="0,0,10,0" VerticalAlignment="Center"/>
                                         <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14" Foreground="Black" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock x:Name="UrlText" FontSize="11" Foreground="#666666" TextTrimming="CharacterEllipsis" MaxWidth="300"/>
-                                            <TextBlock x:Name="DateText" FontSize="10" Foreground="#999999"/>
+                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="UrlText" FontSize="11"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                                            <TextBlock x:Name="DateText" FontSize="10"/>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
@@ -155,7 +206,7 @@
                     <StackPanel x:Name="HistoryPanel" Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
                             <Button x:Name="ClearHistoryBtn" Content="清除全部历史"
-                                    Background="Transparent" Foreground="Black"
+                                    Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
                                     Padding="12,4" FontSize="12"
                                     Click="ClearHistoryBtn_Click"/>
@@ -168,16 +219,17 @@
                                   ContainerContentChanging="HistoryListView_ContainerContentChanging"
                                   Background="Transparent"
                                   MinHeight="300"
-                                  HorizontalAlignment="Stretch"
-                                  ItemContainerStyle="{StaticResource HubListViewItemStyle}">
+                                  HorizontalAlignment="Stretch">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
                                           RightTapped="HistoryItem_RightTapped">
                                         <StackPanel Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14" Foreground="Black" TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock x:Name="UrlText" FontSize="11" Foreground="#666666" TextTrimming="CharacterEllipsis" MaxWidth="300"/>
-                                            <TextBlock x:Name="TimeText" FontSize="10" Foreground="#999999"/>
+                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="UrlText" FontSize="11"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                                            <TextBlock x:Name="TimeText" FontSize="10"/>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>

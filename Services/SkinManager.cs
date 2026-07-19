@@ -9,42 +9,61 @@ namespace EdgeRebuild.Services
         public const string SkinSpartan = "Spartan";
         public const string SkinModernIE = "ModernIE";
 
-        /// <summary>
-        /// 获取指定皮肤的所有颜色定义。
-        /// </summary>
         public static SkinColors GetSkinColors(string skinName)
         {
-            if (skinName == SkinModernIE)
-                return CreateModernIEColors();
-            else // 默认 Spartan
-                return CreateSpartanColors();
+            if (skinName == SkinModernIE) return CreateModernIEColors();
+            return CreateSpartanColors();
         }
 
         private static SkinColors CreateSpartanColors()
         {
-            return new SkinColors
-            {
-                ToolbarBackground = new AcrylicBrush
+            bool isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+
+            // 根据系统主题选择颜色
+            var toolbarBackground = isDark
+                ? new AcrylicBrush
+                {
+                    BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
+                    TintColor = Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B),
+                    TintOpacity = 0.8,
+                    FallbackColor = Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B)
+                }
+                : new AcrylicBrush
                 {
                     BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
                     TintColor = Color.FromArgb(0xFF, 0xF0, 0xF0, 0xF0),
                     TintOpacity = 0.8,
                     FallbackColor = Color.FromArgb(0xFF, 0xF0, 0xF0, 0xF0)
-                },
-                TabActiveBackground = new SolidColorBrush(Colors.White),
-                TabInactiveBackground = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF)),
-                TabHoverBackground = new SolidColorBrush(Colors.Silver),
-                AddressBarBackground = new SolidColorBrush(Colors.White),
-                AddressBarBorder = new SolidColorBrush(Colors.LightGray),
-                AddressBarFocusBorder = new SolidColorBrush(Colors.DodgerBlue),
-                SeparatorBrush = new SolidColorBrush(Colors.LightGray),
-                ForegroundBrush = new SolidColorBrush(Colors.Black),
-                MutedForegroundBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x66, 0x66, 0x66))
+                };
+
+            Color tabActiveColor = isDark ? Color.FromArgb(0xFF, 0x3D, 0x3D, 0x3D) : Colors.White;
+            Color tabInactiveColor = isDark ? Color.FromArgb(0x60, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF);
+            Color tabHoverColor = isDark ? Color.FromArgb(0xFF, 0x5A, 0x5A, 0x5A) : Colors.Silver;
+            Color addressBarBgColor = isDark ? Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E) : Colors.White;
+            Color addressBarBorderColor = isDark ? Color.FromArgb(0xFF, 0x55, 0x55, 0x55) : Colors.LightGray;
+            Color focusBorderColor = Colors.DodgerBlue; // 保持不变
+            Color separatorColor = isDark ? Color.FromArgb(0xFF, 0x55, 0x55, 0x55) : Colors.LightGray;
+            Color foregroundColor = isDark ? Colors.White : Colors.Black;
+            Color mutedForegroundColor = isDark ? Color.FromArgb(0xFF, 0xAA, 0xAA, 0xAA) : Color.FromArgb(0xFF, 0x66, 0x66, 0x66);
+
+            return new SkinColors
+            {
+                ToolbarBackground = toolbarBackground,
+                TabActiveBackground = new SolidColorBrush(tabActiveColor),
+                TabInactiveBackground = new SolidColorBrush(tabInactiveColor),
+                TabHoverBackground = new SolidColorBrush(tabHoverColor),
+                AddressBarBackground = new SolidColorBrush(addressBarBgColor),
+                AddressBarBorder = new SolidColorBrush(addressBarBorderColor),
+                AddressBarFocusBorder = new SolidColorBrush(focusBorderColor),
+                SeparatorBrush = new SolidColorBrush(separatorColor),
+                ForegroundBrush = new SolidColorBrush(foregroundColor),
+                MutedForegroundBrush = new SolidColorBrush(mutedForegroundColor)
             };
         }
 
         private static SkinColors CreateModernIEColors()
         {
+            // ModernIE 始终保持深色，不随系统变化
             return new SkinColors
             {
                 ToolbarBackground = new SolidColorBrush(Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30)),
@@ -62,16 +81,16 @@ namespace EdgeRebuild.Services
 
         public class SkinColors
         {
-            public Brush ToolbarBackground { get; set; }
-            public SolidColorBrush TabActiveBackground { get; set; }
-            public SolidColorBrush TabInactiveBackground { get; set; }
-            public SolidColorBrush TabHoverBackground { get; set; }
-            public SolidColorBrush AddressBarBackground { get; set; }
-            public SolidColorBrush AddressBarBorder { get; set; }
-            public SolidColorBrush AddressBarFocusBorder { get; set; }
-            public SolidColorBrush SeparatorBrush { get; set; }
-            public SolidColorBrush ForegroundBrush { get; set; }
-            public SolidColorBrush MutedForegroundBrush { get; set; }
+            public Brush ToolbarBackground;
+            public SolidColorBrush TabActiveBackground;
+            public SolidColorBrush TabInactiveBackground;
+            public SolidColorBrush TabHoverBackground;
+            public SolidColorBrush AddressBarBackground;
+            public SolidColorBrush AddressBarBorder;
+            public SolidColorBrush AddressBarFocusBorder;
+            public SolidColorBrush SeparatorBrush;
+            public SolidColorBrush ForegroundBrush;
+            public SolidColorBrush MutedForegroundBrush;
         }
     }
 }

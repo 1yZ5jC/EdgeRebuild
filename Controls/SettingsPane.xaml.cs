@@ -2,6 +2,7 @@
 using System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Media;
 
 namespace EdgeRebuild.Controls
 {
@@ -17,6 +18,11 @@ namespace EdgeRebuild.Controls
             this.InitializeComponent();
             BuildContentPanels();
             SettingsNavView.SelectedItem = SettingsNavView.MenuItems[0];
+        }
+
+        public void ApplySkinColors(Brush backgroundBrush)
+        {
+            SettingsNavView.Background = backgroundBrush;
         }
 
         private void BuildContentPanels()
@@ -59,7 +65,7 @@ namespace EdgeRebuild.Controls
             privacyPanel.Children.Add(clearBtn);
             _panels[3] = privacyPanel;
 
-            // 性能 (4) - 新增挂起开关
+            // 性能 (4)
             var perfPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             _suspendToggle = new ToggleSwitch { Header = "后台标签自动挂起（节省内存）" };
             _suspendToggle.Toggled += async (s, e) =>
@@ -76,7 +82,6 @@ namespace EdgeRebuild.Controls
             aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap });
             _panels[5] = aboutPanel;
 
-            // 加载设置
             LoadSettingsAsync();
         }
 
@@ -96,7 +101,6 @@ namespace EdgeRebuild.Controls
             string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
             _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
 
-            // 事件绑定
             _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
             _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
             _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");

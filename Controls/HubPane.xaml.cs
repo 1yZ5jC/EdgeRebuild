@@ -31,6 +31,26 @@ namespace EdgeRebuild.Controls
             this.Loaded += OnHubPaneLoaded;
         }
 
+        /// <summary>
+        /// 应用皮肤颜色（前景、暗色背景等），并根据主题切换列表悬停样式
+        /// </summary>
+        public void ApplySkinColors(SolidColorBrush foreground, SolidColorBrush muted, bool isDark)
+        {
+            ForegroundBrush = foreground;
+            MutedForegroundBrush = muted;
+            ImportFavBtn.Foreground = foreground;
+            ExportFavBtn.Foreground = foreground;
+            ClearHistoryBtn.Foreground = foreground;
+
+            // 根据主题选择不同的 ListViewItem 样式
+            Style itemStyle = isDark
+                ? (Style)Resources["HubListViewItemStyleDark"]
+                : (Style)Resources["HubListViewItemStyleLight"];
+
+            if (FavListView != null) FavListView.ItemContainerStyle = itemStyle;
+            if (HistoryListView != null) HistoryListView.ItemContainerStyle = itemStyle;
+        }
+
         private void OnHubPaneLoaded(object sender, RoutedEventArgs e)
         {
             RefreshFavorites();
@@ -70,7 +90,6 @@ namespace EdgeRebuild.Controls
                 HubNavView.SelectedItem = HubNavView.MenuItems[1];
         }
 
-        // 收藏夹 HTML 导入
         private async void ImportFavBtn_Click(object sender, RoutedEventArgs e)
         {
             var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.DocumentsLibrary };
@@ -91,7 +110,6 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        // 收藏夹 HTML 导出
         private async void ExportFavBtn_Click(object sender, RoutedEventArgs e)
         {
             StorageFolder folder;
@@ -123,7 +141,6 @@ namespace EdgeRebuild.Controls
             RefreshHistory();
         }
 
-        // 收藏夹右键菜单
         private void FavItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var grid = sender as Grid;
@@ -152,7 +169,6 @@ namespace EdgeRebuild.Controls
             menu.ShowAt(grid, e.GetPosition(grid));
         }
 
-        // 历史记录右键菜单
         private void HistoryItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var grid = sender as Grid;
@@ -181,7 +197,6 @@ namespace EdgeRebuild.Controls
             menu.ShowAt(grid, e.GetPosition(grid));
         }
 
-        // 虚拟化容器填充（收藏夹）
         private void FavListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
             if (args.InRecycleQueue) return;
@@ -195,14 +210,16 @@ namespace EdgeRebuild.Controls
             var urlText = root.FindName("UrlText") as TextBlock;
             var dateText = root.FindName("DateText") as TextBlock;
 
-            if (titleText != null) titleText.Text = fav.Title ?? "";
-            if (urlText != null) urlText.Text = fav.Url ?? "";
+            if (titleText != null) { titleText.Text = fav.Title ?? ""; titleText.Foreground = ForegroundBrush; }
+            if (urlText != null) { urlText.Text = fav.Url ?? ""; urlText.Foreground = MutedForegroundBrush; }
             if (dateText != null)
+            {
                 dateText.Text = fav.AddedDate != DateTime.MinValue ? fav.AddedDate.ToString("yyyy-MM-dd HH:mm") : "";
+                dateText.Foreground = MutedForegroundBrush;
+            }
             args.Handled = true;
         }
 
-        // 虚拟化容器填充（历史记录）
         private void HistoryListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
             if (args.InRecycleQueue) return;
@@ -216,10 +233,13 @@ namespace EdgeRebuild.Controls
             var urlText = root.FindName("UrlText") as TextBlock;
             var timeText = root.FindName("TimeText") as TextBlock;
 
-            if (titleText != null) titleText.Text = hist.Title ?? "";
-            if (urlText != null) urlText.Text = hist.Url ?? "";
+            if (titleText != null) { titleText.Text = hist.Title ?? ""; titleText.Foreground = ForegroundBrush; }
+            if (urlText != null) { urlText.Text = hist.Url ?? ""; urlText.Foreground = MutedForegroundBrush; }
             if (timeText != null)
+            {
                 timeText.Text = hist.VisitTime != DateTime.MinValue ? hist.VisitTime.ToString("yyyy-MM-dd HH:mm") : "";
+                timeText.Foreground = MutedForegroundBrush;
+            }
             args.Handled = true;
         }
 
@@ -234,8 +254,6 @@ namespace EdgeRebuild.Controls
             if (e.ClickedItem is HistoryItem hist)
                 NavigateRequested?.Invoke(hist.Url);
         }
-
-        // ============ 下载管理（完整实现） ============
 
         public void UpdateDownloadItem(DownloadItem item)
         {

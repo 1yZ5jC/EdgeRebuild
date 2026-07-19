@@ -65,8 +65,8 @@ namespace EdgeRebuild
         private bool _hasMoved;
         private double _totalDx;
         private bool _isDetaching = false;
-        private Point _tabBarPanelOffset;   // TabBarPanel 在 DragCanvas 中的偏移量
-        private int _lastSwapIndex = -1;    // 上次交换后的目标索引，用于防重入
+        private Point _tabBarPanelOffset;
+        private DateTime _lastReorderTime;
 
         private WebView2 _stealthDownloader;
         private bool _askBeforeDownload;
@@ -75,6 +75,8 @@ namespace EdgeRebuild
         private readonly Dictionary<IBrowserTab, DispatcherTimer> _suspendTimers = new Dictionary<IBrowserTab, DispatcherTimer>();
         private const int SuspendDelaySeconds = 120;
         private bool _enableTabSuspend = true;
+
+        private UISettings _uiSettings;
 
         public MainPage()
         {
@@ -95,6 +97,11 @@ namespace EdgeRebuild
         {
             CleanupStaticEvents();
             DestroyStealthDownloader();
+            if (_uiSettings != null)
+            {
+                _uiSettings.ColorValuesChanged -= OnColorValuesChanged;
+                _uiSettings = null;
+            }
         }
 
         private void CleanupStaticEvents()
@@ -121,7 +128,7 @@ namespace EdgeRebuild
                 var titleBar = ApplicationView.GetForCurrentView().TitleBar;
                 titleBar.ButtonBackgroundColor = Colors.Transparent;
                 titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-                titleBar.ButtonForegroundColor = Colors.Black;
+                UpdateTitleBarButtonColors(); // 动态设置按钮前景色
 
                 SetSafeZonePadding();
                 UpdateTabLayout();
@@ -150,6 +157,9 @@ namespace EdgeRebuild
                 WebView2Tab.DownloadRequested += OnWebView2DownloadRequested;
                 SettingsManager.SettingChanged += OnSettingChanged;
 
+                _uiSettings = new UISettings();
+                _uiSettings.ColorValuesChanged += OnColorValuesChanged;
+
                 if (_tabViews.Count == 0)
                 {
                     if (!string.IsNullOrEmpty(_pendingUrl))
@@ -172,6 +182,26 @@ namespace EdgeRebuild
                     CloseButtonText = "确定"
                 }.ShowAsync();
             }
+        }
+
+        private async void OnColorValuesChanged(UISettings sender, object args)
+        {
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                UpdateTitleBarButtonColors(); // 确保主题变化时按钮颜色跟随
+                if (_currentSkin == SkinManager.SkinSpartan)
+                {
+                    ApplySkinColors(_currentSkin);
+                }
+            });
+        }
+
+        private void UpdateTitleBarButtonColors()
+        {
+            var titleBar = ApplicationView.GetForCurrentView().TitleBar;
+            titleBar.ButtonForegroundColor = Application.Current.RequestedTheme == ApplicationTheme.Dark
+                ? Colors.White
+                : Colors.Black;
         }
 
         private async void OnSettingChanged(string key, string newValue)
@@ -347,7 +377,6 @@ namespace EdgeRebuild
             }
         }
 
-        private async void SwitchSkin(string name) { _currentSkin = name; ApplySkinColors(name); await SettingsManager.SetAsync("Skin", name); }
         private void ApplySkinColors(string skinName)
         {
             var colors = SkinManager.GetSkinColors(skinName);
@@ -355,14 +384,24 @@ namespace EdgeRebuild
             toolbarControl.ApplySkin(colors);
             HubSplitView.PaneBackground = colors.ToolbarBackground;
             SettingsSplitView.PaneBackground = colors.ToolbarBackground;
+
             _selectedBrush.Color = colors.TabActiveBackground.Color;
             _unselectedBrush.Color = colors.TabInactiveBackground.Color;
             _hoverBrush.Color = colors.TabHoverBackground.Color;
             _foregroundBrush = colors.ForegroundBrush;
             _mutedForegroundBrush = colors.MutedForegroundBrush;
-            foreach (var item in _tabViews) { item.Container.Background = (item.Tab == _currentTab) ? _selectedBrush : _unselectedBrush; item.TitleText.Foreground = _foregroundBrush; item.CloseButton.Foreground = _mutedForegroundBrush; }
-            hubPane.ForegroundBrush = _foregroundBrush;
-            hubPane.MutedForegroundBrush = _mutedForegroundBrush;
+
+            // 传递颜色给子控件
+            bool isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+            hubPane.ApplySkinColors(colors.ForegroundBrush as SolidColorBrush, colors.MutedForegroundBrush as SolidColorBrush, isDark);
+            SettingsPaneControl.ApplySkinColors(colors.ToolbarBackground);
+
+            foreach (var item in _tabViews)
+            {
+                item.Container.Background = (item.Tab == _currentTab) ? _selectedBrush : _unselectedBrush;
+                item.TitleText.Foreground = _foregroundBrush;
+                item.CloseButton.Foreground = _mutedForegroundBrush;
+            }
         }
 
         private async void ToolbarControl_UrlSubmitted(string url) => await _currentTab?.NavigateAsync(url);
@@ -672,7 +711,7 @@ namespace EdgeRebuild
                 UpdateTabLayout();
         }
 
-        // ========= 最终拖拽逻辑（延迟提交，无闪烁） =========
+        // ========= 拖拽逻辑 =========
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
@@ -694,7 +733,7 @@ namespace EdgeRebuild
             {
                 Width = _dragItem.Container.ActualWidth,
                 Height = 32,
-                Background = new SolidColorBrush(Colors.White) { Opacity = 0.9 },
+                Background = _selectedBrush,
                 BorderBrush = new SolidColorBrush(Colors.LightGray),
                 BorderThickness = new Thickness(1),
                 Child = new TextBlock
@@ -713,17 +752,13 @@ namespace EdgeRebuild
             DragCanvas.Children.Add(_dragGhost);
             Canvas.SetZIndex(_dragGhost, 999);
 
-            // 保存原内容，替换为空白占位（占位符不移动）
             _dragItem.Container.Tag = _dragItem.Container.Child;
             _dragItem.Container.Child = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
             _dragItem.Container.Opacity = 1.0;
 
-            // 记录 TabBarPanel 在 DragCanvas 中的偏移量
             var tabBarTransform = TabBarPanel.TransformToVisual(DragCanvas);
             _tabBarPanelOffset = tabBarTransform.TransformPoint(new Point(0, 0));
-            _lastSwapIndex = _tabViews.IndexOf(viewItem);
-
-            Debug.WriteLine($"[DragDebug] Press started. DragIndex={_lastSwapIndex} TabBarOffset=({_tabBarPanelOffset.X:F1},{_tabBarPanelOffset.Y:F1})");
+            _lastReorderTime = DateTime.MinValue;
 
             border.CapturePointer(e.Pointer);
             e.Handled = true;
@@ -738,7 +773,6 @@ namespace EdgeRebuild
             {
                 _hasMoved = true;
                 _isDragging = true;
-                Debug.WriteLine("[DragDebug] Dragging started.");
             }
 
             if (_isDragging)
@@ -758,7 +792,6 @@ namespace EdgeRebuild
                                screenPos.X < -threshold || screenPos.X > windowBounds.Width + threshold;
                 if (!_isDetaching && outside)
                 {
-                    Debug.WriteLine($"[DragDebug] Detaching! ScreenPos=({screenPos.X:F0},{screenPos.Y:F0})");
                     _isDetaching = true;
                     if (_dragGhost != null) { DragCanvas.Children.Remove(_dragGhost); _dragGhost = null; }
                     if (_dragItem != null && _dragItem.Container.Tag is UIElement originalChild)
@@ -772,16 +805,15 @@ namespace EdgeRebuild
                     _isDragging = false;
                     _hasMoved = false;
                     _totalDx = 0;
-                    _lastSwapIndex = -1;
                 }
             }
             e.Handled = true;
         }
 
-        // 仅更新数据顺序，不移动 UI 占位符
         private void UpdateDragSort()
         {
             if (_dragGhost == null) return;
+            if ((DateTime.Now - _lastReorderTime).TotalMilliseconds < 200) return;
 
             double ghostCenterInCanvas = Canvas.GetLeft(_dragGhost) + _dragGhost.Width / 2;
             double ghostLocalX = ghostCenterInCanvas - _tabBarPanelOffset.X;
@@ -804,17 +836,13 @@ namespace EdgeRebuild
                 accumulatedWidth += itemWidth;
             }
             if (targetIndex == -1) targetIndex = _tabViews.Count - 1;
+            if (targetIndex == dragIndex) return;
 
-            if (targetIndex == dragIndex || targetIndex == _lastSwapIndex) return;
-            _lastSwapIndex = targetIndex;
-
-            // 仅更新数据列表
             _tabViews.RemoveAt(dragIndex);
             _tabViews.Insert(targetIndex, _dragItem);
-            Debug.WriteLine($"[DragDebug] Data reorder: moved from {dragIndex} to {targetIndex}");
+            _lastReorderTime = DateTime.Now;
         }
 
-        // 将 TabBarPanel 的子元素顺序同步为数据列表顺序
         private void SyncTabPanelOrder()
         {
             TabBarPanel.Children.Clear();
@@ -828,18 +856,13 @@ namespace EdgeRebuild
             try
             {
                 if (_isDetaching) return;
-
                 if (!_hasMoved)
                 {
-                    Debug.WriteLine("[DragDebug] Click (no move), switch tab.");
                     SwitchToTab(_dragItem);
                     return;
                 }
-
-                // 拖拽结束，同步 UI 顺序
                 SyncTabPanelOrder();
                 UpdateTabLayout();
-                Debug.WriteLine("[DragDebug] Released, panel synced.");
             }
             finally
             {
@@ -869,15 +892,12 @@ namespace EdgeRebuild
             _hasMoved = false;
             _totalDx = 0;
             _isDetaching = false;
-            _lastSwapIndex = -1;
-            Debug.WriteLine("[DragDebug] State reset.");
         }
 
         private async void MoveTabToNewWindowAsync(TabViewItem item)
         {
             string url = item.Tab.CurrentUrl;
             int index = _tabViews.IndexOf(item);
-            Debug.WriteLine($"[DragDebug] MoveTabToNewWindow: index={index} url={url}");
             if (index < 0) return;
 
             if (item.Container.Parent is Panel panel)
@@ -922,18 +942,16 @@ namespace EdgeRebuild
                     newViewId = ApplicationView.GetForCurrentView().Id;
                 });
                 await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
-                Debug.WriteLine("[DragDebug] New window created successfully.");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[DragDebug] MoveTabToNewWindow failed: {ex.Message}");
+                Debug.WriteLine($"MoveTabToNewWindow failed: {ex.Message}");
             }
         }
 
         private void OnTabPointerCanceled(object sender, PointerRoutedEventArgs e) { ResetDragState(); }
         private void SwitchToTab(TabViewItem viewItem) => _ = SwitchToTabAsync(viewItem);
 
-        // 标签右键菜单
         private void OnTabRightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var border = sender as Border;
@@ -956,7 +974,6 @@ namespace EdgeRebuild
         private void CloseOtherTabs(TabViewItem keepItem) { foreach (var item in _tabViews.Where(t => t != keepItem).ToList()) _ = CloseTab(item); }
         private void CloseTabsToRight(TabViewItem startItem) { int index = _tabViews.IndexOf(startItem); if (index < 0) return; foreach (var item in _tabViews.Skip(index + 1).ToList()) _ = CloseTab(item); }
 
-        // 网页右键菜单
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
             if (_currentTab is EdgeHtmlTab) return;
@@ -1005,7 +1022,6 @@ namespace EdgeRebuild
             if (targetElement != null) flyout.ShowAt(targetElement, new Point(Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)), Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))));
         }
 
-        // 引擎切换辅助
         private async Task SwitchCurrentTabEngine(EngineType newEngine)
         {
             if (_currentTab == null || _currentTab.Engine == newEngine) return;

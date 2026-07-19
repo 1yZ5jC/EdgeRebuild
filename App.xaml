@@ -6,11 +6,29 @@
 
     <Application.Resources>
         <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- 亮色主题右键菜单/Flyout背景 -->
+                <ResourceDictionary x:Key="Light">
+                    <AcrylicBrush x:Key="MenuFlyoutBackgroundBrush"
+                                  BackgroundSource="HostBackdrop"
+                                  TintColor="#E6F0FA"
+                                  TintOpacity="0.85"
+                                  FallbackColor="#E6F0FA" />
+                </ResourceDictionary>
+                <!-- 暗色主题右键菜单/Flyout背景 -->
+                <ResourceDictionary x:Key="Dark">
+                    <AcrylicBrush x:Key="MenuFlyoutBackgroundBrush"
+                                  BackgroundSource="HostBackdrop"
+                                  TintColor="#2B2B2B"
+                                  TintOpacity="0.85"
+                                  FallbackColor="#2B2B2B" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
             <ResourceDictionary.MergedDictionaries>
                 <muxc:XamlControlsResources ControlsResourcesVersion="Version1" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 去掉常见控件的圆角 -->
             <Style TargetType="muxc:NavigationView">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
@@ -27,21 +45,18 @@
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
 
-            <!-- 右键菜单：方角 + 亚克力半透明 -->
+            <!-- 全局右键菜单背景：跟随系统亮/暗 -->
             <Style TargetType="MenuFlyoutPresenter">
                 <Setter Property="CornerRadius" Value="0" />
-                <Setter Property="Background">
-                    <Setter.Value>
-                        <AcrylicBrush
-                            BackgroundSource="HostBackdrop"
-                            TintColor="#F0F0F0"
-                            TintOpacity="0.8"
-                            FallbackColor="#F0F0F0" />
-                    </Setter.Value>
-                </Setter>
+                <Setter Property="Background" Value="{ThemeResource MenuFlyoutBackgroundBrush}" />
             </Style>
 
-            <!-- 恢复紧凑 Windows 10 间距（可选） -->
+            <!-- 全局Flyout背景（地址栏建议等） -->
+            <Style TargetType="FlyoutPresenter">
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="Background" Value="{ThemeResource MenuFlyoutBackgroundBrush}" />
+            </Style>
+
             <x:Double x:Key="ControlContentThemeFontSize">14</x:Double>
             <Thickness x:Key="ButtonPadding">8,4,8,4</Thickness>
             <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>

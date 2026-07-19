@@ -15,13 +15,6 @@
         <SolidColorBrush x:Key="RevealHoverBrush" Color="#40FFFFFF"/>
         <SolidColorBrush x:Key="RevealPressedBrush" Color="#80FFFFFF"/>
 
-        <!-- Flyout 亚克力背景 -->
-        <AcrylicBrush x:Key="SuggestionFlyoutAcrylic"
-                      BackgroundSource="HostBackdrop"
-                      TintColor="#F0F0F0"
-                      TintOpacity="0.8"
-                      FallbackColor="#F0F0F0"/>
-
         <Style x:Key="RevealButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
@@ -76,6 +69,47 @@
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
             <Setter Property="SelectionHighlightColor" Value="{ThemeResource SystemAccentColor}"/>
         </Style>
+
+        <Style x:Key="SuggestionItemStyle" TargetType="ListViewItem">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Grid x:Name="ContentBorder" Background="{TemplateBinding Background}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#D9EAF7"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#C0DDF2"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Selected">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#B3D4ED"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter Margin="12,0"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
     <Border x:Name="RootBorder" BorderThickness="0,1,0,1" Background="Transparent">
@@ -101,7 +135,7 @@
             <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
                     Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="RefreshBtn_Click"/>
 
-            <!-- 地址栏 + 附着的 Flyout -->
+            <!-- 地址栏 + 建议 Flyout -->
             <Grid Grid.Column="4">
                 <TextBox x:Name="UrlBox" MinWidth="200" PlaceholderText="输入网址或搜索（按“↓”来获取建议）"
                          KeyDown="UrlBox_KeyDown" Style="{StaticResource AddressBarStyle}"
@@ -109,16 +143,8 @@
                          TextChanged="UrlBox_TextChanged" VerticalContentAlignment="Center">
                     <FlyoutBase.AttachedFlyout>
                         <Flyout x:Name="SuggestionsFlyout" Placement="Bottom">
-                            <Flyout.FlyoutPresenterStyle>
-                                <Style TargetType="FlyoutPresenter">
-                                    <Setter Property="Padding" Value="0"/>
-                                    <Setter Property="BorderThickness" Value="1"/>
-                                    <Setter Property="BorderBrush" Value="#C0C0C0"/>
-                                    <Setter Property="Background" Value="{StaticResource SuggestionFlyoutAcrylic}"/>
-                                    <Setter Property="MaxWidth" Value="9999"/>
-                                </Style>
-                            </Flyout.FlyoutPresenterStyle>
-                            <Border x:Name="SuggestionBorder" Background="Transparent" BorderThickness="0" MinWidth="200" MaxHeight="250">
+                            <!-- FlyoutPresenter样式已由App.xaml全局控制，此处不再重复设置背景 -->
+                            <Border x:Name="SuggestionBorder" Background="Transparent" BorderThickness="0" MinWidth="200" MaxHeight="200">
                                 <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical" />
                             </Border>
                         </Flyout>
