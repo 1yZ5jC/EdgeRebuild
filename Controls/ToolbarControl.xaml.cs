@@ -7,6 +7,7 @@ using System.Linq;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.UI;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
@@ -76,6 +77,7 @@ namespace EdgeRebuild.Controls
             _mutedForegroundBrush = colors.MutedForegroundBrush;
             _isDarkTheme = isDark;
 
+            // 重置 Flyout 样式，确保下次显示时重新生成
             SuggestionsFlyout.FlyoutPresenterStyle = null;
         }
 
@@ -144,12 +146,22 @@ namespace EdgeRebuild.Controls
             }
         }
 
+        // 确保 Flyout 样式正确（独立于 MainPage 的任何 Flyout 样式）
         private void EnsureFlyoutPresenterStyle(double width)
         {
             var style = new Style(typeof(FlyoutPresenter));
             style.Setters.Add(new Setter(FlyoutPresenter.MinWidthProperty, width));
             style.Setters.Add(new Setter(FlyoutPresenter.PaddingProperty, new Thickness(0)));
             style.Setters.Add(new Setter(FlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
+            // 可选：为地址栏建议添加背景色
+            var acrylic = new AcrylicBrush
+            {
+                BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
+                TintColor = _isDarkTheme ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA),
+                TintOpacity = 0.85,
+                FallbackColor = _isDarkTheme ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA)
+            };
+            style.Setters.Add(new Setter(FlyoutPresenter.BackgroundProperty, acrylic));
             SuggestionsFlyout.FlyoutPresenterStyle = style;
         }
 
@@ -194,20 +206,182 @@ namespace EdgeRebuild.Controls
             return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
         }
 
-        private string ConvertToPunycode(string url) { /* 实现与之前相同 */ return url; }
-        private string TryConvertDomain(string domain) { /* 实现与之前相同 */ return null; }
-        private string DecodeUrl(string url) { /* 实现与之前相同 */ return url; }
+        private string ConvertToPunycode(string url)
+        {
+            try
+            {
+                string protocol = "";
+                int protoIdx = url.IndexOf("://");
+                if (protoIdx >= 0)
+                {
+                    protocol = url.Substring(0, protoIdx + 3);
+                    url = url.Substring(protoIdx + 3);
+                }
+                int slashIdx = url.IndexOf('/');
+                string domain = slashIdx >= 0 ? url.Substring(0, slashIdx) : url;
+                string path = slashIdx >= 0 ? url.Substring(slashIdx) : "";
+                if (domain.Any(c => c > 127))
+                    domain = _idn.GetAscii(domain);
+                return protocol + domain + path;
+            }
+            catch { return url; }
+        }
 
-        private void UrlBox_GotFocus(object sender, RoutedEventArgs e) { /* 与之前相同 */ }
-        private void UrlBox_LostFocus(object sender, RoutedEventArgs e) { /* 与之前相同 */ }
+        private string TryConvertDomain(string domain)
+        {
+            try
+            {
+                if (domain.Any(c => c > 127))
+                {
+                    string ascii = _idn.GetAscii(domain);
+                    if (!string.IsNullOrEmpty(ascii)) return ascii;
+                }
+                return null;
+            }
+            catch { return null; }
+        }
 
-        private void UrlBox_TextChanged(object sender, TextChangedEventArgs e) { /* 与之前相同 */ }
-        private void OnSuggestionTimerTick(object sender, object e) { /* 与之前相同 */ }
-        private void ShowSuggestionsManually() { /* 与之前相同 */ }
-        private void UpdateSuggestions() { /* 与之前相同 */ }
+        private string DecodeUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return url;
+            try
+            {
+                if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    Uri uri = new Uri(url);
+                    string host = uri.Host;
+                    if (host.Contains("xn--"))
+                    {
+                        IdnMapping idn = new IdnMapping();
+                        string unicodeHost = idn.GetUnicode(host);
+                        return uri.Scheme + "://" + unicodeHost + uri.PathAndQuery + uri.Fragment;
+                    }
+                }
+            }
+            catch { }
+            return url;
+        }
 
-        private Border CreateSuggestionItem(SuggestionItem item, double maxWidth) { /* 与之前相同 */ return null; }
-        private List<SuggestionItem> GetSuggestions(string query) { /* 与之前相同 */ return new List<SuggestionItem>(); }
+        private void UrlBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            var accentColor = (Color)Application.Current.Resources["SystemAccentColor"];
+            UrlBox.BorderBrush = new SolidColorBrush(accentColor);
+        }
+        private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
+        }
+
+        private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isSuggestionsVisible)
+            {
+                _suggestionTimer.Stop();
+                _suggestionTimer.Start();
+            }
+        }
+
+        private void OnSuggestionTimerTick(object sender, object e)
+        {
+            _suggestionTimer.Stop();
+            if (_isSuggestionsVisible)
+            {
+                UpdateSuggestions();
+                if (_currentSuggestions.Count == 0) CloseSuggestions();
+            }
+        }
+
+        private void ShowSuggestionsManually()
+        {
+            if (string.IsNullOrWhiteSpace(UrlBox.Text)) { CloseSuggestions(); return; }
+            UpdateSuggestions();
+            if (_currentSuggestions.Count > 0)
+            {
+                if (!_isSuggestionsVisible)
+                {
+                    EnsureFlyoutPresenterStyle(UrlBox.ActualWidth);
+                    FlyoutBase.ShowAttachedFlyout(UrlBox);
+                    _isSuggestionsVisible = true;
+                }
+            }
+            else CloseSuggestions();
+        }
+
+        private void UpdateSuggestions()
+        {
+            string query = UrlBox.Text?.Trim() ?? "";
+            _currentSuggestions = GetSuggestions(query);
+            SuggestionsPanel.Children.Clear();
+            double maxWidth = Math.Max(UrlBox.ActualWidth - 48, 200);
+            foreach (var s in _currentSuggestions)
+            {
+                if (SuggestionsPanel.Children.Count > 0)
+                    SuggestionsPanel.Children.Add(new Border { Height = 1, Background = new SolidColorBrush(Colors.LightGray), Margin = new Thickness(8, 0, 8, 0) });
+                SuggestionsPanel.Children.Add(CreateSuggestionItem(s, maxWidth));
+            }
+        }
+
+        private Border CreateSuggestionItem(SuggestionItem item, double maxWidth)
+        {
+            var border = new Border { Background = new SolidColorBrush(Colors.Transparent), Height = 38, Padding = new Thickness(12, 0, 12, 0) };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var icon = new FontIcon
+            {
+                Glyph = item.IsFavorite ? "\uE734" : "\uE81C",
+                FontSize = 14,
+                Foreground = _mutedForegroundBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            Grid.SetColumn(icon, 0);
+
+            var text = new TextBlock
+            {
+                Text = $"{item.DisplayTitle}  —  {item.Url}",
+                FontSize = 13,
+                Foreground = _foregroundBrush,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                MaxWidth = maxWidth
+            };
+            Grid.SetColumn(text, 1);
+
+            grid.Children.Add(icon);
+            grid.Children.Add(text);
+            border.Child = grid;
+
+            border.Tapped += (s, e) => { SubmitUrl(item.Url); e.Handled = true; };
+
+            Color hoverColor = _isDarkTheme ? Color.FromArgb(0xFF, 0x1A, 0x3A, 0x5C) : Color.FromArgb(0xFF, 0xD9, 0xEA, 0xF7);
+            Color normalColor = Colors.Transparent;
+            border.PointerEntered += (s, e) => border.Background = new SolidColorBrush(hoverColor);
+            border.PointerExited += (s, e) => border.Background = new SolidColorBrush(normalColor);
+
+            return border;
+        }
+
+        private List<SuggestionItem> GetSuggestions(string query)
+        {
+            var results = new List<SuggestionItem>();
+            if (string.IsNullOrWhiteSpace(query)) return results;
+            string lq = query.ToLower();
+            var favs = FavoritesManager.Instance.Favorites
+                .Where(f => f.Title.ToLower().Contains(lq) || f.Url.ToLower().Contains(lq))
+                .Take(5)
+                .Select(f => new SuggestionItem { DisplayTitle = f.Title, Url = f.Url, IsFavorite = true });
+            var hists = HistoryManager.History
+                .Where(h => h.Title.ToLower().Contains(lq) || h.Url.ToLower().Contains(lq))
+                .Take(5)
+                .Select(h => new SuggestionItem { DisplayTitle = h.Title, Url = h.Url, IsFavorite = false });
+            results.AddRange(favs);
+            foreach (var h in hists)
+                if (!results.Any(r => r.Url == h.Url)) results.Add(h);
+            return results.Take(8).ToList();
+        }
 
         private void CloseSuggestions() { SuggestionsFlyout.Hide(); _isSuggestionsVisible = false; }
         private void SubmitUrl(string url)
