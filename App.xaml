@@ -10,7 +10,7 @@
                 <muxc:XamlControlsResources ControlsResourcesVersion="Version1" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 全局圆角重置，确保所有控件均为直角 -->
+            <!-- 全局圆角重置 -->
             <Style TargetType="muxc:NavigationView">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
@@ -32,14 +32,37 @@
             <Style TargetType="FlyoutPresenter">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
-            <Style TargetType="ContentDialog">
-                <Setter Property="CornerRadius" Value="0" />
-            </Style>
             <Style TargetType="ScrollViewer">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
             <Style TargetType="Border">
                 <Setter Property="CornerRadius" Value="0" />
+            </Style>
+
+            <!-- ContentDialog 样式：自身直角 + 按钮直角 -->
+            <Style TargetType="ContentDialog">
+                <Setter Property="CornerRadius" Value="0" />
+                <Setter Property="PrimaryButtonStyle">
+                    <Setter.Value>
+                        <Style TargetType="Button">
+                            <Setter Property="CornerRadius" Value="0" />
+                        </Style>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="SecondaryButtonStyle">
+                    <Setter.Value>
+                        <Style TargetType="Button">
+                            <Setter Property="CornerRadius" Value="0" />
+                        </Style>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="CloseButtonStyle">
+                    <Setter.Value>
+                        <Style TargetType="Button">
+                            <Setter Property="CornerRadius" Value="0" />
+                        </Style>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <x:Double x:Key="ControlContentThemeFontSize">14</x:Double>

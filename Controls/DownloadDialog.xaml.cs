@@ -38,6 +38,12 @@ namespace EdgeRebuild.Controls
                 TintOpacity = 0.85,
                 FallbackColor = isDark ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA)
             };
+
+            // 强制主按钮和次要按钮直角（覆盖全局样式可能遗留的圆角）
+            var buttonStyle = new Style(typeof(Button));
+            buttonStyle.Setters.Add(new Setter(Button.CornerRadiusProperty, new CornerRadius(0)));
+            this.PrimaryButtonStyle = buttonStyle;
+            this.SecondaryButtonStyle = buttonStyle;
         }
 
         private string FormatFileSize(long bytes)
