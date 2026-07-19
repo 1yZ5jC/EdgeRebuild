@@ -55,7 +55,6 @@ namespace EdgeRebuild
         private const int ButtonBaseOffset = 50;
         private double _rightReserved;
 
-        // 拖拽相关字段
         private TabViewItem _dragItem;
         private Border _dragGhost;
         private Point _dragOffset;
@@ -77,6 +76,7 @@ namespace EdgeRebuild
         private bool _enableTabSuspend = true;
 
         private UISettings _uiSettings;
+        private bool _isDarkTheme;
 
         public MainPage()
         {
@@ -121,6 +121,8 @@ namespace EdgeRebuild
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
+            _isDarkTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+
             try
             {
                 CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
@@ -128,7 +130,7 @@ namespace EdgeRebuild
                 var titleBar = ApplicationView.GetForCurrentView().TitleBar;
                 titleBar.ButtonBackgroundColor = Colors.Transparent;
                 titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
-                UpdateTitleBarButtonColors(); // 动态设置按钮前景色
+                UpdateTitleBarButtonColors();
 
                 SetSafeZonePadding();
                 UpdateTabLayout();
@@ -175,6 +177,7 @@ namespace EdgeRebuild
             }
             catch (Exception ex)
             {
+                Debug.WriteLine($"[OnLoaded] 异常: {ex}");
                 await new ContentDialog
                 {
                     Title = "界面初始化失败",
@@ -188,7 +191,8 @@ namespace EdgeRebuild
         {
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                UpdateTitleBarButtonColors(); // 确保主题变化时按钮颜色跟随
+                _isDarkTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+                UpdateTitleBarButtonColors();
                 if (_currentSkin == SkinManager.SkinSpartan)
                 {
                     ApplySkinColors(_currentSkin);
@@ -199,9 +203,7 @@ namespace EdgeRebuild
         private void UpdateTitleBarButtonColors()
         {
             var titleBar = ApplicationView.GetForCurrentView().TitleBar;
-            titleBar.ButtonForegroundColor = Application.Current.RequestedTheme == ApplicationTheme.Dark
-                ? Colors.White
-                : Colors.Black;
+            titleBar.ButtonForegroundColor = _isDarkTheme ? Colors.White : Colors.Black;
         }
 
         private async void OnSettingChanged(string key, string newValue)
@@ -379,9 +381,9 @@ namespace EdgeRebuild
 
         private void ApplySkinColors(string skinName)
         {
-            var colors = SkinManager.GetSkinColors(skinName);
+            var colors = SkinManager.GetSkinColors(skinName, _isDarkTheme);
             TabBarBorder.Background = colors.ToolbarBackground;
-            toolbarControl.ApplySkin(colors);
+            toolbarControl.ApplySkin(colors, _isDarkTheme);
             HubSplitView.PaneBackground = colors.ToolbarBackground;
             SettingsSplitView.PaneBackground = colors.ToolbarBackground;
 
@@ -391,9 +393,7 @@ namespace EdgeRebuild
             _foregroundBrush = colors.ForegroundBrush;
             _mutedForegroundBrush = colors.MutedForegroundBrush;
 
-            // 传递颜色给子控件
-            bool isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
-            hubPane.ApplySkinColors(colors.ForegroundBrush as SolidColorBrush, colors.MutedForegroundBrush as SolidColorBrush, isDark);
+            hubPane.ApplySkinColors(colors.ForegroundBrush as SolidColorBrush, colors.MutedForegroundBrush as SolidColorBrush, _isDarkTheme);
             SettingsPaneControl.ApplySkinColors(colors.ToolbarBackground);
 
             foreach (var item in _tabViews)
@@ -428,11 +428,29 @@ namespace EdgeRebuild
         private void ToolbarControl_MenuClicked()
         {
             var menu = new MenuFlyout();
+            ApplyThemeToFlyout(menu);
+
             var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
             var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" }; edgeHtmlItem.Click += async (_, _) => await SwitchCurrentTabEngine(EngineType.EdgeHtml);
             var webView2Item = new MenuFlyoutItem { Text = "WebView2" }; webView2Item.Click += async (_, _) => await SwitchCurrentTabEngine(EngineType.WebView2);
             engineSub.Items.Add(edgeHtmlItem); engineSub.Items.Add(webView2Item); menu.Items.Add(engineSub);
             menu.Items.Add(new MenuFlyoutSeparator());
+
+            // 新建窗口（在当前窗口打开新标签页）
+            var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
+            newWindowItem.Click += async (_, _) =>
+            {
+                await CreateNewTabAsync(_defaultEngine, "about:blank");
+                await new ContentDialog
+                {
+                    Title = "提示",
+                    Content = "独立窗口功能暂不可用，已为您在当前窗口打开新标签页。",
+                    CloseButtonText = "确定"
+                }.ShowAsync();
+            };
+            menu.Items.Add(newWindowItem);
+            menu.Items.Add(new MenuFlyoutSeparator());
+
             var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
             var zoomInItem = new MenuFlyoutItem { Text = "放大" }; zoomInItem.Click += (_, _) => AdjustZoom(0.1);
             var zoomOutItem = new MenuFlyoutItem { Text = "缩小" }; zoomOutItem.Click += (_, _) => AdjustZoom(-0.1);
@@ -457,6 +475,21 @@ namespace EdgeRebuild
             var settingsItem = new MenuFlyoutItem { Text = "设置" }; settingsItem.Click += (_, _) => SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen; menu.Items.Add(settingsItem);
             var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" }; aboutItem.Click += (_, _) => ShowAboutDialog(); menu.Items.Add(aboutItem);
             toolbarControl.ShowMenu(menu);
+        }
+
+        private void ApplyThemeToFlyout(MenuFlyout flyout)
+        {
+            var style = new Style(typeof(MenuFlyoutPresenter));
+            var acrylic = new AcrylicBrush
+            {
+                BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
+                TintColor = _isDarkTheme ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA),
+                TintOpacity = 0.85,
+                FallbackColor = _isDarkTheme ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA)
+            };
+            style.Setters.Add(new Setter(MenuFlyoutPresenter.BackgroundProperty, acrylic));
+            style.Setters.Add(new Setter(MenuFlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
+            flyout.MenuFlyoutPresenterStyle = style;
         }
 
         private async void ToolbarControl_EngineSwitched(EngineType newEngine)
@@ -542,6 +575,7 @@ namespace EdgeRebuild
             }
             else if (_currentTab is EdgeHtmlTab edgeTab && edgeTab.IsSuspended)
             {
+                // EdgeHTML 实际上不会被挂起，但保留以防接口变更
                 await edgeTab.ResumeAsync();
                 UpdateTabSuspendedVisual(viewItem, false);
             }
@@ -555,7 +589,8 @@ namespace EdgeRebuild
 
             foreach (var t in _tabViews) t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
 
-            if (_enableTabSuspend && previousTab != null && previousTab != _currentTab)
+            // 启动后台标签挂起定时器（仅针对 WebView2 标签）
+            if (_enableTabSuspend && previousTab != null && previousTab != _currentTab && previousTab is WebView2Tab)
             {
                 if (_suspendTimers.ContainsKey(previousTab))
                 {
@@ -577,12 +612,7 @@ namespace EdgeRebuild
                         var vi = _tabViews.FirstOrDefault(v => v.Tab == wv2s);
                         if (vi != null) UpdateTabSuspendedVisual(vi, true);
                     }
-                    else if (tab is EdgeHtmlTab edgeS)
-                    {
-                        await edgeS.SuspendAsync();
-                        var vi = _tabViews.FirstOrDefault(v => v.Tab == edgeS);
-                        if (vi != null) UpdateTabSuspendedVisual(vi, true);
-                    }
+                    // EdgeHTML 不需要挂起，忽略
                     _suspendTimers.Remove(tab);
                 };
                 _suspendTimers[previousTab] = timer;
@@ -596,11 +626,16 @@ namespace EdgeRebuild
         {
             if (!_isLoaded) return;
             IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
+            await CreateTabViewAndSwitchAsync(tab, url);
+        }
+
+        private async Task CreateTabViewAndSwitchAsync(IBrowserTab tab, string url)
+        {
             var tabBorder = new Border { Height = 32, Background = _unselectedBrush, BorderBrush = new SolidColorBrush(Colors.LightGray), BorderThickness = new Thickness(0, 0, 1, 0), Padding = new Thickness(4, 0, 4, 0), VerticalAlignment = VerticalAlignment.Stretch, Width = MaxTabWidth };
             var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
             tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var engineMark = new TextBlock { Text = engine == EngineType.EdgeHtml ? "E" : "W", Foreground = engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush, FontSize = 11, FontWeight = Windows.UI.Text.FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
+            var engineMark = new TextBlock { Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W", Foreground = tab.Engine == EngineType.EdgeHtml ? _edgeBlueBrush : _webGreenBrush, FontSize = 11, FontWeight = Windows.UI.Text.FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 4, 0) };
             var faviconPlaceholder = new FontIcon { FontFamily = new FontFamily("Segoe MDL2 Assets"), Glyph = "\xE774", FontSize = 12, Foreground = new SolidColorBrush(Colors.Gray), Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center };
             var faviconImage = new Image { Width = 14, Height = 14, Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
             var titleText = new TextBlock { Text = "新标签页", TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 10, Foreground = _foregroundBrush, VerticalAlignment = VerticalAlignment.Center };
@@ -767,9 +802,11 @@ namespace EdgeRebuild
         private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
         {
             if (_dragItem == null || _dragGhost == null) return;
+
             var posInCanvas = e.GetCurrentPoint(DragCanvas).Position;
 
-            if (!_isDragging && (Math.Abs(posInCanvas.X - _dragStartCanvasPoint.X) > 3 || Math.Abs(posInCanvas.Y - _dragStartCanvasPoint.Y) > 3))
+            if (!_isDragging && (Math.Abs(posInCanvas.X - _dragStartCanvasPoint.X) > 3 ||
+                                 Math.Abs(posInCanvas.Y - _dragStartCanvasPoint.Y) > 3))
             {
                 _hasMoved = true;
                 _isDragging = true;
@@ -785,11 +822,15 @@ namespace EdgeRebuild
                 if (!_isDetaching)
                     UpdateDragSort();
 
-                var screenPos = CoreWindow.GetForCurrentThread().PointerPosition;
-                var windowBounds = Window.Current.Bounds;
+                var tabBarTransform = TabBarPanel.TransformToVisual(DragCanvas);
+                var tabBarBounds = new Rect(
+                    tabBarTransform.TransformPoint(new Point(0, 0)),
+                    tabBarTransform.TransformPoint(new Point(TabBarPanel.ActualWidth, TabBarPanel.ActualHeight)));
+
                 double threshold = 20;
-                bool outside = screenPos.Y < -threshold || screenPos.Y > windowBounds.Height + threshold ||
-                               screenPos.X < -threshold || screenPos.X > windowBounds.Width + threshold;
+                bool outside = posInCanvas.Y < tabBarBounds.Top - threshold ||
+                               posInCanvas.Y > tabBarBounds.Bottom + threshold;
+
                 if (!_isDetaching && outside)
                 {
                     _isDetaching = true;
@@ -800,7 +841,7 @@ namespace EdgeRebuild
                         _dragItem.Container.Tag = null;
                         _dragItem.Container.Opacity = 1.0;
                     }
-                    MoveTabToNewWindowAsync(_dragItem);
+                    MoveTabToNewTab(_dragItem);
                     _dragItem = null;
                     _isDragging = false;
                     _hasMoved = false;
@@ -808,6 +849,17 @@ namespace EdgeRebuild
                 }
             }
             e.Handled = true;
+        }
+
+        private async void MoveTabToNewTab(TabViewItem draggedItem)
+        {
+            string url = draggedItem.Tab.CurrentUrl;
+            EngineType engine = draggedItem.Tab.Engine;
+            if (string.IsNullOrWhiteSpace(url) || url == "about:blank")
+                url = "https://www.bing.com";
+
+            await CreateNewTabAsync(engine, url);
+            await CloseTab(draggedItem);
         }
 
         private void UpdateDragSort()
@@ -894,61 +946,6 @@ namespace EdgeRebuild
             _isDetaching = false;
         }
 
-        private async void MoveTabToNewWindowAsync(TabViewItem item)
-        {
-            string url = item.Tab.CurrentUrl;
-            int index = _tabViews.IndexOf(item);
-            if (index < 0) return;
-
-            if (item.Container.Parent is Panel panel)
-                panel.Children.Remove(item.Container);
-            _tabViews.RemoveAt(index);
-
-            if (_currentTab == item.Tab)
-            {
-                if (_tabViews.Count > 0)
-                {
-                    var next = _tabViews[Math.Min(index, _tabViews.Count - 1)];
-                    await SwitchToTabAsync(next);
-                }
-                else
-                {
-                    _currentTab = null;
-                    ContentContainer.Child = null;
-                    await CreateNewTabAsync(_defaultEngine, "about:blank");
-                }
-            }
-            else if (_tabViews.Count == 0)
-            {
-                await CreateNewTabAsync(_defaultEngine, "about:blank");
-            }
-            else
-            {
-                UpdateTabLayout();
-            }
-
-            item.Tab.Dispose();
-
-            try
-            {
-                var newView = CoreApplication.CreateNewView();
-                int newViewId = 0;
-                await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                {
-                    var frame = new Frame();
-                    frame.Navigate(typeof(MainPage), url);
-                    Window.Current.Content = frame;
-                    Window.Current.Activate();
-                    newViewId = ApplicationView.GetForCurrentView().Id;
-                });
-                await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"MoveTabToNewWindow failed: {ex.Message}");
-            }
-        }
-
         private void OnTabPointerCanceled(object sender, PointerRoutedEventArgs e) { ResetDragState(); }
         private void SwitchToTab(TabViewItem viewItem) => _ = SwitchToTabAsync(viewItem);
 
@@ -958,6 +955,7 @@ namespace EdgeRebuild
             var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
             if (viewItem == null) return;
             var menu = new MenuFlyout();
+            ApplyThemeToFlyout(menu);
             var newTabItem = new MenuFlyoutItem { Text = "新建标签页" };
             newTabItem.Click += async (_, _) => await CreateNewTabAsync(_defaultEngine, "about:blank");
             menu.Items.Add(newTabItem);
@@ -966,8 +964,6 @@ namespace EdgeRebuild
             menu.Items.Add(new MenuFlyoutSeparator());
             var closeOthersItem = new MenuFlyoutItem { Text = "关闭其他标签页" }; closeOthersItem.Click += (_, _) => CloseOtherTabs(viewItem); menu.Items.Add(closeOthersItem);
             var closeRightItem = new MenuFlyoutItem { Text = "关闭右侧标签页" }; closeRightItem.Click += (_, _) => CloseTabsToRight(viewItem); menu.Items.Add(closeRightItem);
-            menu.Items.Add(new MenuFlyoutSeparator());
-            var moveItem = new MenuFlyoutItem { Text = "移动到新窗口" }; moveItem.Click += (_, _) => { MoveTabToNewWindowAsync(viewItem); }; menu.Items.Add(moveItem);
             menu.ShowAt(border, e.GetPosition(border));
         }
 
@@ -978,6 +974,7 @@ namespace EdgeRebuild
         {
             if (_currentTab is EdgeHtmlTab) return;
             var flyout = new MenuFlyout();
+            ApplyThemeToFlyout(flyout);
             var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = args.HasSelection };
             copyItem.Click += async (_, _) =>
             {
@@ -1134,7 +1131,8 @@ namespace EdgeRebuild
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if (e.Parameter is string url) _pendingUrl = url;
+            if (e.Parameter is string url)
+                _pendingUrl = url;
         }
 
         private async void UpdateFavicon(TabViewItem viewItem, string faviconUrl)

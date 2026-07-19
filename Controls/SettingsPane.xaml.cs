@@ -18,6 +18,18 @@ namespace EdgeRebuild.Controls
             this.InitializeComponent();
             BuildContentPanels();
             SettingsNavView.SelectedItem = SettingsNavView.MenuItems[0];
+            // 延迟加载设置，确保控件已加入视觉树
+            this.Loaded += OnSettingsPaneLoaded;
+        }
+
+        private async void OnSettingsPaneLoaded(object sender, RoutedEventArgs e)
+        {
+            this.Loaded -= OnSettingsPaneLoaded;
+            // 确保所有控件已构建（尽管在构造函数中已构建，但 Loaded 更安全）
+            if (_spartanRadio != null && _modernIERadio != null)
+            {
+                await LoadSettingsAsync();
+            }
         }
 
         public void ApplySkinColors(Brush backgroundBrush)
@@ -81,31 +93,36 @@ namespace EdgeRebuild.Controls
             aboutPanel.Children.Add(new TextBlock { Text = "版本 0.2 Alpha", Margin = new Thickness(0, 4, 0, 0) });
             aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap });
             _panels[5] = aboutPanel;
-
-            LoadSettingsAsync();
         }
 
-        private async void LoadSettingsAsync()
+        private async System.Threading.Tasks.Task LoadSettingsAsync()
         {
-            string skin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
-            _spartanRadio.IsChecked = (skin != "ModernIE");
-            _modernIERadio.IsChecked = (skin == "ModernIE");
+            try
+            {
+                string skin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
+                _spartanRadio.IsChecked = (skin != "ModernIE");
+                _modernIERadio.IsChecked = (skin == "ModernIE");
 
-            string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
-            _askToggle.IsOn = (ask == "True" || ask == "true");
+                string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
+                _askToggle.IsOn = (ask == "True" || ask == "true");
 
-            string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
-            _edgeRadio.IsChecked = (engine != "WebView2");
-            _webviewRadio.IsChecked = (engine == "WebView2");
+                string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
+                _edgeRadio.IsChecked = (engine != "WebView2");
+                _webviewRadio.IsChecked = (engine == "WebView2");
 
-            string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
-            _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
+                string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
+                _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
 
-            _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
-            _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
-            _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
-            _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
-            _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
+                _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
+                _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
+                _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
+                _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
+                _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"SettingsPane load error: {ex.Message}");
+            }
         }
 
         private async void SaveSkin(string skin) => await SettingsManager.SetAsync("Skin", skin);
