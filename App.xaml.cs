@@ -1,11 +1,14 @@
-﻿using System;
+﻿using EdgeRebuild.Core;
+using EdgeRebuild.Services;
+using System;
+using System.Diagnostics;
+using System.IO;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
+using Windows.Storage;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
-using EdgeRebuild.Services;
-using EdgeRebuild.Core;
 
 namespace EdgeRebuild
 {
@@ -15,6 +18,15 @@ namespace EdgeRebuild
         {
             this.InitializeComponent();
             this.Suspending += OnSuspending;
+
+            this.UnhandledException += (s, e) =>
+            {
+                string logPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "crash.log");
+                string log = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | Unhandled Exception: {e.Exception}\n";
+                File.AppendAllText(logPath, log);
+                Debug.WriteLine($"[FATAL] {log}");
+                // 不再强制标记 Handled，让严重异常正常传播
+            };
         }
 
         protected override async void OnLaunched(LaunchActivatedEventArgs e)
@@ -70,10 +82,7 @@ namespace EdgeRebuild
                 await DownloadManager.SaveAllDownloadsAsync();
             }
             catch { }
-            finally
-            {
-                deferral.Complete();
-            }
+            finally { deferral.Complete(); }
         }
     }
 }

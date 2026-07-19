@@ -19,12 +19,13 @@ namespace EdgeRebuild.Core
         private bool _isSuspended = false;
         private string _suspendedUrl = "";
         private bool _httpsFailed = false;
+        private bool _disposed = false;
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
-        public bool CanGoBack => _webView.CoreWebView2?.CanGoBack ?? false;
-        public bool CanGoForward => _webView.CoreWebView2?.CanGoForward ?? false;
-        public string CurrentUrl => _isSuspended ? _suspendedUrl : (_webView.Source?.ToString() ?? "");
+        public bool CanGoBack => _webView?.CoreWebView2?.CanGoBack ?? false;
+        public bool CanGoForward => _webView?.CoreWebView2?.CanGoForward ?? false;
+        public string CurrentUrl => _isSuspended ? _suspendedUrl : (_webView?.Source?.ToString() ?? "");
         public EngineType Engine => EngineType.WebView2;
         public string EngineIcon => "🧬";
         public string Title => _title;
@@ -40,8 +41,7 @@ namespace EdgeRebuild.Core
         public event Action<string> FaviconChanged;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action<string> NewWindowRequested;
-
-        public static event Action<string, StorageFolder, string> DownloadRequested;
+        public event Action<string, StorageFolder, string> DownloadRequested; // 实例事件
 
         public WebView2Tab()
         {
@@ -51,12 +51,13 @@ namespace EdgeRebuild.Core
 
         public async Task EnsureInitializedAsync()
         {
-            if (_webView.CoreWebView2 != null) return;
+            if (_webView.CoreWebView2 != null || _disposed) return;
             await _initLock.WaitAsync();
             try
             {
-                if (_webView.CoreWebView2 != null) return;
+                if (_webView.CoreWebView2 != null || _disposed) return;
                 await _webView.EnsureCoreWebView2Async();
+                if (_disposed) return;
                 _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
                 _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
                 _webView.CoreWebView2.ContextMenuRequested += OnContextMenuRequested;
@@ -75,67 +76,144 @@ namespace EdgeRebuild.Core
 
         public async Task SuspendAsync()
         {
-            if (_isSuspended) return;
-            if (_webView.CoreWebView2 == null) { _suspendedUrl = _webView.Source?.ToString() ?? ""; _isSuspended = true; return; }
+            if (_isSuspended || _disposed) return;
+            if (_webView.CoreWebView2 == null)
+            {
+                _suspendedUrl = _webView.Source?.ToString() ?? "";
+                _isSuspended = true;
+                return;
+            }
             try
             {
                 _suspendedUrl = _webView.Source?.ToString() ?? "";
-                await _webView.CoreWebView2.TrySuspendAsync();
-                _isSuspended = true;
+                var result = await _webView.CoreWebView2.TrySuspendAsync();
+                _isSuspended = result;
             }
-            catch { }
+            catch { _isSuspended = false; }
         }
 
         public async Task ResumeAsync()
         {
-            if (!_isSuspended) return;
+            if (!_isSuspended || _disposed) return;
             _isSuspended = false;
             if (_webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.Resume();
-                if (!string.IsNullOrEmpty(_suspendedUrl)) _webView.CoreWebView2.Navigate(_suspendedUrl);
+                // 不再重复导航，Resume 已经恢复了原来的页面
             }
-            else await NavigateAsync(_suspendedUrl);
+            else if (!string.IsNullOrEmpty(_suspendedUrl))
+            {
+                await NavigateAsync(_suspendedUrl);
+            }
         }
 
         private async void OnDownloadStarting(object sender, CoreWebView2DownloadStartingEventArgs e)
         {
-            var op = e.DownloadOperation;
-            e.Handled = true;
-            string url = op.Uri ?? "";
-            string fileName = Path.GetFileName(op.ResultFilePath);
+            var deferral = e.GetDeferral();
+            try
+            {
+                var op = e.DownloadOperation;
+                e.Handled = true;
 
-            bool askBeforeDownload = false;
-            try { askBeforeDownload = (await Services.SettingsManager.GetAsync("AskBeforeDownload") == "True"); } catch { }
+                // 检查是否已有完全相同的已完成文件
+                var existing = Services.DownloadManager.FindCompletedByFileNameSync(Path.GetFileName(op.ResultFilePath), op.Uri);
+                if (existing != null)
+                {
+                    e.Cancel = true;
+                    try
+                    {
+                        var file = await StorageFile.GetFileFromPathAsync(existing.FullPath);
+                        await Windows.System.Launcher.LaunchFileAsync(file);
+                    }
+                    catch { }
+                    return;
+                }
 
-            var existing = Services.DownloadManager.FindCompletedByFileNameSync(fileName, url);
-            if (existing != null) { e.Cancel = true; try { await Windows.System.Launcher.LaunchFileAsync(await StorageFile.GetFileFromPathAsync(existing.FullPath)); } catch { } return; }
+                bool askBeforeDownload = false;
+                try
+                {
+                    askBeforeDownload = (await Services.SettingsManager.GetAsync("AskBeforeDownload") == "True");
+                }
+                catch { }
 
-            StorageFolder defaultFolder = null;
-            try { defaultFolder = await Services.DownloadManager.GetDownloadFolderAsync(); } catch { }
+                if (askBeforeDownload)
+                {
+                    StorageFolder defaultFolder = null;
+                    try { defaultFolder = await Services.DownloadManager.GetDownloadFolderAsync(); } catch { }
 
-            if (askBeforeDownload)
+                    var dialog = new Controls.DownloadDialog(
+                        Path.GetFileName(op.ResultFilePath),
+                        op.Uri,
+                        defaultFolder,
+                        op.TotalBytesToReceive > 0 ? (long?)op.TotalBytesToReceive : null);
+
+                    var result = await dialog.ShowAsync();
+                    if (result != ContentDialogResult.Primary)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+
+                    if (!Controls.DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
+                    {
+                        e.Cancel = true;
+                        await new ContentDialog
+                        {
+                            Title = "文件名无效",
+                            Content = error,
+                            CloseButtonText = "确定"
+                        }.ShowAsync();
+                        return;
+                    }
+
+                    string folderPath = dialog.SelectedFolder?.Path ?? defaultFolder?.Path ?? "";
+                    string fullPath = Path.Combine(folderPath, safeName);
+                    if (File.Exists(fullPath))
+                    {
+                        string ext = Path.GetExtension(safeName);
+                        string name = Path.GetFileNameWithoutExtension(safeName);
+                        int counter = 1;
+                        while (File.Exists(fullPath = Path.Combine(folderPath, $"{name} ({counter++}){ext}"))) ;
+                    }
+                    e.ResultFilePath = fullPath;
+                    var item = await Services.DownloadManager.AddAsync(op.Uri, fullPath, Path.GetFileName(fullPath));
+                    item.WebViewOperation = op;
+                    item.TotalBytesToReceive = op.TotalBytesToReceive;
+                    Services.DownloadManager.StartDownloadOperation(item);
+                }
+                else
+                {
+                    string fileName = Path.GetFileName(op.ResultFilePath);
+                    StorageFolder folder = await Services.DownloadManager.GetDownloadFolderAsync();
+                    string finalPath = Path.Combine(folder.Path, fileName);
+                    if (File.Exists(finalPath))
+                    {
+                        string ext = Path.GetExtension(fileName);
+                        string name = Path.GetFileNameWithoutExtension(fileName);
+                        int counter = 1;
+                        while (File.Exists(finalPath = Path.Combine(folder.Path, $"{name} ({counter++}){ext}"))) ;
+                    }
+                    e.ResultFilePath = finalPath;
+                    var item = await Services.DownloadManager.AddAsync(op.Uri, finalPath, Path.GetFileName(finalPath));
+                    item.WebViewOperation = op;
+                    item.TotalBytesToReceive = op.TotalBytesToReceive;
+                    Services.DownloadManager.StartDownloadOperation(item);
+                }
+            }
+            catch (Exception ex)
             {
                 e.Cancel = true;
-                var dialog = new Controls.DownloadDialog(fileName, url, defaultFolder);
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary && dialog.SelectedFolder != null && !string.IsNullOrWhiteSpace(dialog.FileName))
-                    DownloadRequested?.Invoke(url, dialog.SelectedFolder, dialog.FileName);
+                System.Diagnostics.Debug.WriteLine($"下载处理失败: {ex.Message}");
             }
-            else
+            finally
             {
-                string filePath = Path.Combine(defaultFolder.Path, fileName);
-                if (File.Exists(filePath)) { string ext = Path.GetExtension(fileName); string name = Path.GetFileNameWithoutExtension(fileName); int counter = 1; while (File.Exists(filePath = Path.Combine(defaultFolder.Path, $"{name} ({counter++}){ext}"))) ; }
-                e.ResultFilePath = filePath;
-                var item = await Services.DownloadManager.AddAsync(url, filePath, Path.GetFileName(filePath));
-                item.WebViewOperation = op; item.TotalBytesToReceive = op.TotalBytesToReceive;
-                Services.DownloadManager.StartDownloadOperation(item);
+                deferral.Complete();
             }
         }
 
         private async void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
         {
-            if (_isSuspended) return;
-
+            if (_isSuspended || _disposed) return;
             if (e.IsSuccess)
             {
                 _httpsFailed = false;
@@ -149,22 +227,7 @@ namespace EdgeRebuild.Core
                 string currentUrl = sender.Source?.ToString() ?? "";
                 if (!_httpsFailed && currentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (e.WebErrorStatus == CoreWebView2WebErrorStatus.ConnectionAborted ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CannotConnect ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.HostNameNotResolved ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CertificateCommonNameIsIncorrect ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CertificateExpired ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.CertificateIsInvalid ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.Timeout ||
-                        e.WebErrorStatus == CoreWebView2WebErrorStatus.Unknown)
-                    {
-                        _httpsFailed = true;
-                        string httpUrl = "http://" + currentUrl.Substring("https://".Length);
-                        System.Diagnostics.Debug.WriteLine($"[HTTPS Fallback] Trying HTTP: {httpUrl}");
-                        _webView.CoreWebView2.Navigate(httpUrl);
-                        return;
-                    }
+                    // 安全降级逻辑可根据需求决定是否保留，但为安全起见不再自动降级，此处可注释或移除
                 }
                 UrlChanged?.Invoke(currentUrl);
             }
@@ -192,7 +255,8 @@ namespace EdgeRebuild.Core
             if (_webView.CoreWebView2 == null || _webView.Source?.AbsoluteUri == "about:blank") return;
             try
             {
-                var result = await _webView.CoreWebView2.ExecuteScriptAsync("(function(){ var l=document.querySelector('link[rel*=\"icon\"]'); return l?l.href:''; })()");
+                var result = await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){ var l=document.querySelector('link[rel*=\"icon\"]'); return l?l.href:''; })()");
                 if (!string.IsNullOrEmpty(result)) ProcessFaviconUrl(result.Trim('"'));
             }
             catch { }
@@ -216,40 +280,40 @@ namespace EdgeRebuild.Core
             var target = e.ContextMenuTarget;
             if (target != null)
             {
-                if (target.Kind == CoreWebView2ContextMenuTargetKind.Image) { args.MenuType = ContextMenuType.Image; args.ImageUrl = target.SourceUri; }
-                else if (!string.IsNullOrEmpty(target.LinkUri)) { args.MenuType = ContextMenuType.Link; args.LinkUrl = target.LinkUri; }
-                args.HasSelection = target.HasSelection; args.SelectionText = target.SelectionText ?? ""; args.IsEditable = target.IsEditable;
+                if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
+                {
+                    args.MenuType = ContextMenuType.Image; args.ImageUrl = target.SourceUri;
+                }
+                else if (!string.IsNullOrEmpty(target.LinkUri))
+                {
+                    args.MenuType = ContextMenuType.Link; args.LinkUrl = target.LinkUri;
+                }
+                args.HasSelection = target.HasSelection;
+                args.SelectionText = target.SelectionText ?? "";
+                args.IsEditable = target.IsEditable;
             }
             ContextMenuRequested?.Invoke(args);
             e.Handled = true;
         }
 
-        public async Task<string> ExecuteScriptAsync(string script) => (_webView?.CoreWebView2 != null) ? await _webView.CoreWebView2.ExecuteScriptAsync(script) : "";
+        public async Task<string> ExecuteScriptAsync(string script)
+        {
+            return (_webView?.CoreWebView2 != null) ? await _webView.CoreWebView2.ExecuteScriptAsync(script) : "";
+        }
 
-        // 修复：先判断是否已是有效的绝对 URI，再决定是否补全协议
         public async Task NavigateAsync(string url)
         {
-            if (string.IsNullOrWhiteSpace(url))
-                url = "about:blank";
-
-            if (_webView == null) return;
+            if (_disposed) return;
+            if (string.IsNullOrWhiteSpace(url)) url = "about:blank";
             await EnsureInitializedAsync();
             if (_webView.CoreWebView2 == null) return;
-
             _httpsFailed = false;
-
-            // 如果已经是有效的绝对 URI，直接使用（避免错误补全）
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
-                // 如果不是绝对 URI，尝试补全 "https://"
                 string candidate = "https://" + url;
                 if (!Uri.TryCreate(candidate, UriKind.Absolute, out uri))
-                {
-                    // 仍然无效，回退到 about:blank
                     uri = new Uri("about:blank");
-                }
             }
-
             _webView.CoreWebView2.Navigate(uri.AbsoluteUri);
         }
 
@@ -260,6 +324,7 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
+            _disposed = true;
             _initLock?.Dispose();
             if (_webView == null) return;
             _webView.NavigationCompleted -= OnNavigationCompleted;
@@ -273,7 +338,6 @@ namespace EdgeRebuild.Core
             }
             try { (_webView.Parent as Panel)?.Children.Remove(_webView); _webView.Close(); } catch { }
             _webView = null;
-
             TitleChanged = null;
             UrlChanged = null;
             CanGoBackChanged = null;
@@ -281,6 +345,7 @@ namespace EdgeRebuild.Core
             FaviconChanged = null;
             ContextMenuRequested = null;
             NewWindowRequested = null;
+            DownloadRequested = null;
         }
     }
 }

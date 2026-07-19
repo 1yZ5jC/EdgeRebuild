@@ -1,5 +1,4 @@
-﻿using System;
-using Windows.Data.Xml.Dom;
+﻿using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
 
 namespace EdgeRebuild.Services
@@ -10,25 +9,17 @@ namespace EdgeRebuild.Services
         {
             try
             {
-                string xml = $@"
-                <toast>
-                    <visual>
-                        <binding template='ToastGeneric'>
-                            <text>{title}</text>
-                            <text>{message}</text>
-                        </binding>
-                    </visual>
-                </toast>";
+                var toastTemplate = ToastNotificationManager.GetTemplateContent(ToastTemplateType.ToastText02);
+                var textNodes = toastTemplate.GetElementsByTagName("text");
+                textNodes[0].AppendChild(toastTemplate.CreateTextNode(title));
+                textNodes[1].AppendChild(toastTemplate.CreateTextNode(message));
 
-                XmlDocument doc = new XmlDocument();
-                doc.LoadXml(xml);
-
-                var toast = new ToastNotification(doc);
-                ToastNotificationManager.CreateToastNotifier().Show(toast);
+                var toast = new ToastNotification(toastTemplate);
+                ToastNotificationManager.CreateToastNotifier().Show(toast);  // 修复：ShowToast → Show
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine($"通知发送失败: {ex.Message}");
+                // 通知失败时静默忽略
             }
         }
     }

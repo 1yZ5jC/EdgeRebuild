@@ -13,25 +13,18 @@ namespace EdgeRebuild.Services
         {
             var items = await DatabaseService.Database.Table<HistoryItem>().ToListAsync();
             History.Clear();
-            foreach (var item in items)
-                History.Add(item);
+            foreach (var item in items) History.Add(item);
         }
 
-        public static void Add(string title, string url)
+        public static async Task AddAsync(string title, string url)
         {
-            var item = new HistoryItem
-            {
-                Title = title ?? url,
-                Url = url,
-                VisitTime = DateTime.Now
-            };
-            _ = DatabaseService.Database.InsertAsync(item);
+            var item = new HistoryItem { Title = title ?? url, Url = url, VisitTime = DateTime.Now };
+            await DatabaseService.Database.InsertAsync(item);
             History.Insert(0, item);
-
             while (History.Count > 1000)
             {
                 var last = History.Last();
-                _ = DatabaseService.Database.DeleteAsync(last);
+                await DatabaseService.Database.DeleteAsync(last);
                 History.Remove(last);
             }
         }
@@ -42,13 +35,7 @@ namespace EdgeRebuild.Services
             History.Clear();
         }
 
-        public static void Clear()
-        {
-            _ = ClearAsync();
-        }
-
-        // 新增：删除单条历史记录
-        public static async void Remove(HistoryItem item)
+        public static async Task RemoveAsync(HistoryItem item)
         {
             History.Remove(item);
             await DatabaseService.Database.DeleteAsync(item);

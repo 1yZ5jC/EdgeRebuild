@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading.Tasks;
-using Windows.Storage;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Windows.Storage;
 
 namespace EdgeRebuild.Core
 {
@@ -19,15 +19,10 @@ namespace EdgeRebuild.Core
         {
             var items = await Services.DatabaseService.Database.Table<FavoriteItem>().ToListAsync();
             Favorites.Clear();
-            foreach (var item in items)
-                Favorites.Add(item);
+            foreach (var item in items) Favorites.Add(item);
         }
 
-        public bool ContainsUrl(string url)
-        {
-            if (string.IsNullOrEmpty(url)) return false;
-            return Favorites.Any(f => f.Url == url);
-        }
+        public bool ContainsUrl(string url) => !string.IsNullOrEmpty(url) && Favorites.Any(f => f.Url == url);
 
         public async Task AddAsync(string title, string url)
         {
@@ -42,10 +37,10 @@ namespace EdgeRebuild.Core
             Favorites.Remove(item);
         }
 
+        // 便捷同步方法（不推荐，但保持兼容）
         public void Add(string title, string url) => _ = AddAsync(title, url);
         public void Remove(FavoriteItem item) => _ = RemoveAsync(item);
 
-        // ========== HTML 导出 ==========
         public static async Task ExportToHtmlAsync(StorageFile file)
         {
             var sb = new StringBuilder();
@@ -54,7 +49,6 @@ namespace EdgeRebuild.Core
             sb.AppendLine("<TITLE>Bookmarks</TITLE>");
             sb.AppendLine("<H1>Bookmarks</H1>");
             sb.AppendLine("<DL><p>");
-
             foreach (var fav in Instance.Favorites)
             {
                 string title = System.Net.WebUtility.HtmlEncode(fav.Title ?? fav.Url);
@@ -62,36 +56,21 @@ namespace EdgeRebuild.Core
                 long addDate = new DateTimeOffset(fav.AddedDate).ToUnixTimeSeconds();
                 sb.AppendLine($"<DT><A HREF=\"{url}\" ADD_DATE=\"{addDate}\">{title}</A>");
             }
-
             sb.AppendLine("</DL><p>");
             await FileIO.WriteTextAsync(file, sb.ToString());
         }
 
-        // ========== HTML 导入 ==========
         public static async Task<int> ImportFromHtmlAsync(StorageFile file)
         {
             string html = await FileIO.ReadTextAsync(file);
             int count = 0;
-
-            // 匹配所有 <a> 标签的 href 和内部文本
-            var regex = new Regex(@"<a\s+[^>]*href\s*=\s*[""']([^""']*)[""'][^>]*>(.*?)</a>",
-                RegexOptions.IgnoreCase | RegexOptions.Singleline);
-
-            var matches = regex.Matches(html);
-            foreach (Match match in matches)
+            var regex = new Regex(@"<a\s+[^>]*href\s*=\s*[""']([^""']*)[""'][^>]*>(.*?)</a>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            foreach (Match match in regex.Matches(html))
             {
                 string url = System.Net.WebUtility.HtmlDecode(match.Groups[1].Value.Trim());
                 string title = System.Net.WebUtility.HtmlDecode(match.Groups[2].Value.Trim());
-
-                if (string.IsNullOrWhiteSpace(url)) continue;
-                if (!Uri.TryCreate(url, UriKind.Absolute, out _)) continue;
-
-                // 去重
-                if (!Instance.ContainsUrl(url))
-                {
-                    Instance.Add(title, url);
-                    count++;
-                }
+                if (string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _)) continue;
+                if (!Instance.ContainsUrl(url)) { await Instance.AddAsync(title, url); count++; }
             }
             return count;
         }
