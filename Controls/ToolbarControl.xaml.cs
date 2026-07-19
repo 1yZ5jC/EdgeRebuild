@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
 using System.Linq;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Core;
@@ -31,7 +32,6 @@ namespace EdgeRebuild.Controls
         private bool _isSuggestionsVisible;
         private List<SuggestionItem> _currentSuggestions = new List<SuggestionItem>();
 
-        // 默认搜索引擎（Google）
         private const string SearchEngineUrl = "https://www.google.com/search?q={0}";
         private static readonly IdnMapping _idn = new IdnMapping();
 
@@ -46,6 +46,9 @@ namespace EdgeRebuild.Controls
             _suggestionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             _suggestionTimer.Tick += OnSuggestionTimerTick;
             SuggestionsFlyout.Closed += (_, _) => _isSuggestionsVisible = false;
+
+            // 订阅地址栏右键菜单事件
+            UrlBox.ContextRequested += UrlBox_ContextRequested;
         }
 
         // ---- 公开方法 ----
@@ -112,6 +115,91 @@ namespace EdgeRebuild.Controls
         private void HubBtn_Click(object sender, RoutedEventArgs e) => HubClicked?.Invoke();
         private void MenuBtn_Click(object sender, RoutedEventArgs e) => MenuClicked?.Invoke();
 
+        // ---- 地址栏右键菜单 ----
+        private void UrlBox_ContextRequested(UIElement sender, ContextRequestedEventArgs args)
+        {
+            args.Handled = true; // 阻止系统默认菜单
+
+            var flyout = new MenuFlyout();
+
+            // 复制
+            var copyItem = new MenuFlyoutItem { Text = "复制" };
+            copyItem.Click += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(UrlBox.SelectedText))
+                {
+                    var dp = new DataPackage();
+                    dp.SetText(UrlBox.SelectedText);
+                    Clipboard.SetContent(dp);
+                }
+                else
+                {
+                    var dp = new DataPackage();
+                    dp.SetText(UrlBox.Text);
+                    Clipboard.SetContent(dp);
+                }
+            };
+            flyout.Items.Add(copyItem);
+
+            // 粘贴
+            var pasteItem = new MenuFlyoutItem { Text = "粘贴" };
+            pasteItem.Click += async (s, e) =>
+            {
+                var content = Clipboard.GetContent();
+                if (content.Contains(StandardDataFormats.Text))
+                {
+                    string text = await content.GetTextAsync();
+                    // 将粘贴内容插入到光标位置或替换选中文本
+                    int selStart = UrlBox.SelectionStart;
+                    int selLength = UrlBox.SelectionLength;
+                    string currentText = UrlBox.Text;
+                    string newText = currentText.Substring(0, selStart) + text + currentText.Substring(selStart + selLength);
+                    UrlBox.Text = newText;
+                    UrlBox.SelectionStart = selStart + text.Length;
+                }
+            };
+            flyout.Items.Add(pasteItem);
+
+            // 粘贴并转到
+            var pasteAndGoItem = new MenuFlyoutItem { Text = "粘贴并转到" };
+            pasteAndGoItem.Click += async (s, e) =>
+            {
+                var content = Clipboard.GetContent();
+                if (content.Contains(StandardDataFormats.Text))
+                {
+                    string text = await content.GetTextAsync();
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        string url = ResolveInputToUrl(text.Trim());
+                        UrlSubmitted?.Invoke(url);
+                    }
+                }
+            };
+            flyout.Items.Add(pasteAndGoItem);
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            // 全选
+            var selectAllItem = new MenuFlyoutItem { Text = "全选" };
+            selectAllItem.Click += (s, e) => UrlBox.SelectAll();
+            flyout.Items.Add(selectAllItem);
+
+            // 清除
+            var clearItem = new MenuFlyoutItem { Text = "清除" };
+            clearItem.Click += (s, e) => UrlBox.Text = "";
+            flyout.Items.Add(clearItem);
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            // 重做（Ctrl+Y 通常对应重做，这里简单实现为撤销重做，但 TextBox 有内置撤销支持，我们只提供菜单项调用）
+            // 由于 TextBox 的 Redo 方法可能不可用，我们省略具体功能，仅示意。
+            var redoItem = new MenuFlyoutItem { Text = "重做" };
+            redoItem.IsEnabled = false; // 暂不可用，可后续完善
+            flyout.Items.Add(redoItem);
+
+            flyout.ShowAt(UrlBox, new Point(0, 0));
+        }
+
         // ---- 键盘事件 ----
         private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
@@ -145,10 +233,9 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        /// <summary>将用户输入解析为导航 URL 或搜索 URL</summary>
+        // ---- 输入解析与搜索 ----
         private string ResolveInputToUrl(string raw)
         {
-            // 1. 已有协议 -> 直接返回
             if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||
@@ -157,20 +244,14 @@ namespace EdgeRebuild.Controls
                 return raw;
             }
 
-            // 2. 自动纠正中文句号：将常见全角句号替换为英文点号
-            raw = raw.Replace('\u3002', '.')  // 中文句号 。
-                   .Replace('\uFF0E', '.');   // 全角点 ．
+            raw = raw.Replace('\u3002', '.').Replace('\uFF0E', '.');
 
-            // 3. 包含空格 → 搜索
             if (raw.Contains(" "))
-            {
                 return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
-            }
 
             bool hasDot = raw.Contains('.');
             bool hasNonAscii = raw.Any(c => c > 127);
 
-            // 4. 既无点号又无非 ASCII 字符 → 可能是单字搜索或类似 "localhost" 的域名
             if (!hasDot && !hasNonAscii)
             {
                 if (raw.Length >= 3 && raw.All(c => char.IsLetterOrDigit(c) || c == '-'))
@@ -178,21 +259,17 @@ namespace EdgeRebuild.Controls
                 return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
             }
 
-            // 5. 有点号（可能是英文或中文域名）
             if (hasDot)
             {
                 string converted = ConvertToPunycode(raw);
                 if (!converted.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
                     !converted.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                {
                     converted = "https://" + converted;
-                }
                 if (Uri.TryCreate(converted, UriKind.Absolute, out _))
                     return converted;
                 return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
             }
 
-            // 6. 无点号但有非 ASCII → 可能是纯中文域名或搜索词
             if (!hasDot && hasNonAscii)
             {
                 string converted = TryConvertDomain(raw);
@@ -208,7 +285,6 @@ namespace EdgeRebuild.Controls
             return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
         }
 
-        /// <summary>尝试将输入转换为 Punycode 域名（若包含非 ASCII 字符）</summary>
         private string ConvertToPunycode(string url)
         {
             try
@@ -220,25 +296,16 @@ namespace EdgeRebuild.Controls
                     protocol = url.Substring(0, protoIdx + 3);
                     url = url.Substring(protoIdx + 3);
                 }
-
                 int slashIdx = url.IndexOf('/');
                 string domain = slashIdx >= 0 ? url.Substring(0, slashIdx) : url;
                 string path = slashIdx >= 0 ? url.Substring(slashIdx) : "";
-
                 if (domain.Any(c => c > 127))
-                {
                     domain = _idn.GetAscii(domain);
-                }
-
                 return protocol + domain + path;
             }
-            catch
-            {
-                return url;
-            }
+            catch { return url; }
         }
 
-        /// <summary>尝试将纯域名（无协议、无路径）转换为 Punycode</summary>
         private string TryConvertDomain(string domain)
         {
             try
@@ -246,23 +313,16 @@ namespace EdgeRebuild.Controls
                 if (domain.Any(c => c > 127))
                 {
                     string ascii = _idn.GetAscii(domain);
-                    if (!string.IsNullOrEmpty(ascii))
-                        return ascii;
+                    if (!string.IsNullOrEmpty(ascii)) return ascii;
                 }
                 return null;
             }
-            catch
-            {
-                return null;
-            }
+            catch { return null; }
         }
 
-        /// <summary>将 URL 中的 Punycode 主机名解码为 Unicode 显示</summary>
         private string DecodeUrl(string url)
         {
-            if (string.IsNullOrWhiteSpace(url))
-                return url;
-
+            if (string.IsNullOrWhiteSpace(url)) return url;
             try
             {
                 if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
@@ -279,7 +339,6 @@ namespace EdgeRebuild.Controls
                 }
             }
             catch { }
-
             return url;
         }
 
@@ -294,7 +353,7 @@ namespace EdgeRebuild.Controls
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
         }
 
-        // ---- 输入文字变化 ----
+        // ---- 文字变化 ----
         private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             if (_isSuggestionsVisible)
@@ -314,7 +373,7 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        // ---- 手动打开建议 ----
+        // ---- 建议 ----
         private void ShowSuggestionsManually()
         {
             if (string.IsNullOrWhiteSpace(UrlBox.Text)) { CloseSuggestions(); return; }
