@@ -149,6 +149,13 @@ namespace EdgeRebuild
                 string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
                 _enableTabSuspend = (suspendSetting == "True" || suspendSetting == "true");
 
+                // 应用自定义下载路径
+                string downloadPath = await SettingsManager.GetAsync("DownloadFolder");
+                if (!string.IsNullOrEmpty(downloadPath))
+                {
+                    DownloadManager.SetCustomDownloadPath(downloadPath);
+                }
+
                 await DownloadManager.UpdateSystemDownloadFolderAccessAsync();
                 await DownloadManager.LoadDownloadsAsync();
 
@@ -162,17 +169,14 @@ namespace EdgeRebuild
                 _uiSettings = new UISettings();
                 _uiSettings.ColorValuesChanged += OnColorValuesChanged;
 
+                // 使用主页设置
+                string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 if (_tabViews.Count == 0)
                 {
                     if (!string.IsNullOrEmpty(_pendingUrl))
-                    {
                         await CreateNewTabAsync(_defaultEngine, _pendingUrl);
-                        _pendingUrl = null;
-                    }
                     else
-                    {
-                        await CreateNewTabAsync(_defaultEngine, "about:blank");
-                    }
+                        await CreateNewTabAsync(_defaultEngine, homeUrl);
                 }
             }
             catch (Exception ex)
@@ -313,7 +317,7 @@ namespace EdgeRebuild
                 args.Cancel = true; args.Handled = true; DestroyStealthDownloader();
                 StorageFolder defaultFolder = null;
                 try { defaultFolder = await DownloadManager.GetDownloadFolderAsync(); } catch { }
-                var dialog = new DownloadDialog(fileName, url, defaultFolder);
+                var dialog = new DownloadDialog(fileName, url, defaultFolder, op.TotalBytesToReceive > 0 ? (long?)op.TotalBytesToReceive : null);
                 if (await dialog.ShowAsync() == ContentDialogResult.Primary)
                 {
                     if (dialog.SelectedFolder != null && !string.IsNullOrWhiteSpace(dialog.FileName))
@@ -436,7 +440,6 @@ namespace EdgeRebuild
             engineSub.Items.Add(edgeHtmlItem); engineSub.Items.Add(webView2Item); menu.Items.Add(engineSub);
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // 新建窗口（在当前窗口打开新标签页）
             var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
             newWindowItem.Click += async (_, _) =>
             {
@@ -575,7 +578,6 @@ namespace EdgeRebuild
             }
             else if (_currentTab is EdgeHtmlTab edgeTab && edgeTab.IsSuspended)
             {
-                // EdgeHTML 实际上不会被挂起，但保留以防接口变更
                 await edgeTab.ResumeAsync();
                 UpdateTabSuspendedVisual(viewItem, false);
             }
@@ -589,7 +591,6 @@ namespace EdgeRebuild
 
             foreach (var t in _tabViews) t.Container.Background = t == viewItem ? _selectedBrush : _unselectedBrush;
 
-            // 启动后台标签挂起定时器（仅针对 WebView2 标签）
             if (_enableTabSuspend && previousTab != null && previousTab != _currentTab && previousTab is WebView2Tab)
             {
                 if (_suspendTimers.ContainsKey(previousTab))
@@ -612,7 +613,6 @@ namespace EdgeRebuild
                         var vi = _tabViews.FirstOrDefault(v => v.Tab == wv2s);
                         if (vi != null) UpdateTabSuspendedVisual(vi, true);
                     }
-                    // EdgeHTML 不需要挂起，忽略
                     _suspendTimers.Remove(tab);
                 };
                 _suspendTimers[previousTab] = timer;
@@ -626,6 +626,21 @@ namespace EdgeRebuild
         {
             if (!_isLoaded) return;
             IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
+
+            // 如果是 WebView2，应用 DoNotTrack
+            if (tab is WebView2Tab wv2Tab)
+            {
+                string doNotTrack = await SettingsManager.GetAsync("DoNotTrack") ?? "False";
+                if (doNotTrack == "True" || doNotTrack == "true")
+                {
+                    await wv2Tab.EnsureInitializedAsync();
+                    wv2Tab.CoreWebView2.WebResourceRequested += (s, e) =>
+                    {
+                        e.Request.Headers.SetHeader("DNT", "1");
+                    };
+                }
+            }
+
             await CreateTabViewAndSwitchAsync(tab, url);
         }
 

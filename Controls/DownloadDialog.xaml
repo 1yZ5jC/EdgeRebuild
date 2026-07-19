@@ -18,6 +18,9 @@
             <Button Content="浏览..." Click="BrowseFolder_Click" />
         </StackPanel>
 
+        <!-- 文件大小提示 -->
+        <TextBlock x:Name="SizeBlock" Text="大小：未知" FontSize="11" Foreground="Gray" />
+
         <TextBlock x:Name="UrlBlock" Text="" FontSize="10" Foreground="Gray" TextWrapping="Wrap" />
     </StackPanel>
 </ContentDialog>

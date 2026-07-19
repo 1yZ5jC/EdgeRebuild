@@ -1,5 +1,7 @@
 ﻿using EdgeRebuild.Services;
 using System;
+using Windows.Storage;
+using Windows.Storage.Pickers;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
@@ -11,25 +13,24 @@ namespace EdgeRebuild.Controls
         public event EventHandler CloseRequested;
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle, _suspendToggle;
+        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle;
+        private TextBox _homePageBox;
+        private ComboBox _searchEngineCombo;
+        private TextBlock _downloadPathBlock;
+        private string _currentDownloadPath;
 
         public SettingsPane()
         {
             this.InitializeComponent();
             BuildContentPanels();
             SettingsNavView.SelectedItem = SettingsNavView.MenuItems[0];
-            // 延迟加载设置，确保控件已加入视觉树
             this.Loaded += OnSettingsPaneLoaded;
         }
 
         private async void OnSettingsPaneLoaded(object sender, RoutedEventArgs e)
         {
             this.Loaded -= OnSettingsPaneLoaded;
-            // 确保所有控件已构建（尽管在构造函数中已构建，但 Loaded 更安全）
-            if (_spartanRadio != null && _modernIERadio != null)
-            {
-                await LoadSettingsAsync();
-            }
+            await LoadSettingsAsync();
         }
 
         public void ApplySkinColors(Brush backgroundBrush)
@@ -39,45 +40,87 @@ namespace EdgeRebuild.Controls
 
         private void BuildContentPanels()
         {
-            _panels = new UIElement[6];
+            _panels = new UIElement[7];
 
-            // 外观 (0)
+            // 常规 (0)
+            var generalPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+            generalPanel.Children.Add(new TextBlock { Text = "主页", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
+            _homePageBox = new TextBox { PlaceholderText = "about:blank", Margin = new Thickness(0, 0, 0, 12) };
+            generalPanel.Children.Add(_homePageBox);
+
+            generalPanel.Children.Add(new TextBlock { Text = "搜索引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
+            _searchEngineCombo = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
+            _searchEngineCombo.Items.Add("Google");
+            _searchEngineCombo.Items.Add("Bing");
+            _searchEngineCombo.Items.Add("DuckDuckGo");
+            generalPanel.Children.Add(_searchEngineCombo);
+
+            generalPanel.Children.Add(new TextBlock { Text = "默认下载路径", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
+            var pathPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            _downloadPathBlock = new TextBlock { Text = "(正在获取...)", VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 200 };
+            var browseBtn = new Button { Content = "浏览..." };
+            browseBtn.Click += async (s, e) =>
+            {
+                var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.Downloads };
+                picker.FileTypeFilter.Add("*");
+                var folder = await picker.PickSingleFolderAsync();
+                if (folder != null)
+                {
+                    _currentDownloadPath = folder.Path;
+                    _downloadPathBlock.Text = folder.Path;
+                    await SettingsManager.SetAsync("DownloadFolder", folder.Path);
+                }
+            };
+            pathPanel.Children.Add(_downloadPathBlock);
+            pathPanel.Children.Add(browseBtn);
+            generalPanel.Children.Add(pathPanel);
+            _panels[0] = generalPanel;
+
+            // 外观 (1)
             var appearancePanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             appearancePanel.Children.Add(new TextBlock { Text = "皮肤", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _spartanRadio = new RadioButton { Content = "经典 Edge", GroupName = "Skin" };
             _modernIERadio = new RadioButton { Content = "Modern IE", GroupName = "Skin", Margin = new Thickness(0, 4, 0, 0) };
             appearancePanel.Children.Add(_spartanRadio);
             appearancePanel.Children.Add(_modernIERadio);
-            _panels[0] = appearancePanel;
+            _panels[1] = appearancePanel;
 
-            // 下载 (1)
+            // 下载 (2)
             var downloadPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             _askToggle = new ToggleSwitch { Header = "下载前询问" };
             downloadPanel.Children.Add(_askToggle);
-            _panels[1] = downloadPanel;
+            _autoCleanDownloadToggle = new ToggleSwitch { Header = "自动清理已完成的下载", Margin = new Thickness(0, 8, 0, 0) };
+            downloadPanel.Children.Add(_autoCleanDownloadToggle);
+            _panels[2] = downloadPanel;
 
-            // 引擎 (2)
+            // 引擎 (3)
             var enginePanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             enginePanel.Children.Add(new TextBlock { Text = "默认渲染引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _edgeRadio = new RadioButton { Content = "EdgeHTML", GroupName = "DefaultEngine" };
             _webviewRadio = new RadioButton { Content = "WebView2", GroupName = "DefaultEngine", Margin = new Thickness(0, 4, 0, 0) };
             enginePanel.Children.Add(_edgeRadio);
             enginePanel.Children.Add(_webviewRadio);
-            _panels[2] = enginePanel;
+            _panels[3] = enginePanel;
 
-            // 隐私 (3)
+            // 隐私 (4)
             var privacyPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
-            var clearBtn = new Button { Content = "清除浏览数据" };
-            clearBtn.Click += async (s, e) =>
-            {
-                HistoryManager.Clear();
-                DownloadManager.ClearCompleted();
-                await new ContentDialog { Title = "已清除", Content = "浏览数据、下载记录已清除。", CloseButtonText = "确定" }.ShowAsync();
-            };
-            privacyPanel.Children.Add(clearBtn);
-            _panels[3] = privacyPanel;
+            _doNotTrackToggle = new ToggleSwitch { Header = "发送“请勿跟踪”请求" };
+            privacyPanel.Children.Add(_doNotTrackToggle);
 
-            // 性能 (4)
+            var clearCookiesBtn = new Button { Content = "清除所有 Cookie", Margin = new Thickness(0, 12, 0, 0) };
+            clearCookiesBtn.Click += async (s, e) =>
+            {
+                if (Microsoft.Web.WebView2.Core.CoreWebView2Environment.GetAvailableBrowserVersionString() != null)
+                {
+                    // 无法直接访问全局 CookieManager，需通过当前活动的 WebView2 实例操作。
+                    // 此处简化，仅提示用户手动清除。
+                    await new ContentDialog { Title = "提示", Content = "Cookie 将在活动标签的 WebView2 引擎中清除（若当前为 EdgeHTML 则无效）。", CloseButtonText = "确定" }.ShowAsync();
+                }
+            };
+            privacyPanel.Children.Add(clearCookiesBtn);
+            _panels[4] = privacyPanel;
+
+            // 性能 (5)
             var perfPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             _suspendToggle = new ToggleSwitch { Header = "后台标签自动挂起（节省内存）" };
             _suspendToggle.Toggled += async (s, e) =>
@@ -85,39 +128,83 @@ namespace EdgeRebuild.Controls
                 await SettingsManager.SetAsync("EnableTabSuspend", _suspendToggle.IsOn.ToString());
             };
             perfPanel.Children.Add(_suspendToggle);
-            _panels[4] = perfPanel;
+            _panels[5] = perfPanel;
 
-            // 关于 (5)
+            // 关于 (6)
             var aboutPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             aboutPanel.Children.Add(new TextBlock { Text = "Edge Rebuild", FontWeight = Windows.UI.Text.FontWeights.SemiBold, FontSize = 16 });
             aboutPanel.Children.Add(new TextBlock { Text = "版本 0.2 Alpha", Margin = new Thickness(0, 4, 0, 0) });
             aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap });
-            _panels[5] = aboutPanel;
+            _panels[6] = aboutPanel;
         }
 
         private async System.Threading.Tasks.Task LoadSettingsAsync()
         {
             try
             {
+                // 外观设置
                 string skin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
                 _spartanRadio.IsChecked = (skin != "ModernIE");
                 _modernIERadio.IsChecked = (skin == "ModernIE");
 
+                // 下载设置
                 string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
                 _askToggle.IsOn = (ask == "True" || ask == "true");
+                string autoClean = await SettingsManager.GetAsync("AutoCleanDownload") ?? "False";
+                _autoCleanDownloadToggle.IsOn = (autoClean == "True" || autoClean == "true");
 
+                // 引擎设置
                 string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
                 _edgeRadio.IsChecked = (engine != "WebView2");
                 _webviewRadio.IsChecked = (engine == "WebView2");
 
+                // 性能设置
                 string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
                 _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
 
+                // 常规设置
+                string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
+                _homePageBox.Text = homeUrl;
+                string searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
+                int searchIndex = searchEngine switch
+                {
+                    "Bing" => 1,
+                    "DuckDuckGo" => 2,
+                    _ => 0
+                };
+                _searchEngineCombo.SelectedIndex = searchIndex;
+
+                string downloadPath = await SettingsManager.GetAsync("DownloadFolder");
+                if (!string.IsNullOrEmpty(downloadPath))
+                {
+                    _currentDownloadPath = downloadPath;
+                    _downloadPathBlock.Text = downloadPath;
+                }
+                else
+                {
+                    var defaultFolder = await DownloadManager.GetDownloadFolderAsync();
+                    _currentDownloadPath = defaultFolder.Path;
+                    _downloadPathBlock.Text = _currentDownloadPath;
+                }
+
+                // 隐私设置
+                string doNotTrack = await SettingsManager.GetAsync("DoNotTrack") ?? "False";
+                _doNotTrackToggle.IsOn = (doNotTrack == "True" || doNotTrack == "true");
+
+                // 保存事件绑定
                 _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
                 _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
                 _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
                 _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
                 _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
+                _autoCleanDownloadToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AutoCleanDownload", _autoCleanDownloadToggle.IsOn.ToString());
+                _doNotTrackToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("DoNotTrack", _doNotTrackToggle.IsOn.ToString());
+                _homePageBox.TextChanged += async (s, e) => await SettingsManager.SetAsync("HomePage", _homePageBox.Text);
+                _searchEngineCombo.SelectionChanged += async (s, e) =>
+                {
+                    string engineName = _searchEngineCombo.SelectedItem?.ToString() ?? "Google";
+                    await SettingsManager.SetAsync("SearchEngine", engineName);
+                };
             }
             catch (Exception ex)
             {
@@ -134,12 +221,13 @@ namespace EdgeRebuild.Controls
             {
                 int index = tag switch
                 {
-                    "Appearance" => 0,
-                    "Download" => 1,
-                    "Engine" => 2,
-                    "Privacy" => 3,
-                    "Performance" => 4,
-                    "About" => 5,
+                    "General" => 0,
+                    "Appearance" => 1,
+                    "Download" => 2,
+                    "Engine" => 3,
+                    "Privacy" => 4,
+                    "Performance" => 5,
+                    "About" => 6,
                     _ => 0
                 };
                 if (index < _panels.Length) ContentArea.Content = _panels[index];

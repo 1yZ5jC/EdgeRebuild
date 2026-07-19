@@ -7,7 +7,6 @@ using System.Linq;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.UI;
-using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
@@ -31,12 +30,13 @@ namespace EdgeRebuild.Controls
         private bool _isSuggestionsVisible;
         private List<SuggestionItem> _currentSuggestions = new List<SuggestionItem>();
 
-        private const string SearchEngineUrl = "https://www.google.com/search?q={0}";
+        private const string DefaultSearchEngineUrl = "https://www.google.com/search?q={0}";
         private static readonly IdnMapping _idn = new IdnMapping();
 
         private Brush _foregroundBrush;
         private Brush _mutedForegroundBrush;
         private bool _isDarkTheme;
+        private string _searchEngine = "Google";
 
         public ToolbarControl()
         {
@@ -44,11 +44,15 @@ namespace EdgeRebuild.Controls
             this.Loaded += OnLoaded;
         }
 
-        private void OnLoaded(object sender, RoutedEventArgs e)
+        private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             _suggestionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
             _suggestionTimer.Tick += OnSuggestionTimerTick;
             SuggestionsFlyout.Closed += (_, _) => _isSuggestionsVisible = false;
+
+            // 异步加载搜索引擎设置
+            string engine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
+            _searchEngine = engine;
         }
 
         public void FocusAddressBarAndClear()
@@ -77,7 +81,6 @@ namespace EdgeRebuild.Controls
             _mutedForegroundBrush = colors.MutedForegroundBrush;
             _isDarkTheme = isDark;
 
-            // 重置 Flyout 样式，确保下次显示时重新生成
             SuggestionsFlyout.FlyoutPresenterStyle = null;
         }
 
@@ -146,14 +149,12 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        // 确保 Flyout 样式正确（独立于 MainPage 的任何 Flyout 样式）
         private void EnsureFlyoutPresenterStyle(double width)
         {
             var style = new Style(typeof(FlyoutPresenter));
             style.Setters.Add(new Setter(FlyoutPresenter.MinWidthProperty, width));
             style.Setters.Add(new Setter(FlyoutPresenter.PaddingProperty, new Thickness(0)));
             style.Setters.Add(new Setter(FlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
-            // 可选：为地址栏建议添加背景色
             var acrylic = new AcrylicBrush
             {
                 BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
@@ -174,7 +175,8 @@ namespace EdgeRebuild.Controls
                 return raw;
 
             raw = raw.Replace('\u3002', '.').Replace('\uFF0E', '.');
-            if (raw.Contains(" ")) return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
+            if (raw.Contains(" "))
+                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
 
             bool hasDot = raw.Contains('.');
             bool hasNonAscii = raw.Any(c => c > 127);
@@ -182,7 +184,7 @@ namespace EdgeRebuild.Controls
             {
                 if (raw.Length >= 3 && raw.All(c => char.IsLetterOrDigit(c) || c == '-'))
                     return "https://" + raw;
-                return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
+                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
             }
             if (hasDot)
             {
@@ -191,7 +193,7 @@ namespace EdgeRebuild.Controls
                     !converted.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                     converted = "https://" + converted;
                 if (Uri.TryCreate(converted, UriKind.Absolute, out _)) return converted;
-                return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
+                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
             }
             if (!hasDot && hasNonAscii)
             {
@@ -201,9 +203,19 @@ namespace EdgeRebuild.Controls
                     string url = "https://" + converted;
                     if (Uri.TryCreate(url, UriKind.Absolute, out _)) return url;
                 }
-                return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
+                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
             }
-            return string.Format(SearchEngineUrl, Uri.EscapeDataString(raw));
+            return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
+        }
+
+        private string GetSearchUrl(string query)
+        {
+            return _searchEngine switch
+            {
+                "Bing" => $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}",
+                "DuckDuckGo" => $"https://duckduckgo.com/?q={Uri.EscapeDataString(query)}",
+                _ => $"https://www.google.com/search?q={Uri.EscapeDataString(query)}"
+            };
         }
 
         private string ConvertToPunycode(string url)
