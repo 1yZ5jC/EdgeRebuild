@@ -36,6 +36,9 @@ namespace EdgeRebuild.Controls
         private bool _isDarkTheme;
         private string _searchEngine = "Google";
 
+        private bool _isSecure = false;
+        private string _currentHost = "";
+
         public ToolbarControl()
         {
             this.InitializeComponent();
@@ -51,6 +54,7 @@ namespace EdgeRebuild.Controls
 
             _searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
             SettingsManager.SettingChanged += OnSettingChanged;
+            UpdateSearchEngineIndicator();
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -64,6 +68,8 @@ namespace EdgeRebuild.Controls
             if (key == "SearchEngine")
             {
                 _searchEngine = newValue;
+                if (string.IsNullOrEmpty(GetTemporaryEngineFromInput()))
+                    UpdateSearchEngineIndicator();
             }
         }
 
@@ -71,6 +77,7 @@ namespace EdgeRebuild.Controls
         {
             UrlBox.Text = string.Empty;
             UrlBox.Focus(FocusState.Programmatic);
+            UpdateSearchEngineIndicator();
         }
 
         public void ApplySkin(SkinManager.SkinColors colors, bool isDark)
@@ -82,18 +89,19 @@ namespace EdgeRebuild.Controls
             UrlBox.Foreground = colors.ForegroundBrush;
             EngineLabel.Foreground = colors.ForegroundBrush;
             EngineCombo.Foreground = colors.ForegroundBrush;
-            BackBtn.Foreground = colors.MutedForegroundBrush;
-            ForwardBtn.Foreground = colors.MutedForegroundBrush;
-            RefreshBtn.Foreground = colors.MutedForegroundBrush;
-            AddFavBtn.Foreground = colors.MutedForegroundBrush;
-            HubBtn.Foreground = colors.MutedForegroundBrush;
-            MenuBtn.Foreground = colors.MutedForegroundBrush;
 
             _foregroundBrush = colors.ForegroundBrush;
             _mutedForegroundBrush = colors.MutedForegroundBrush;
             _isDarkTheme = isDark;
 
             SuggestionsFlyout.FlyoutPresenterStyle = null;
+
+            BackBtn.Foreground = _mutedForegroundBrush;
+            ForwardBtn.Foreground = _mutedForegroundBrush;
+            RefreshBtn.Foreground = _mutedForegroundBrush;
+            AddFavBtn.Foreground = _mutedForegroundBrush;
+            HubBtn.Foreground = _mutedForegroundBrush;
+            MenuBtn.Foreground = _mutedForegroundBrush;
         }
 
         public void UpdateNavState(bool canGoBack, bool canGoForward, string currentUrl)
@@ -122,6 +130,91 @@ namespace EdgeRebuild.Controls
         }
 
         public void ShowMenu(MenuFlyout menu) => menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
+
+        public void UpdateSiteInfo(bool isSecure, string host)
+        {
+            _isSecure = isSecure;
+            _currentHost = host ?? "";
+            if (!string.IsNullOrEmpty(GetTemporaryEngineFromInput()))
+                return;
+
+            SiteInfoText.Text = isSecure ? "🔒" : "🌐";
+            ToolTipService.SetToolTip(SiteInfoButton, isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
+        }
+
+        private void SiteInfoButton_Click(object sender, RoutedEventArgs e)
+        {
+            var flyout = new MenuFlyout();
+            var text = _isSecure
+                ? $"与 {_currentHost} 的连接是安全的"
+                : $"与 {_currentHost} 的连接未加密";
+            flyout.Items.Add(new MenuFlyoutItem { Text = text, IsEnabled = false });
+            flyout.ShowAt(SiteInfoButton, new Point(0, SiteInfoButton.ActualHeight));
+        }
+
+        private string GetTemporaryEngineFromInput()
+        {
+            string raw = UrlBox.Text?.Trim();
+            if (string.IsNullOrEmpty(raw) || !raw.StartsWith("@")) return null;
+            int spaceIndex = raw.IndexOf(' ');
+            if (spaceIndex <= 1) return null;
+            string engineName = raw.Substring(1, spaceIndex - 1).ToLowerInvariant();
+            if (engineName == "g" || engineName == "google" ||
+                engineName == "b" || engineName == "bing" ||
+                engineName == "ddg" || engineName == "duckduckgo")
+                return engineName;
+            return null;
+        }
+
+        private string GetEngineShortName(string engineName)
+        {
+            if (string.IsNullOrEmpty(engineName)) return GetDefaultEngineShortName();
+            return engineName switch
+            {
+                "g" or "google" => "G",
+                "b" or "bing" => "B",
+                "ddg" or "duckduckgo" => "DDG",
+                _ => GetDefaultEngineShortName()
+            };
+        }
+
+        private string GetDefaultEngineShortName()
+        {
+            return _searchEngine switch
+            {
+                "Bing" => "B",
+                "DuckDuckGo" => "DDG",
+                _ => "G"
+            };
+        }
+
+        private void UpdateSearchEngineIndicator()
+        {
+            string tempEngine = GetTemporaryEngineFromInput();
+            if (tempEngine != null)
+            {
+                SiteInfoText.Text = GetEngineShortName(tempEngine);
+                SiteInfoText.FontSize = 14;
+                ToolTipService.SetToolTip(SiteInfoButton, $"临时搜索引擎：{GetEngineFullName(tempEngine)}");
+            }
+            else
+            {
+                SiteInfoText.Text = _isSecure ? "🔒" : "🌐";
+                SiteInfoText.FontSize = 14;
+                ToolTipService.SetToolTip(SiteInfoButton, _isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
+            }
+        }
+
+        private string GetEngineFullName(string shortName)
+        {
+            return shortName switch
+            {
+                "g" or "google" => "Google",
+                "b" or "bing" => "Bing",
+                "ddg" or "duckduckgo" => "DuckDuckGo",
+                _ => "Google"
+            };
+        }
 
         private void BackBtn_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
         private void ForwardBtn_Click(object sender, RoutedEventArgs e) => ForwardRequested?.Invoke();
@@ -180,6 +273,27 @@ namespace EdgeRebuild.Controls
 
         private string ResolveInputToUrl(string raw)
         {
+            if (raw.StartsWith("@"))
+            {
+                int spaceIndex = raw.IndexOf(' ');
+                if (spaceIndex > 1)
+                {
+                    string engineName = raw.Substring(1, spaceIndex - 1).ToLowerInvariant();
+                    string query = raw.Substring(spaceIndex + 1).Trim();
+                    if (!string.IsNullOrEmpty(query))
+                    {
+                        string url = engineName switch
+                        {
+                            "g" or "google" => $"https://www.google.com/search?q={Uri.EscapeDataString(query)}",
+                            "b" or "bing" => $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}",
+                            "ddg" or "duckduckgo" => $"https://duckduckgo.com/?q={Uri.EscapeDataString(query)}",
+                            _ => null
+                        };
+                        if (url != null) return url;
+                    }
+                }
+            }
+
             if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||
@@ -302,6 +416,8 @@ namespace EdgeRebuild.Controls
 
         private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
         {
+            UpdateSearchEngineIndicator();
+
             if (_isSuggestionsVisible)
             {
                 _suggestionTimer.Stop();

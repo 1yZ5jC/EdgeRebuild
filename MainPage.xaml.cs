@@ -33,6 +33,17 @@ namespace EdgeRebuild
     {
         public static MainPage Instance { get; private set; }
 
+        // 最近关闭的标签信息
+        private class ClosedTabInfo
+        {
+            public string Url { get; set; }
+            public string Title { get; set; }
+            public EngineType Engine { get; set; }
+        }
+
+        private readonly List<ClosedTabInfo> _closedTabs = new List<ClosedTabInfo>();
+        private const int MaxClosedTabs = 20;
+
         private readonly List<TabViewItem> _tabViews = new List<TabViewItem>();
         private IBrowserTab _currentTab;
         private bool _isLoaded;
@@ -40,7 +51,6 @@ namespace EdgeRebuild
         private string _currentSkin = "Spartan";
 
         private double _zoomFactor = 1.0;
-        private readonly Stack<string> _closedTabUrls = new Stack<string>();
 
         private readonly SolidColorBrush _selectedBrush = new SolidColorBrush(Colors.White);
         private readonly SolidColorBrush _unselectedBrush = new SolidColorBrush(Color.FromArgb(0x60, 0xFF, 0xFF, 0xFF));
@@ -70,7 +80,6 @@ namespace EdgeRebuild
         private Point _tabBarPanelOffset;
         private DateTime _lastReorderTime;
 
-        // 每个独立下载任务使用单独 WebView2，避免并发冲突
         private readonly Dictionary<string, WebView2> _downloadWebViews = new();
 
         private bool _askBeforeDownload;
@@ -277,7 +286,6 @@ namespace EdgeRebuild
             await DownloadViaHiddenWebViewAsync(item.Url);
         }
 
-        // ------------------ EdgeHTML 下载处理（含弹窗） ------------------
         private async void OnEdgeHtmlDownloadRequested(string url)
         {
             string defaultFileName = "download";
@@ -324,7 +332,6 @@ namespace EdgeRebuild
             }
         }
 
-        // ---------- 隐藏下载器重载 ----------
         private async Task DownloadViaHiddenWebViewAsync(string url, StorageFolder folder, string fileName)
         {
             string targetPath = Path.Combine(folder.Path, fileName);
@@ -398,7 +405,6 @@ namespace EdgeRebuild
             }
         }
 
-        // ------------------ 皮肤、标签管理、事件绑定等 ------------------
         private void ApplySkinColors(string skinName)
         {
             var colors = SkinManager.GetSkinColors(skinName, _isDarkTheme);
@@ -433,6 +439,7 @@ namespace EdgeRebuild
                     await HistoryManager.AddAsync(_currentTab.Title ?? url, url);
             }
         }
+
         private async void ToolbarControl_BackRequested()
         { if (_currentTab?.CanGoBack == true) await _currentTab.GoBackAsync(); }
         private async void ToolbarControl_ForwardRequested()
@@ -490,7 +497,37 @@ namespace EdgeRebuild
             var toolsSub = new MenuFlyoutSubItem { Text = "更多工具" };
             var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" }; devToolsItem.Click += (_, _) => OpenDevTools(); toolsSub.Items.Add(devToolsItem); menu.Items.Add(toolsSub);
             menu.Items.Add(new MenuFlyoutSeparator());
-            var reopenItem = new MenuFlyoutItem { Text = "重新打开关闭的标签" }; reopenItem.Click += async (_, _) => await ReopenClosedTabAsync(); menu.Items.Add(reopenItem);
+
+            // 最近关闭的标签子菜单
+            var reopenSub = new MenuFlyoutSubItem { Text = "重新打开关闭的标签" };
+            if (_closedTabs.Count == 0)
+            {
+                var emptyItem = new MenuFlyoutItem { Text = "没有最近关闭的标签", IsEnabled = false };
+                reopenSub.Items.Add(emptyItem);
+            }
+            else
+            {
+                foreach (var closedTab in _closedTabs)
+                {
+                    string displayTitle = string.IsNullOrEmpty(closedTab.Title) ? closedTab.Url : closedTab.Title;
+                    if (displayTitle.Length > 40) displayTitle = displayTitle.Substring(0, 40) + "...";
+                    var item = new MenuFlyoutItem { Text = $"{displayTitle} ({closedTab.Engine})" };
+                    var capturedUrl = closedTab.Url;
+                    var capturedEngine = closedTab.Engine;
+                    item.Click += async (_, _) =>
+                    {
+                        await CreateNewTabAsync(capturedEngine, capturedUrl);
+                    };
+                    reopenSub.Items.Add(item);
+                }
+
+                reopenSub.Items.Add(new MenuFlyoutSeparator());
+                var clearAllItem = new MenuFlyoutItem { Text = "清空列表" };
+                clearAllItem.Click += (_, _) => _closedTabs.Clear();
+                reopenSub.Items.Add(clearAllItem);
+            }
+            menu.Items.Add(reopenSub);
+
             var bookmarkAllItem = new MenuFlyoutItem { Text = "将所有标签加入收藏" }; bookmarkAllItem.Click += (_, _) => BookmarkAllTabs(); menu.Items.Add(bookmarkAllItem);
             var historyItem = new MenuFlyoutItem { Text = "历史记录" }; historyItem.Click += (_, _) => { HubSplitView.IsPaneOpen = true; hubPane.ShowHistory(); }; menu.Items.Add(historyItem);
             var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" }; clearDataItem.Click += async (_, _) => await ClearBrowsingDataAsync(); menu.Items.Add(clearDataItem);
@@ -538,8 +575,19 @@ namespace EdgeRebuild
             });
             tab.UrlChanged += async (u) =>
             {
-                if (_currentTab == tab) { toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, u); UpdateStarButton(); }
+                if (_currentTab == tab)
+                {
+                    toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, u);
+                    UpdateStarButton();
+
+                    // 更新站点信息
+                    bool isSecure = u.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                    string host = "";
+                    try { host = new Uri(u).Host; } catch { }
+                    toolbarControl.UpdateSiteInfo(isSecure, host);
+                }
                 if (!string.IsNullOrEmpty(u) && u != "about:blank") await HistoryManager.AddAsync(tab.Title ?? u, u);
+
             };
             tab.CanGoBackChanged += (can) => { if (_currentTab == tab) toolbarControl.UpdateNavState(can, tab.CanGoForward, tab.CurrentUrl); };
             tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) toolbarControl.UpdateNavState(tab.CanGoBack, can, tab.CurrentUrl); };
@@ -682,8 +730,20 @@ namespace EdgeRebuild
             if (!_isLoaded) return;
             int index = _tabViews.IndexOf(viewItem);
             if (index < 0) return;
+
             string url = viewItem.Tab.CurrentUrl;
-            if (!string.IsNullOrEmpty(url) && url != "about:blank") _closedTabUrls.Push(url);
+            if (!string.IsNullOrEmpty(url) && url != "about:blank")
+            {
+                _closedTabs.Insert(0, new ClosedTabInfo
+                {
+                    Url = url,
+                    Title = viewItem.Tab.Title ?? url,
+                    Engine = viewItem.Tab.Engine
+                });
+
+                while (_closedTabs.Count > MaxClosedTabs)
+                    _closedTabs.RemoveAt(_closedTabs.Count - 1);
+            }
 
             var border = viewItem.Container;
             border.IsHitTestVisible = false;
@@ -710,26 +770,40 @@ namespace EdgeRebuild
             else UpdateTabLayout();
         }
 
-        // ---------- 拖拽逻辑 ----------
+        // ---------- 拖拽逻辑（含中键关闭） ----------
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
+
+            // 中键关闭标签页
+            if (properties.IsMiddleButtonPressed)
+            {
+                var border = sender as Border;
+                var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
+                if (viewItem != null)
+                {
+                    _ = CloseTab(viewItem);
+                    e.Handled = true;
+                }
+                return;
+            }
+
             if (properties.IsRightButtonPressed) return;
             ResetDragState();
             if (_tabViews.Count <= 1) return;
-            var border = sender as Border;
-            if (border == null) return;
-            var viewItem = _tabViews.FirstOrDefault(v => v.Container == border);
-            if (viewItem == null) return;
+            var borderLeft = sender as Border;
+            if (borderLeft == null) return;
+            var viewItemDrag = _tabViews.FirstOrDefault(v => v.Container == borderLeft);
+            if (viewItemDrag == null) return;
 
-            _dragItem = viewItem;
-            _dragOffset = e.GetCurrentPoint(viewItem.Container).Position;
+            _dragItem = viewItemDrag;
+            _dragOffset = e.GetCurrentPoint(viewItemDrag.Container).Position;
             _hasMoved = false; _isDragging = false; _totalDx = 0; _isDetaching = false;
             _dragStartCanvasPoint = e.GetCurrentPoint(DragCanvas).Position;
             _dragStartScreenPoint = CoreWindow.GetForCurrentThread().PointerPosition;
 
             _dragGhost = new Border { Width = _dragItem.Container.ActualWidth, Height = 32, Background = _selectedBrush, BorderBrush = new SolidColorBrush(Colors.LightGray), BorderThickness = new Thickness(1), Child = new TextBlock { Text = _dragItem.Tab.Title ?? "新标签页", FontSize = 12, Foreground = _foregroundBrush, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) } };
-            var initialPos = viewItem.Container.TransformToVisual(DragCanvas).TransformPoint(new Point(0, 0));
+            var initialPos = viewItemDrag.Container.TransformToVisual(DragCanvas).TransformPoint(new Point(0, 0));
             Canvas.SetLeft(_dragGhost, initialPos.X); Canvas.SetTop(_dragGhost, initialPos.Y);
             DragCanvas.Children.Add(_dragGhost); Canvas.SetZIndex(_dragGhost, 999);
 
@@ -739,8 +813,9 @@ namespace EdgeRebuild
             var tabBarTransform = TabBarPanel.TransformToVisual(DragCanvas);
             _tabBarPanelOffset = tabBarTransform.TransformPoint(new Point(0, 0));
             _lastReorderTime = DateTime.MinValue;
-            border.CapturePointer(e.Pointer); e.Handled = true;
+            borderLeft.CapturePointer(e.Pointer); e.Handled = true;
         }
+
         private void OnTabPointerMoved(object sender, PointerRoutedEventArgs e)
         {
             if (_dragItem == null || _dragGhost == null) return;
@@ -767,6 +842,7 @@ namespace EdgeRebuild
             }
             e.Handled = true;
         }
+
         private async void MoveTabToNewTab(TabViewItem draggedItem)
         {
             string url = draggedItem.Tab.CurrentUrl;
@@ -775,6 +851,7 @@ namespace EdgeRebuild
             await CreateNewTabAsync(engine, url);
             await CloseTab(draggedItem);
         }
+
         private void UpdateDragSort()
         {
             if (_dragGhost == null) return;
@@ -796,6 +873,7 @@ namespace EdgeRebuild
             _tabViews.RemoveAt(dragIndex); _tabViews.Insert(targetIndex, _dragItem);
             _lastReorderTime = DateTime.Now;
         }
+
         private void SyncTabPanelOrder() { TabBarPanel.Children.Clear(); foreach (var item in _tabViews) TabBarPanel.Children.Add(item.Container); }
         private void OnTabPointerReleased(object sender, PointerRoutedEventArgs e)
         {
@@ -808,6 +886,7 @@ namespace EdgeRebuild
             }
             finally { ResetDragState(); e.Handled = true; }
         }
+
         private void ResetDragState()
         {
             if (_dragGhost != null) { DragCanvas.Children.Remove(_dragGhost); _dragGhost = null; }
@@ -919,11 +998,7 @@ namespace EdgeRebuild
             if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.OpenDevToolsWindow();
             else ShowNotImplementedDialog("开发者工具（请切换到 WebView2）");
         }
-        private async Task ReopenClosedTabAsync()
-        {
-            if (_closedTabUrls.Count > 0) await CreateNewTabAsync(_defaultEngine, _closedTabUrls.Pop());
-            else await new ContentDialog { Title = "提示", Content = "没有可恢复的标签页。", CloseButtonText = "确定" }.ShowAsync();
-        }
+
         private async void BookmarkAllTabs()
         {
             int count = 0;

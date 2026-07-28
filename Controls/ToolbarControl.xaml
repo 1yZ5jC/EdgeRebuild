@@ -1,110 +1,52 @@
 ﻿<UserControl
     x:Class="EdgeRebuild.Controls.ToolbarControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:media="using:Windows.UI.Xaml.Media">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <UserControl.Resources>
-        <SolidColorBrush x:Key="AddressBarBackgroundBrush" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="AddressBarBorderBrush" Color="#C0C0C0"/>
-        <SolidColorBrush x:Key="AddressBarFocusBorderBrush" Color="{ThemeResource SystemAccentColor}"/>
-        <SolidColorBrush x:Key="SeparatorBrush" Color="#CCCCCC"/>
-        <SolidColorBrush x:Key="ForegroundBrush" Color="#000000"/>
-        <SolidColorBrush x:Key="MutedForegroundBrush" Color="#666666"/>
+        <SolidColorBrush x:Key="ToolbarButtonHoverBrush" Color="#20FFFFFF"/>
+        <SolidColorBrush x:Key="ToolbarButtonPressedBrush" Color="#40FFFFFF"/>
 
-        <SolidColorBrush x:Key="RevealHoverBrush" Color="#40FFFFFF"/>
-        <SolidColorBrush x:Key="RevealPressedBrush" Color="#80FFFFFF"/>
-
-        <Style x:Key="RevealButtonStyle" TargetType="Button">
+        <Style x:Key="NavigationButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="Width" Value="32"/>
             <Setter Property="Height" Value="32"/>
-            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Grid>
+                        <Grid Background="{TemplateBinding Background}">
                             <VisualStateManager.VisualStateGroups>
                                 <VisualStateGroup x:Name="CommonStates">
                                     <VisualState x:Name="Normal"/>
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RevealBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource RevealHoverBrush}"/>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource ToolbarButtonHoverBrush}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
                                         <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="RevealBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource RevealPressedBrush}"/>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource ToolbarButtonPressedBrush}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
-                                    <VisualState x:Name="Disabled"/>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Opacity">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="0.4"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
-                            <Border x:Name="RevealBorder" Background="Transparent" BorderBrush="Transparent" BorderThickness="{TemplateBinding BorderThickness}">
-                                <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            <Border x:Name="HoverBorder" Background="Transparent" CornerRadius="2">
+                                <ContentPresenter x:Name="ContentPresenter" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                             </Border>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="AddressBarStyle" TargetType="TextBox">
-            <Setter Property="Background" Value="{StaticResource AddressBarBackgroundBrush}"/>
-            <Setter Property="BorderBrush" Value="{StaticResource AddressBarBorderBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="8,8,4,0"/>
-            <Setter Property="VerticalAlignment" Value="Stretch"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
-            <Setter Property="SelectionHighlightColor" Value="{ThemeResource SystemAccentColor}"/>
-        </Style>
-
-        <Style x:Key="SuggestionItemStyle" TargetType="ListViewItem">
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListViewItem">
-                        <Grid x:Name="ContentBorder" Background="{TemplateBinding Background}">
-                            <VisualStateManager.VisualStateGroups>
-                                <VisualStateGroup x:Name="CommonStates">
-                                    <VisualState x:Name="Normal"/>
-                                    <VisualState x:Name="PointerOver">
-                                        <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#D9EAF7"/>
-                                            </ObjectAnimationUsingKeyFrames>
-                                        </Storyboard>
-                                    </VisualState>
-                                    <VisualState x:Name="Pressed">
-                                        <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#C0DDF2"/>
-                                            </ObjectAnimationUsingKeyFrames>
-                                        </Storyboard>
-                                    </VisualState>
-                                    <VisualState x:Name="Selected">
-                                        <Storyboard>
-                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#B3D4ED"/>
-                                            </ObjectAnimationUsingKeyFrames>
-                                        </Storyboard>
-                                    </VisualState>
-                                </VisualStateGroup>
-                            </VisualStateManager.VisualStateGroups>
-                            <ContentPresenter Margin="12,0"/>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -123,42 +65,63 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
+            <!-- 引擎标记 -->
             <Border Grid.Column="0" Width="32" Height="32" VerticalAlignment="Center" Margin="2,0,2,0" Background="Transparent">
                 <TextBlock x:Name="EngineLabel" VerticalAlignment="Center" HorizontalAlignment="Center"
                            FontSize="13" FontWeight="Bold"/>
             </Border>
 
+            <!-- 前进/后退/刷新按钮 -->
             <Button x:Name="BackBtn" Grid.Column="1" Content="&#xE72B;" IsEnabled="False"
-                    Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="BackBtn_Click"/>
+                    Width="32" Height="32" Margin="2,0"
+                    Style="{StaticResource NavigationButtonStyle}" Click="BackBtn_Click"/>
             <Button x:Name="ForwardBtn" Grid.Column="2" Content="&#xE72A;" IsEnabled="False"
-                    Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="ForwardBtn_Click"/>
+                    Width="32" Height="32" Margin="2,0"
+                    Style="{StaticResource NavigationButtonStyle}" Click="ForwardBtn_Click"/>
             <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
-                    Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="RefreshBtn_Click"/>
+                    Width="32" Height="32" Margin="2,0"
+                    Style="{StaticResource NavigationButtonStyle}" Click="RefreshBtn_Click"/>
 
-            <!-- 地址栏 + 建议 Flyout -->
+            <!-- 地址栏：安全图标内嵌在输入框左侧 -->
             <Grid Grid.Column="4">
-                <TextBox x:Name="UrlBox" MinWidth="200" PlaceholderText="输入网址或搜索（按“↓”来获取建议）"
-                         KeyDown="UrlBox_KeyDown" Style="{StaticResource AddressBarStyle}"
-                         GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
-                         TextChanged="UrlBox_TextChanged" VerticalContentAlignment="Center">
+                <!-- 地址栏输入框，文字左侧留出空间给图标 -->
+                <TextBox x:Name="UrlBox" MinWidth="200" 
+                         PlaceholderText="输入网址或搜索（@引擎 临时切换）"
+                         KeyDown="UrlBox_KeyDown" GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
+                         TextChanged="UrlBox_TextChanged" VerticalContentAlignment="Center"
+                         Background="White" BorderBrush="LightGray" BorderThickness="1"
+                         Padding="32,8,4,0" VerticalAlignment="Stretch" FontSize="13">
                     <FlyoutBase.AttachedFlyout>
                         <Flyout x:Name="SuggestionsFlyout" Placement="Bottom">
-                            <!-- FlyoutPresenter样式已由App.xaml全局控制，此处不再重复设置背景 -->
                             <Border x:Name="SuggestionBorder" Background="Transparent" BorderThickness="0" MinWidth="200" MaxHeight="200">
                                 <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical" />
                             </Border>
                         </Flyout>
                     </FlyoutBase.AttachedFlyout>
                 </TextBox>
+
+                <!-- 安全信息按钮（覆盖在输入框左侧内部） -->
+                <Button x:Name="SiteInfoButton" 
+                        Width="28" Height="28" Margin="2,0,0,0" Padding="0"
+                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Background="Transparent" BorderThickness="0"
+                        Click="SiteInfoButton_Click">
+                    <TextBlock x:Name="SiteInfoText" Text="🔒" FontSize="14"
+                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                </Button>
             </Grid>
 
+            <!-- 右侧工具按钮 -->
             <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="4,0" VerticalAlignment="Center">
                 <Button x:Name="AddFavBtn" Content="&#xE734;"
-                        Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="AddFavBtn_Click"/>
+                        Width="32" Height="32" Margin="2,0" Click="AddFavBtn_Click"
+                        Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
                 <Button x:Name="HubBtn" Content="📚"
-                        Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="HubBtn_Click"/>
+                        Width="32" Height="32" Margin="2,0" Click="HubBtn_Click"
+                        Background="Transparent" BorderThickness="0" FontSize="14"/>
                 <Button x:Name="MenuBtn" Content="&#xE712;"
-                        Style="{StaticResource RevealButtonStyle}" Margin="2,0" Click="MenuBtn_Click"/>
+                        Width="32" Height="32" Margin="2,0" Click="MenuBtn_Click"
+                        Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
                 <ComboBox x:Name="EngineCombo" Width="90" SelectedIndex="0" VerticalAlignment="Center"
                           Background="Transparent" BorderThickness="0" Margin="4,0" SelectionChanged="EngineCombo_SelectionChanged">
                     <ComboBoxItem Content="EdgeHTML"/>
