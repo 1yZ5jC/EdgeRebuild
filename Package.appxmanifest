@@ -9,9 +9,9 @@
   IgnorableNamespaces="uap mp uap3 rescap">
 
   <Identity
-    Name="f5c8e8c8-f6ee-4ee0-ac14-82a4aed722e4"
+    Name="AlanPlex.EdgeRebuild"
     Publisher="CN=Alan"
-    Version="1.0.0.0" />
+    Version="0.0.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="f5c8e8c8-f6ee-4ee0-ac14-82a4aed722e4" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
