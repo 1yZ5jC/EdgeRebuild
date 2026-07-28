@@ -33,8 +33,7 @@ namespace EdgeRebuild.Core
         event Action<bool> CanGoForwardChanged;
         event Action<string> FaviconChanged;
         event Action<TabContextMenuEventArgs> ContextMenuRequested;
-
-        // 新增：当页面请求打开新窗口时触发（例如 window.open 或 target="_blank"）
         event Action<string> NewWindowRequested;
+        event Action<bool> LoadingChanged;   // 新增：加载状态 true=开始，false=结束
     }
 }

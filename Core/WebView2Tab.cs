@@ -5,6 +5,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.Storage;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -41,7 +42,8 @@ namespace EdgeRebuild.Core
         public event Action<string> FaviconChanged;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action<string> NewWindowRequested;
-        public event Action<string, StorageFolder, string> DownloadRequested; // 实例事件
+        public event Action<string, StorageFolder, string> DownloadRequested;
+        public event Action<bool> LoadingChanged;
 
         public WebView2Tab()
         {
@@ -63,6 +65,7 @@ namespace EdgeRebuild.Core
                 _webView.CoreWebView2.ContextMenuRequested += OnContextMenuRequested;
                 _webView.CoreWebView2.DownloadStarting += OnDownloadStarting;
                 _webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
+                _webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
                 CheckNavigationState();
             }
             finally { _initLock.Release(); }
@@ -72,6 +75,12 @@ namespace EdgeRebuild.Core
         {
             e.Handled = true;
             NewWindowRequested?.Invoke(e.Uri);
+        }
+
+        private async void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
+            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(true));
         }
 
         public async Task SuspendAsync()
@@ -99,7 +108,6 @@ namespace EdgeRebuild.Core
             if (_webView.CoreWebView2 != null)
             {
                 _webView.CoreWebView2.Resume();
-                // 不再重复导航，Resume 已经恢复了原来的页面
             }
             else if (!string.IsNullOrEmpty(_suspendedUrl))
             {
@@ -115,7 +123,6 @@ namespace EdgeRebuild.Core
                 var op = e.DownloadOperation;
                 e.Handled = true;
 
-                // 检查是否已有完全相同的已完成文件
                 var existing = Services.DownloadManager.FindCompletedByFileNameSync(Path.GetFileName(op.ResultFilePath), op.Uri);
                 if (existing != null)
                 {
@@ -130,11 +137,7 @@ namespace EdgeRebuild.Core
                 }
 
                 bool askBeforeDownload = false;
-                try
-                {
-                    askBeforeDownload = (await Services.SettingsManager.GetAsync("AskBeforeDownload") == "True");
-                }
-                catch { }
+                try { askBeforeDownload = (await Services.SettingsManager.GetAsync("AskBeforeDownload") == "True"); } catch { }
 
                 if (askBeforeDownload)
                 {
@@ -157,12 +160,7 @@ namespace EdgeRebuild.Core
                     if (!Controls.DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
                     {
                         e.Cancel = true;
-                        await new ContentDialog
-                        {
-                            Title = "文件名无效",
-                            Content = error,
-                            CloseButtonText = "确定"
-                        }.ShowAsync();
+                        await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定" }.ShowAsync();
                         return;
                     }
 
@@ -205,15 +203,15 @@ namespace EdgeRebuild.Core
                 e.Cancel = true;
                 System.Diagnostics.Debug.WriteLine($"下载处理失败: {ex.Message}");
             }
-            finally
-            {
-                deferral.Complete();
-            }
+            finally { deferral.Complete(); }
         }
 
         private async void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             if (_isSuspended || _disposed) return;
+            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
+            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(false));
+
             if (e.IsSuccess)
             {
                 _httpsFailed = false;
@@ -227,7 +225,6 @@ namespace EdgeRebuild.Core
                 string currentUrl = sender.Source?.ToString() ?? "";
                 if (!_httpsFailed && currentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
-                    // 安全降级逻辑可根据需求决定是否保留，但为安全起见不再自动降级，此处可注释或移除
                 }
                 UrlChanged?.Invoke(currentUrl);
             }
@@ -255,8 +252,7 @@ namespace EdgeRebuild.Core
             if (_webView.CoreWebView2 == null || _webView.Source?.AbsoluteUri == "about:blank") return;
             try
             {
-                var result = await _webView.CoreWebView2.ExecuteScriptAsync(
-                    "(function(){ var l=document.querySelector('link[rel*=\"icon\"]'); return l?l.href:''; })()");
+                var result = await _webView.CoreWebView2.ExecuteScriptAsync("(function(){ var l=document.querySelector('link[rel*=\"icon\"]'); return l?l.href:''; })()");
                 if (!string.IsNullOrEmpty(result)) ProcessFaviconUrl(result.Trim('"'));
             }
             catch { }
@@ -280,26 +276,15 @@ namespace EdgeRebuild.Core
             var target = e.ContextMenuTarget;
             if (target != null)
             {
-                if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
-                {
-                    args.MenuType = ContextMenuType.Image; args.ImageUrl = target.SourceUri;
-                }
-                else if (!string.IsNullOrEmpty(target.LinkUri))
-                {
-                    args.MenuType = ContextMenuType.Link; args.LinkUrl = target.LinkUri;
-                }
-                args.HasSelection = target.HasSelection;
-                args.SelectionText = target.SelectionText ?? "";
-                args.IsEditable = target.IsEditable;
+                if (target.Kind == CoreWebView2ContextMenuTargetKind.Image) { args.MenuType = ContextMenuType.Image; args.ImageUrl = target.SourceUri; }
+                else if (!string.IsNullOrEmpty(target.LinkUri)) { args.MenuType = ContextMenuType.Link; args.LinkUrl = target.LinkUri; }
+                args.HasSelection = target.HasSelection; args.SelectionText = target.SelectionText ?? ""; args.IsEditable = target.IsEditable;
             }
             ContextMenuRequested?.Invoke(args);
             e.Handled = true;
         }
 
-        public async Task<string> ExecuteScriptAsync(string script)
-        {
-            return (_webView?.CoreWebView2 != null) ? await _webView.CoreWebView2.ExecuteScriptAsync(script) : "";
-        }
+        public async Task<string> ExecuteScriptAsync(string script) => (_webView?.CoreWebView2 != null) ? await _webView.CoreWebView2.ExecuteScriptAsync(script) : "";
 
         public async Task NavigateAsync(string url)
         {
@@ -311,8 +296,7 @@ namespace EdgeRebuild.Core
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
             {
                 string candidate = "https://" + url;
-                if (!Uri.TryCreate(candidate, UriKind.Absolute, out uri))
-                    uri = new Uri("about:blank");
+                if (!Uri.TryCreate(candidate, UriKind.Absolute, out uri)) uri = new Uri("about:blank");
             }
             _webView.CoreWebView2.Navigate(uri.AbsoluteUri);
         }
@@ -335,9 +319,11 @@ namespace EdgeRebuild.Core
                 _webView.CoreWebView2.ContextMenuRequested -= OnContextMenuRequested;
                 _webView.CoreWebView2.DownloadStarting -= OnDownloadStarting;
                 _webView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
+                _webView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
             }
             try { (_webView.Parent as Panel)?.Children.Remove(_webView); _webView.Close(); } catch { }
             _webView = null;
+
             TitleChanged = null;
             UrlChanged = null;
             CanGoBackChanged = null;
@@ -346,6 +332,7 @@ namespace EdgeRebuild.Core
             ContextMenuRequested = null;
             NewWindowRequested = null;
             DownloadRequested = null;
+            LoadingChanged = null;
         }
     }
 }

@@ -84,9 +84,8 @@
 
             <!-- 地址栏：安全图标内嵌在输入框左侧 -->
             <Grid Grid.Column="4">
-                <!-- 地址栏输入框，文字左侧留出空间给图标 -->
                 <TextBox x:Name="UrlBox" MinWidth="200" 
-                         PlaceholderText="输入网址或搜索（@引擎 临时切换）"
+                         PlaceholderText=""
                          KeyDown="UrlBox_KeyDown" GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
                          TextChanged="UrlBox_TextChanged" VerticalContentAlignment="Center"
                          Background="White" BorderBrush="LightGray" BorderThickness="1"
@@ -100,7 +99,7 @@
                     </FlyoutBase.AttachedFlyout>
                 </TextBox>
 
-                <!-- 安全信息按钮（覆盖在输入框左侧内部） -->
+                <!-- 站点信息按钮（内嵌在地址栏左侧） -->
                 <Button x:Name="SiteInfoButton" 
                         Width="28" Height="28" Margin="2,0,0,0" Padding="0"
                         HorizontalAlignment="Left" VerticalAlignment="Center"

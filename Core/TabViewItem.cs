@@ -12,7 +12,8 @@ namespace EdgeRebuild.Core
         public Image FaviconImage { get; set; }
         public FontIcon FaviconPlaceholder { get; set; }
         public TextBlock EngineMark { get; set; }
-        public TextBlock SuspendedIndicator { get; set; }  // 新增
-        public bool IsSuspended { get; set; }              // 新增
+        public TextBlock SuspendedIndicator { get; set; }
+        public bool IsSuspended { get; set; }
+        public ProgressRing LoadingRing { get; set; }  // 新增：加载指示器
     }
 }

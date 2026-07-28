@@ -52,6 +52,16 @@ namespace EdgeRebuild.Controls
             _suggestionTimer.Tick += OnSuggestionTimerTick;
             SuggestionsFlyout.Closed += (_, _) => _isSuggestionsVisible = false;
 
+            // 随机选择 PlaceholderText
+            string[] placeholders = new[]
+            {
+                "输入网址或搜索（按“↓”来获取建议）",
+                "输入网址或搜索（@引擎 临时切换）",
+                "输入网址或搜索"
+            };
+            Random rand = new Random();
+            UrlBox.PlaceholderText = placeholders[rand.Next(placeholders.Length)];
+
             _searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
             SettingsManager.SettingChanged += OnSettingChanged;
             UpdateSearchEngineIndicator();
@@ -131,6 +141,7 @@ namespace EdgeRebuild.Controls
 
         public void ShowMenu(MenuFlyout menu) => menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
 
+        // 由 MainPage 调用，更新站点信息
         public void UpdateSiteInfo(bool isSecure, string host)
         {
             _isSecure = isSecure;

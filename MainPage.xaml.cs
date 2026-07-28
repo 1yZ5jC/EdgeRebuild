@@ -33,7 +33,6 @@ namespace EdgeRebuild
     {
         public static MainPage Instance { get; private set; }
 
-        // 最近关闭的标签信息
         private class ClosedTabInfo
         {
             public string Url { get; set; }
@@ -310,12 +309,7 @@ namespace EdgeRebuild
 
                 if (!DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
                 {
-                    await new ContentDialog
-                    {
-                        Title = "文件名无效",
-                        Content = error,
-                        CloseButtonText = "确定"
-                    }.ShowAsync();
+                    await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定" }.ShowAsync();
                     return;
                 }
 
@@ -440,12 +434,9 @@ namespace EdgeRebuild
             }
         }
 
-        private async void ToolbarControl_BackRequested()
-        { if (_currentTab?.CanGoBack == true) await _currentTab.GoBackAsync(); }
-        private async void ToolbarControl_ForwardRequested()
-        { if (_currentTab?.CanGoForward == true) await _currentTab.GoForwardAsync(); }
-        private async void ToolbarControl_RefreshRequested()
-        { if (_currentTab != null) await _currentTab.RefreshAsync(); }
+        private async void ToolbarControl_BackRequested() { if (_currentTab?.CanGoBack == true) await _currentTab.GoBackAsync(); }
+        private async void ToolbarControl_ForwardRequested() { if (_currentTab?.CanGoForward == true) await _currentTab.GoForwardAsync(); }
+        private async void ToolbarControl_RefreshRequested() { if (_currentTab != null) await _currentTab.RefreshAsync(); }
 
         private async void ToolbarControl_AddFavoriteClicked()
         {
@@ -580,20 +571,44 @@ namespace EdgeRebuild
                     toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, u);
                     UpdateStarButton();
 
-                    // 更新站点信息
                     bool isSecure = u.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
                     string host = "";
                     try { host = new Uri(u).Host; } catch { }
                     toolbarControl.UpdateSiteInfo(isSecure, host);
                 }
                 if (!string.IsNullOrEmpty(u) && u != "about:blank") await HistoryManager.AddAsync(tab.Title ?? u, u);
-
             };
             tab.CanGoBackChanged += (can) => { if (_currentTab == tab) toolbarControl.UpdateNavState(can, tab.CanGoForward, tab.CurrentUrl); };
             tab.CanGoForwardChanged += (can) => { if (_currentTab == tab) toolbarControl.UpdateNavState(tab.CanGoBack, can, tab.CurrentUrl); };
             tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
             tab.ContextMenuRequested += OnTabContextMenuRequested;
             tab.NewWindowRequested += (url) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await CreateNewTabAsync(tab.Engine, url));
+
+            // 加载指示器，并用小环替换 favicon
+            tab.LoadingChanged += (isLoading) =>
+            {
+                _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                {
+                    if (viewItem.LoadingRing != null)
+                        viewItem.LoadingRing.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+
+                    if (viewItem.FaviconImage != null && viewItem.FaviconPlaceholder != null)
+                    {
+                        if (isLoading)
+                        {
+                            viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                            viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
+                        }
+                        else
+                        {
+                            if (viewItem.FaviconImage.Source != null)
+                                viewItem.FaviconImage.Visibility = Visibility.Visible;
+                            else
+                                viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                        }
+                    }
+                });
+            };
         }
 
         private async Task RebindTabAndSwitch(TabViewItem viewItem, IBrowserTab newTab, string urlToNavigate = null)
@@ -706,13 +721,33 @@ namespace EdgeRebuild
             var faviconImage = new Image { Width = 14, Height = 14, Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
             var titleText = new TextBlock { Text = "新标签页", TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 10, Foreground = _foregroundBrush, VerticalAlignment = VerticalAlignment.Center };
             var suspendedIndicator = new TextBlock { Text = "💤", FontSize = 10, Foreground = new SolidColorBrush(Colors.Gray), Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+
+            // 小尺寸加载环 (10x10)
+            // 使用缩放实现更小的加载环（视觉尺寸 = 原始尺寸 × 缩放比例）
+            var loadingRing = new ProgressRing
+            {
+                Width = 20,          // 原始尺寸
+                Height = 20,
+                Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = Visibility.Collapsed,
+                IsActive = true,
+                RenderTransform = new ScaleTransform { ScaleX = 0.5, ScaleY = 0.5 },
+                RenderTransformOrigin = new Point(0.5, 0.5)   // 以中心为缩放原点
+            };
+
             var infoPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            infoPanel.Children.Add(engineMark); infoPanel.Children.Add(faviconPlaceholder); infoPanel.Children.Add(faviconImage); infoPanel.Children.Add(suspendedIndicator); infoPanel.Children.Add(titleText);
+            infoPanel.Children.Add(engineMark);
+            infoPanel.Children.Add(faviconPlaceholder);
+            infoPanel.Children.Add(faviconImage);
+            infoPanel.Children.Add(loadingRing);
+            infoPanel.Children.Add(suspendedIndicator);
+            infoPanel.Children.Add(titleText);
             Grid.SetColumn(infoPanel, 0); tabPanel.Children.Add(infoPanel);
             var closeBtn = new Button { Content = "\xE711", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 10, Foreground = _mutedForegroundBrush, Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(0), Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 0, 4, 0) };
             Grid.SetColumn(closeBtn, 1); tabPanel.Children.Add(closeBtn);
             tabBorder.Child = tabPanel; TabBarPanel.Children.Add(tabBorder);
-            var viewItem = new TabViewItem { Tab = tab, TitleText = titleText, CloseButton = closeBtn, Container = tabBorder, FaviconImage = faviconImage, FaviconPlaceholder = faviconPlaceholder, EngineMark = engineMark, SuspendedIndicator = suspendedIndicator, IsSuspended = false };
+            var viewItem = new TabViewItem { Tab = tab, TitleText = titleText, CloseButton = closeBtn, Container = tabBorder, FaviconImage = faviconImage, FaviconPlaceholder = faviconPlaceholder, EngineMark = engineMark, SuspendedIndicator = suspendedIndicator, LoadingRing = loadingRing, IsSuspended = false };
             _tabViews.Add(viewItem);
             closeBtn.Click += (_, _) => _ = CloseTab(viewItem);
             tabBorder.PointerPressed += OnTabPointerPressed; tabBorder.PointerMoved += OnTabPointerMoved; tabBorder.PointerReleased += OnTabPointerReleased; tabBorder.PointerCanceled += OnTabPointerReleased; tabBorder.RightTapped += OnTabRightTapped;
@@ -775,7 +810,6 @@ namespace EdgeRebuild
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
 
-            // 中键关闭标签页
             if (properties.IsMiddleButtonPressed)
             {
                 var border = sender as Border;
