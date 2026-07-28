@@ -31,6 +31,8 @@ namespace EdgeRebuild
 {
     public sealed partial class MainPage : Page
     {
+        public static MainPage Instance { get; private set; }
+
         private readonly List<TabViewItem> _tabViews = new List<TabViewItem>();
         private IBrowserTab _currentTab;
         private bool _isLoaded;
@@ -68,7 +70,7 @@ namespace EdgeRebuild
         private Point _tabBarPanelOffset;
         private DateTime _lastReorderTime;
 
-        // 每个下载任务独立隐藏 WebView2
+        // 每个独立下载任务使用单独 WebView2，避免并发冲突
         private readonly Dictionary<string, WebView2> _downloadWebViews = new();
 
         private bool _askBeforeDownload;
@@ -83,6 +85,7 @@ namespace EdgeRebuild
 
         public MainPage()
         {
+            Instance = this;
             this.InitializeComponent();
             this.Loaded += OnLoaded;
             this.Unloaded += OnUnloaded;
@@ -221,7 +224,7 @@ namespace EdgeRebuild
 
         private async void OnSettingChanged(string key, string newValue)
         {
-            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
             {
                 switch (key)
                 {
@@ -243,6 +246,12 @@ namespace EdgeRebuild
                                 timer.Stop();
                             _suspendTimers.Clear();
                         }
+                        break;
+                    case "DownloadFolder":
+                        DownloadManager.SetCustomDownloadPath(newValue);
+                        break;
+                    case "DoNotTrack":
+                        await ApplyDoNotTrackToAllTabs(newValue == "True" || newValue == "true");
                         break;
                 }
             });
@@ -612,10 +621,30 @@ namespace EdgeRebuild
                 if (doNotTrack == "True" || doNotTrack == "true")
                 {
                     await wv2Tab.EnsureInitializedAsync();
-                    wv2Tab.CoreWebView2.WebResourceRequested += (s, e) => { e.Request.Headers.SetHeader("DNT", "1"); };
+                    wv2Tab.CoreWebView2.WebResourceRequested += OnWebResourceRequestedForDNT;
                 }
             }
             await CreateTabViewAndSwitchAsync(tab, url);
+        }
+
+        private void OnWebResourceRequestedForDNT(object sender, CoreWebView2WebResourceRequestedEventArgs e)
+        {
+            e.Request.Headers.SetHeader("DNT", "1");
+        }
+
+        private async Task ApplyDoNotTrackToAllTabs(bool enable)
+        {
+            foreach (var item in _tabViews)
+            {
+                if (item.Tab is WebView2Tab wv2)
+                {
+                    await wv2.EnsureInitializedAsync();
+                    if (enable)
+                        wv2.CoreWebView2.WebResourceRequested += OnWebResourceRequestedForDNT;
+                    else
+                        wv2.CoreWebView2.WebResourceRequested -= OnWebResourceRequestedForDNT;
+                }
+            }
         }
 
         private async Task CreateTabViewAndSwitchAsync(IBrowserTab tab, string url)
@@ -681,7 +710,7 @@ namespace EdgeRebuild
             else UpdateTabLayout();
         }
 
-        // 拖拽逻辑（完整）
+        // ---------- 拖拽逻辑 ----------
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
@@ -913,8 +942,18 @@ namespace EdgeRebuild
             await HistoryManager.ClearAsync();
             DownloadManager.ClearCompleted();
             if (HubSplitView.IsPaneOpen) hubPane.RefreshAll();
-            if (_currentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null) wv2.CoreWebView2.Profile.CookieManager.DeleteAllCookies();
+            await ClearAllCookiesInternalAsync();
             await new ContentDialog { Title = "已清除", Content = "浏览数据已清除。", CloseButtonText = "确定" }.ShowAsync();
+        }
+        public async Task ClearAllCookiesInternalAsync()
+        {
+            foreach (var item in _tabViews)
+            {
+                if (item.Tab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                {
+                    wv2.CoreWebView2.Profile.CookieManager.DeleteAllCookies();
+                }
+            }
         }
         private void ShowAboutDialog() => _ = new ContentDialog { Title = "Edge Rebuild", Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。", CloseButtonText = "确定" }.ShowAsync();
         private async void ShowNotImplementedDialog(string feature) => await new ContentDialog { Title = "即将推出", Content = $"功能“{feature}”尚未实现。", CloseButtonText = "确定" }.ShowAsync();

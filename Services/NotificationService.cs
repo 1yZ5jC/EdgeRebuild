@@ -15,12 +15,9 @@ namespace EdgeRebuild.Services
                 textNodes[1].AppendChild(toastTemplate.CreateTextNode(message));
 
                 var toast = new ToastNotification(toastTemplate);
-                ToastNotificationManager.CreateToastNotifier().Show(toast);  // 修复：ShowToast → Show
+                ToastNotificationManager.CreateToastNotifier().Show(toast);
             }
-            catch
-            {
-                // 通知失败时静默忽略
-            }
+            catch { }
         }
     }
 }

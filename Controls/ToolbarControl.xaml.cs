@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Xaml;
@@ -30,7 +29,6 @@ namespace EdgeRebuild.Controls
         private bool _isSuggestionsVisible;
         private List<SuggestionItem> _currentSuggestions = new List<SuggestionItem>();
 
-        private const string DefaultSearchEngineUrl = "https://www.google.com/search?q={0}";
         private static readonly IdnMapping _idn = new IdnMapping();
 
         private Brush _foregroundBrush;
@@ -42,6 +40,7 @@ namespace EdgeRebuild.Controls
         {
             this.InitializeComponent();
             this.Loaded += OnLoaded;
+            this.Unloaded += OnUnloaded;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -50,9 +49,22 @@ namespace EdgeRebuild.Controls
             _suggestionTimer.Tick += OnSuggestionTimerTick;
             SuggestionsFlyout.Closed += (_, _) => _isSuggestionsVisible = false;
 
-            // 异步加载搜索引擎设置
-            string engine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
-            _searchEngine = engine;
+            _searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
+            SettingsManager.SettingChanged += OnSettingChanged;
+        }
+
+        private void OnUnloaded(object sender, RoutedEventArgs e)
+        {
+            SettingsManager.SettingChanged -= OnSettingChanged;
+            _suggestionTimer?.Stop();
+        }
+
+        private void OnSettingChanged(string key, string newValue)
+        {
+            if (key == "SearchEngine")
+            {
+                _searchEngine = newValue;
+            }
         }
 
         public void FocusAddressBarAndClear()
@@ -180,12 +192,14 @@ namespace EdgeRebuild.Controls
 
             bool hasDot = raw.Contains('.');
             bool hasNonAscii = raw.Any(c => c > 127);
+
             if (!hasDot && !hasNonAscii)
             {
                 if (raw.Length >= 3 && raw.All(c => char.IsLetterOrDigit(c) || c == '-'))
                     return "https://" + raw;
                 return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
             }
+
             if (hasDot)
             {
                 string converted = ConvertToPunycode(raw);
@@ -195,6 +209,7 @@ namespace EdgeRebuild.Controls
                 if (Uri.TryCreate(converted, UriKind.Absolute, out _)) return converted;
                 return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
             }
+
             if (!hasDot && hasNonAscii)
             {
                 string converted = TryConvertDomain(raw);

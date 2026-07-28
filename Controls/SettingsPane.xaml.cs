@@ -69,6 +69,10 @@ namespace EdgeRebuild.Controls
                     _currentDownloadPath = folder.Path;
                     _downloadPathBlock.Text = folder.Path;
                     await SettingsManager.SetAsync("DownloadFolder", folder.Path);
+
+                    string token = Guid.NewGuid().ToString();
+                    Windows.Storage.AccessCache.StorageApplicationPermissions.FutureAccessList.AddOrReplace(token, folder);
+                    DownloadManager.SetCustomDownloadPath(folder.Path, token);
                 }
             };
             pathPanel.Children.Add(_downloadPathBlock);
@@ -102,7 +106,7 @@ namespace EdgeRebuild.Controls
             enginePanel.Children.Add(_webviewRadio);
             _panels[3] = enginePanel;
 
-            // 隐私 (4)
+            // 隐私 (4) – 清除 Cookie 按钮真实实现
             var privacyPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
             _doNotTrackToggle = new ToggleSwitch { Header = "发送“请勿跟踪”请求" };
             privacyPanel.Children.Add(_doNotTrackToggle);
@@ -110,11 +114,28 @@ namespace EdgeRebuild.Controls
             var clearCookiesBtn = new Button { Content = "清除所有 Cookie", Margin = new Thickness(0, 12, 0, 0) };
             clearCookiesBtn.Click += async (s, e) =>
             {
-                if (Microsoft.Web.WebView2.Core.CoreWebView2Environment.GetAvailableBrowserVersionString() != null)
+                try
                 {
-                    // 无法直接访问全局 CookieManager，需通过当前活动的 WebView2 实例操作。
-                    // 此处简化，仅提示用户手动清除。
-                    await new ContentDialog { Title = "提示", Content = "Cookie 将在活动标签的 WebView2 引擎中清除（若当前为 EdgeHTML 则无效）。", CloseButtonText = "确定" }.ShowAsync();
+                    var mainPage = EdgeRebuild.MainPage.Instance;
+                    if (mainPage != null)
+                    {
+                        await mainPage.ClearAllCookiesInternalAsync();
+                        await new ContentDialog
+                        {
+                            Title = "已清除",
+                            Content = "已清除所有 WebView2 标签页的 Cookie。",
+                            CloseButtonText = "确定"
+                        }.ShowAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await new ContentDialog
+                    {
+                        Title = "错误",
+                        Content = $"清除 Cookie 失败: {ex.Message}",
+                        CloseButtonText = "确定"
+                    }.ShowAsync();
                 }
             };
             privacyPanel.Children.Add(clearCookiesBtn);
@@ -142,37 +163,27 @@ namespace EdgeRebuild.Controls
         {
             try
             {
-                // 外观设置
                 string skin = await SettingsManager.GetAsync("Skin") ?? "Spartan";
                 _spartanRadio.IsChecked = (skin != "ModernIE");
                 _modernIERadio.IsChecked = (skin == "ModernIE");
 
-                // 下载设置
                 string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
                 _askToggle.IsOn = (ask == "True" || ask == "true");
                 string autoClean = await SettingsManager.GetAsync("AutoCleanDownload") ?? "False";
                 _autoCleanDownloadToggle.IsOn = (autoClean == "True" || autoClean == "true");
 
-                // 引擎设置
                 string engine = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
                 _edgeRadio.IsChecked = (engine != "WebView2");
                 _webviewRadio.IsChecked = (engine == "WebView2");
 
-                // 性能设置
                 string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
                 _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
 
-                // 常规设置
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 _homePageBox.Text = homeUrl;
+
                 string searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
-                int searchIndex = searchEngine switch
-                {
-                    "Bing" => 1,
-                    "DuckDuckGo" => 2,
-                    _ => 0
-                };
-                _searchEngineCombo.SelectedIndex = searchIndex;
+                _searchEngineCombo.SelectedIndex = searchEngine switch { "Bing" => 1, "DuckDuckGo" => 2, _ => 0 };
 
                 string downloadPath = await SettingsManager.GetAsync("DownloadFolder");
                 if (!string.IsNullOrEmpty(downloadPath))
@@ -187,15 +198,13 @@ namespace EdgeRebuild.Controls
                     _downloadPathBlock.Text = _currentDownloadPath;
                 }
 
-                // 隐私设置
                 string doNotTrack = await SettingsManager.GetAsync("DoNotTrack") ?? "False";
                 _doNotTrackToggle.IsOn = (doNotTrack == "True" || doNotTrack == "true");
 
-                // 保存事件绑定
-                _spartanRadio.Checked += (s, e) => SaveSkin("Spartan");
-                _modernIERadio.Checked += (s, e) => SaveSkin("ModernIE");
-                _edgeRadio.Checked += (s, e) => SaveEngine("EdgeHtml");
-                _webviewRadio.Checked += (s, e) => SaveEngine("WebView2");
+                _spartanRadio.Checked += async (s, e) => await SettingsManager.SetAsync("Skin", "Spartan");
+                _modernIERadio.Checked += async (s, e) => await SettingsManager.SetAsync("Skin", "ModernIE");
+                _edgeRadio.Checked += async (s, e) => await SettingsManager.SetAsync("DefaultEngine", "EdgeHtml");
+                _webviewRadio.Checked += async (s, e) => await SettingsManager.SetAsync("DefaultEngine", "WebView2");
                 _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
                 _autoCleanDownloadToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AutoCleanDownload", _autoCleanDownloadToggle.IsOn.ToString());
                 _doNotTrackToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("DoNotTrack", _doNotTrackToggle.IsOn.ToString());
@@ -211,9 +220,6 @@ namespace EdgeRebuild.Controls
                 System.Diagnostics.Debug.WriteLine($"SettingsPane load error: {ex.Message}");
             }
         }
-
-        private async void SaveSkin(string skin) => await SettingsManager.SetAsync("Skin", skin);
-        private async void SaveEngine(string engine) => await SettingsManager.SetAsync("DefaultEngine", engine);
 
         private void SettingsNavView_SelectionChanged(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
         {
