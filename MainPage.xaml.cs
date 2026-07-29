@@ -14,12 +14,10 @@ using Windows.UI.Core;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
-using WebView2 = Microsoft.UI.Xaml.Controls.WebView2;
 
 namespace EdgeRebuild
 {
@@ -31,6 +29,7 @@ namespace EdgeRebuild
         private bool _isLoaded;
         private string _pendingUrl;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
+        private double _zoomFactor = 1.0;
 
         // ---- 管理器 ----
         private TabManager _tabManager;
@@ -38,6 +37,7 @@ namespace EdgeRebuild
         private TabDragManager _dragManager;
         private TabContextMenuManager _contextMenuManager;
         private DownloadCoordinator _downloadCoordinator;
+        private AppMenuManager _menuManager;
 
         // ---- 拖拽状态 ----
         private bool _isDragging;
@@ -114,11 +114,9 @@ namespace EdgeRebuild
                 _dragManager.DetachRequested += OnDragDetachRequested;
                 _dragManager.DragStarted += () => _isDragging = true;
                 _dragManager.DragCompleted += () => { _isDragging = false; UpdateTabLayout(); };
-
                 _dragManager.TabRightTapped += (border, viewItem) =>
                 {
-                    System.Diagnostics.Debug.WriteLine("[MainPage] 收到右键事件，准备显示菜单");
-                    _contextMenuManager.ShowTabRightClickMenu(border, viewItem);
+                    _contextMenuManager?.ShowTabRightClickMenu(border, viewItem);
                 };
 
                 // ---- 上下文菜单管理器 ----
@@ -133,6 +131,30 @@ namespace EdgeRebuild
                 // ---- 下载协调器 ----
                 _downloadCoordinator = new DownloadCoordinator(RootGrid);
                 await _downloadCoordinator.InitializeAsync();
+
+                // ---- 应用菜单管理器 ----
+                _menuManager = new AppMenuManager(
+                    _tabManager,
+                    _defaultEngine,
+                    () => _tabManager.CurrentTab?.Engine ?? _defaultEngine,
+                    PrintCurrentPageAsync,
+                    ViewSourceAsync,
+                    () => { HubSplitView.IsPaneOpen = true; hubPane.ShowHistory(); },
+                    () => SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen,
+                    ClearBrowsingDataAsync,
+                    BookmarkAllTabs,
+                    ShowAboutDialog,
+                    () => { _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank"); },
+                    AdjustZoom,
+                    ResetZoom,
+                    FindOnPage,
+                    OpenDevTools,
+                    ToolbarControl_EngineSwitched,
+                    async () => { if (_tabManager.TryReopenClosedTab(out EngineType engine, out string url, out _)) await _tabManager.CreateTabAsync(engine, url); },
+                    async () => await _tabManager.CreateTabAsync(_defaultEngine, "about:blank"),
+                    () => _tabManager.ClearClosedTabs(),
+                    () => _tabManager.TryReopenClosedTab(out _, out _, out _)
+                );
 
                 // ---- 为所有标签附加拖拽事件 ----
                 foreach (var tab in _tabManager.Tabs)
@@ -340,15 +362,6 @@ namespace EdgeRebuild
             await _tabManager.CloseTabAsync(item);
         }
 
-        // ---- 标签右键菜单（由 TabDragManager 的右键事件触发） ----
-        private void OnTabRightTapped(object sender, RightTappedRoutedEventArgs e)
-        {
-            var border = sender as Border;
-            var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Container == border);
-            if (viewItem == null) return;
-            _contextMenuManager.ShowTabRightClickMenu(border, viewItem);
-        }
-
         // ---- 导航辅助 ----
         private void SwitchToNextTab()
         {
@@ -490,112 +503,8 @@ namespace EdgeRebuild
 
         private void ToolbarControl_MenuClicked()
         {
-            var menu = new MenuFlyout();
-            ApplyThemeToFlyout(menu);
-
-            var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
-            var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" };
-            edgeHtmlItem.Click += (_, _) => ToolbarControl_EngineSwitched(EngineType.EdgeHtml);
-            var webView2Item = new MenuFlyoutItem { Text = "WebView2" };
-            webView2Item.Click += (_, _) => ToolbarControl_EngineSwitched(EngineType.WebView2);
-            engineSub.Items.Add(edgeHtmlItem);
-            engineSub.Items.Add(webView2Item);
-            menu.Items.Add(engineSub);
-            menu.Items.Add(new MenuFlyoutSeparator());
-
-            var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
-            newWindowItem.Click += async (_, _) => { await _tabManager.CreateTabAsync(_defaultEngine, "about:blank"); await new ContentDialog { Title = "提示", Content = "独立窗口功能暂不可用，已为您在当前窗口打开新标签页。", CloseButtonText = "确定" }.ShowAsync(); };
-            menu.Items.Add(newWindowItem);
-            menu.Items.Add(new MenuFlyoutSeparator());
-
-            var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
-            var zoomInItem = new MenuFlyoutItem { Text = "放大" }; zoomInItem.Click += (_, _) => AdjustZoom(0.1);
-            var zoomOutItem = new MenuFlyoutItem { Text = "缩小" }; zoomOutItem.Click += (_, _) => AdjustZoom(-0.1);
-            var zoomResetItem = new MenuFlyoutItem { Text = "重置" }; zoomResetItem.Click += (_, _) => ResetZoom();
-            zoomSub.Items.Add(zoomInItem); zoomSub.Items.Add(zoomOutItem); zoomSub.Items.Add(zoomResetItem); menu.Items.Add(zoomSub);
-
-            var printItem = new MenuFlyoutItem { Text = "打印" };
-            printItem.Click += async (_, _) => await PrintCurrentPageAsync();
-            menu.Items.Add(printItem);
-
-            var findItem = new MenuFlyoutItem { Text = "查找" };
-            findItem.Click += (_, _) => FindOnPage();
-            menu.Items.Add(findItem);
-
-            var sourceItem = new MenuFlyoutItem { Text = "查看源代码" };
-            sourceItem.Click += async (_, _) => await ViewSourceAsync();
-            menu.Items.Add(sourceItem);
-
-            menu.Items.Add(new MenuFlyoutSeparator());
-
-            var toolsSub = new MenuFlyoutSubItem { Text = "更多工具" };
-            var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" };
-            devToolsItem.Click += (_, _) => OpenDevTools();
-            toolsSub.Items.Add(devToolsItem);
-            menu.Items.Add(toolsSub);
-
-            menu.Items.Add(new MenuFlyoutSeparator());
-
-            var reopenSub = new MenuFlyoutSubItem { Text = "重新打开关闭的标签" };
-            if (!_tabManager.TryReopenClosedTab(out _, out _, out _))
-            {
-                var emptyItem = new MenuFlyoutItem { Text = "没有最近关闭的标签", IsEnabled = false };
-                reopenSub.Items.Add(emptyItem);
-            }
-            else
-            {
-                var item = new MenuFlyoutItem { Text = "恢复最近关闭的标签" };
-                item.Click += async (_, _) =>
-                {
-                    if (_tabManager.TryReopenClosedTab(out EngineType engine, out string url, out _))
-                        await _tabManager.CreateTabAsync(engine, url);
-                };
-                reopenSub.Items.Add(item);
-                var clearItem = new MenuFlyoutItem { Text = "清空列表" };
-                clearItem.Click += (_, _) => _tabManager.ClearClosedTabs();
-                reopenSub.Items.Add(clearItem);
-            }
-            menu.Items.Add(reopenSub);
-
-            var bookmarkAllItem = new MenuFlyoutItem { Text = "将所有标签加入收藏" };
-            bookmarkAllItem.Click += (_, _) => BookmarkAllTabs();
-            menu.Items.Add(bookmarkAllItem);
-
-            var historyItem = new MenuFlyoutItem { Text = "历史记录" };
-            historyItem.Click += (_, _) => { HubSplitView.IsPaneOpen = true; hubPane.ShowHistory(); };
-            menu.Items.Add(historyItem);
-
-            var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" };
-            clearDataItem.Click += async (_, _) => await ClearBrowsingDataAsync();
-            menu.Items.Add(clearDataItem);
-
-            menu.Items.Add(new MenuFlyoutSeparator());
-
-            var settingsItem = new MenuFlyoutItem { Text = "设置" };
-            settingsItem.Click += (_, _) => SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen;
-            menu.Items.Add(settingsItem);
-
-            var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" };
-            aboutItem.Click += (_, _) => ShowAboutDialog();
-            menu.Items.Add(aboutItem);
-
+            var menu = _menuManager.BuildMenu();
             toolbarControl.ShowMenu(menu);
-        }
-
-        private void ApplyThemeToFlyout(MenuFlyout flyout)
-        {
-            var style = new Style(typeof(MenuFlyoutPresenter));
-            bool isDark = ThemeManager.IsDarkTheme;
-            var acrylic = new AcrylicBrush
-            {
-                BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
-                TintColor = isDark ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA),
-                TintOpacity = 0.85,
-                FallbackColor = isDark ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA)
-            };
-            style.Setters.Add(new Setter(MenuFlyoutPresenter.BackgroundProperty, acrylic));
-            style.Setters.Add(new Setter(MenuFlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
-            flyout.MenuFlyoutPresenterStyle = style;
         }
 
         private void UpdateStarButton()
@@ -749,22 +658,22 @@ namespace EdgeRebuild
                 ShowNotImplementedDialog("开发者工具（请切换到 WebView2）");
         }
 
-        private async void AdjustZoom(double delta)
+        private void AdjustZoom(double delta)
         {
-            double zoomFactor = 1.0; // 使用局部变量，或从设置加载
-            zoomFactor = Math.Max(0.25, Math.Min(5.0, zoomFactor + delta));
+            _zoomFactor = Math.Max(0.25, Math.Min(5.0, _zoomFactor + delta));
             if (_tabManager.CurrentTab is EdgeHtmlTab edgeTab)
-                await edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{zoomFactor}';");
+                _ = edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';");
             else if (_tabManager.CurrentTab is WebView2Tab wv2)
-                await wv2.ExecuteScriptAsync($"document.body.style.zoom = '{zoomFactor}';");
+                _ = wv2.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';");
         }
 
-        private async void ResetZoom()
+        private void ResetZoom()
         {
+            _zoomFactor = 1.0;
             if (_tabManager.CurrentTab is EdgeHtmlTab edgeTab)
-                await edgeTab.ExecuteScriptAsync("document.body.style.zoom = '1';");
+                _ = edgeTab.ExecuteScriptAsync("document.body.style.zoom = '1';");
             else if (_tabManager.CurrentTab is WebView2Tab wv2)
-                await wv2.ExecuteScriptAsync("document.body.style.zoom = '1';");
+                _ = wv2.ExecuteScriptAsync("document.body.style.zoom = '1';");
         }
 
         private async void BookmarkAllTabs()

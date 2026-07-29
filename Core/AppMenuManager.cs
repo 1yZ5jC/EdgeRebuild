@@ -1,0 +1,202 @@
+﻿using System;
+using System.Threading.Tasks;
+using Windows.UI;
+using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Media;
+using EdgeRebuild.Services;
+
+namespace EdgeRebuild.Core
+{
+    public class AppMenuManager
+    {
+        private readonly TabManager _tabManager;
+        private readonly EngineType _defaultEngine;
+        private readonly Func<EngineType> _getCurrentEngine;
+        private readonly Func<Task> _onPrint;
+        private readonly Func<Task> _onViewSource;
+        private readonly Action _onShowHistory;
+        private readonly Action _onShowSettings;
+        private readonly Func<Task> _onClearData;          // 修改为 Func<Task>
+        private readonly Action _onBookmarkAll;
+        private readonly Action _onAbout;
+        private readonly Action _onNewWindow;
+        private readonly Action<double> _onZoomAdjust;
+        private readonly Action _onZoomReset;
+        private readonly Action _onFind;
+        private readonly Action _onDevTools;
+        private readonly Action<EngineType> _onEngineSwitch;
+        private readonly Func<Task> _onReopenTab;
+        private readonly Func<Task> _onNewTab;
+        private readonly Action _onClearClosedTabs;
+        private readonly Func<bool> _hasClosedTabs;
+
+        public AppMenuManager(
+            TabManager tabManager,
+            EngineType defaultEngine,
+            Func<EngineType> getCurrentEngine,
+            Func<Task> onPrint,
+            Func<Task> onViewSource,
+            Action onShowHistory,
+            Action onShowSettings,
+            Func<Task> onClearData,
+            Action onBookmarkAll,
+            Action onAbout,
+            Action onNewWindow,
+            Action<double> onZoomAdjust,
+            Action onZoomReset,
+            Action onFind,
+            Action onDevTools,
+            Action<EngineType> onEngineSwitch,
+            Func<Task> onReopenTab,
+            Func<Task> onNewTab,
+            Action onClearClosedTabs,
+            Func<bool> hasClosedTabs)
+        {
+            _tabManager = tabManager;
+            _defaultEngine = defaultEngine;
+            _getCurrentEngine = getCurrentEngine;
+            _onPrint = onPrint;
+            _onViewSource = onViewSource;
+            _onShowHistory = onShowHistory;
+            _onShowSettings = onShowSettings;
+            _onClearData = onClearData;
+            _onBookmarkAll = onBookmarkAll;
+            _onAbout = onAbout;
+            _onNewWindow = onNewWindow;
+            _onZoomAdjust = onZoomAdjust;
+            _onZoomReset = onZoomReset;
+            _onFind = onFind;
+            _onDevTools = onDevTools;
+            _onEngineSwitch = onEngineSwitch;
+            _onReopenTab = onReopenTab;
+            _onNewTab = onNewTab;
+            _onClearClosedTabs = onClearClosedTabs;
+            _hasClosedTabs = hasClosedTabs;
+        }
+
+        public MenuFlyout BuildMenu()
+        {
+            var menu = new MenuFlyout();
+            ApplyThemeToFlyout(menu);
+
+            // ---- 渲染引擎子菜单 ----
+            var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
+            var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" };
+            edgeHtmlItem.Click += (_, _) => _onEngineSwitch?.Invoke(EngineType.EdgeHtml);
+            var webView2Item = new MenuFlyoutItem { Text = "WebView2" };
+            webView2Item.Click += (_, _) => _onEngineSwitch?.Invoke(EngineType.WebView2);
+            engineSub.Items.Add(edgeHtmlItem);
+            engineSub.Items.Add(webView2Item);
+            menu.Items.Add(engineSub);
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 新建窗口 ----
+            var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
+            newWindowItem.Click += (_, _) => _onNewWindow?.Invoke();
+            menu.Items.Add(newWindowItem);
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 缩放子菜单 ----
+            var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
+            var zoomInItem = new MenuFlyoutItem { Text = "放大" };
+            zoomInItem.Click += (_, _) => _onZoomAdjust?.Invoke(0.1);
+            var zoomOutItem = new MenuFlyoutItem { Text = "缩小" };
+            zoomOutItem.Click += (_, _) => _onZoomAdjust?.Invoke(-0.1);
+            var zoomResetItem = new MenuFlyoutItem { Text = "重置" };
+            zoomResetItem.Click += (_, _) => _onZoomReset?.Invoke();
+            zoomSub.Items.Add(zoomInItem);
+            zoomSub.Items.Add(zoomOutItem);
+            zoomSub.Items.Add(zoomResetItem);
+            menu.Items.Add(zoomSub);
+
+            // ---- 打印、查找、源代码 ----
+            var printItem = new MenuFlyoutItem { Text = "打印" };
+            printItem.Click += async (_, _) => await _onPrint?.Invoke();
+            menu.Items.Add(printItem);
+
+            var findItem = new MenuFlyoutItem { Text = "查找" };
+            findItem.Click += (_, _) => _onFind?.Invoke();
+            menu.Items.Add(findItem);
+
+            var sourceItem = new MenuFlyoutItem { Text = "查看源代码" };
+            sourceItem.Click += async (_, _) => await _onViewSource?.Invoke();
+            menu.Items.Add(sourceItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 更多工具 ----
+            var toolsSub = new MenuFlyoutSubItem { Text = "更多工具" };
+            var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" };
+            devToolsItem.Click += (_, _) => _onDevTools?.Invoke();
+            toolsSub.Items.Add(devToolsItem);
+            menu.Items.Add(toolsSub);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 重新打开关闭的标签 ----
+            var reopenSub = new MenuFlyoutSubItem { Text = "重新打开关闭的标签" };
+            if (!_hasClosedTabs())
+            {
+                var emptyItem = new MenuFlyoutItem { Text = "没有最近关闭的标签", IsEnabled = false };
+                reopenSub.Items.Add(emptyItem);
+            }
+            else
+            {
+                var reopenItem = new MenuFlyoutItem { Text = "恢复最近关闭的标签" };
+                reopenItem.Click += async (_, _) => await _onReopenTab?.Invoke();
+                reopenSub.Items.Add(reopenItem);
+
+                var clearItem = new MenuFlyoutItem { Text = "清空列表" };
+                clearItem.Click += (_, _) => _onClearClosedTabs?.Invoke();
+                reopenSub.Items.Add(clearItem);
+            }
+            menu.Items.Add(reopenSub);
+
+            // ---- 收藏全部 ----
+            var bookmarkAllItem = new MenuFlyoutItem { Text = "将所有标签加入收藏" };
+            bookmarkAllItem.Click += (_, _) => _onBookmarkAll?.Invoke();
+            menu.Items.Add(bookmarkAllItem);
+
+            // ---- 历史记录 ----
+            var historyItem = new MenuFlyoutItem { Text = "历史记录" };
+            historyItem.Click += (_, _) => _onShowHistory?.Invoke();
+            menu.Items.Add(historyItem);
+
+            // ---- 清除浏览数据 ----
+            var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" };
+            clearDataItem.Click += async (_, _) => await _onClearData?.Invoke();
+            menu.Items.Add(clearDataItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 设置 ----
+            var settingsItem = new MenuFlyoutItem { Text = "设置" };
+            settingsItem.Click += (_, _) => _onShowSettings?.Invoke();
+            menu.Items.Add(settingsItem);
+
+            // ---- 关于 ----
+            var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" };
+            aboutItem.Click += (_, _) => _onAbout?.Invoke();
+            menu.Items.Add(aboutItem);
+
+            return menu;
+        }
+
+        private void ApplyThemeToFlyout(MenuFlyout flyout)
+        {
+            var style = new Style(typeof(MenuFlyoutPresenter));
+            bool isDark = ThemeManager.IsDarkTheme;
+            var acrylic = new AcrylicBrush
+            {
+                BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
+                TintColor = isDark ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA),
+                TintOpacity = 0.85,
+                FallbackColor = isDark ? Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B) : Color.FromArgb(0xFF, 0xE6, 0xF0, 0xFA)
+            };
+            style.Setters.Add(new Setter(MenuFlyoutPresenter.BackgroundProperty, acrylic));
+            style.Setters.Add(new Setter(MenuFlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
+            flyout.MenuFlyoutPresenterStyle = style;
+        }
+    }
+}
