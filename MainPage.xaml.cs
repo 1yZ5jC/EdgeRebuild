@@ -21,7 +21,6 @@ using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
-using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
@@ -81,6 +80,20 @@ namespace EdgeRebuild
             ThemeManager.ThemeChanged -= OnThemeChanged;
             _layoutManager?.Dispose();
             _tabManager?.DisposeAll();
+
+            // 取消订阅 TabManager 事件
+            if (_tabManager != null)
+            {
+                _tabManager.TabCreated -= OnTabManagerTabCreated;
+                _tabManager.TabChanged -= OnTabManagerTabChanged;
+                _tabManager.TabCountChanged -= OnTabManagerTabCountChanged;
+                _tabManager.TabUrlChanged -= OnTabManagerTabUrlChanged;
+                _tabManager.TabCanGoBackChanged -= OnTabManagerCanGoBackChanged;
+                _tabManager.TabCanGoForwardChanged -= OnTabManagerCanGoForwardChanged;
+                _tabManager.TabSuspendedChanged -= OnTabManagerTabSuspendedChanged;
+                _tabManager.NewWindowRequested -= OnTabManagerNewWindowRequested;
+                _tabManager.ContextMenuRequested -= OnTabManagerContextMenuRequested;
+            }
         }
 
         private void CleanupStaticEvents()
@@ -120,11 +133,19 @@ namespace EdgeRebuild
 
                 // ---- 初始化标签管理器 ----
                 _tabManager = new TabManager();
-                _tabManager.TabCreated += OnTabCreated;
-                _tabManager.TabChanged += OnTabChanged;
-                _tabManager.TabCountChanged += OnTabCountChanged;
-                _tabManager.TabClosed += OnTabClosed;
-                _tabManager.TabSuspendedChanged += OnTabSuspendedChanged;
+                _tabManager.Initialize(TabBarPanel, ContentContainer);
+                _tabManager.TabCreated += OnTabManagerTabCreated;
+                _tabManager.TabChanged += OnTabManagerTabChanged;
+                _tabManager.TabCountChanged += OnTabManagerTabCountChanged;
+                _tabManager.TabUrlChanged += OnTabManagerTabUrlChanged;
+                _tabManager.TabCanGoBackChanged += OnTabManagerCanGoBackChanged;
+                _tabManager.TabCanGoForwardChanged += OnTabManagerCanGoForwardChanged;
+                _tabManager.TabSuspendedChanged += OnTabManagerTabSuspendedChanged;
+                _tabManager.NewWindowRequested += OnTabManagerNewWindowRequested;
+                _tabManager.ContextMenuRequested += OnTabManagerContextMenuRequested;
+
+                // 为每个标签附加拖拽事件（标签创建时由 TabManager 触发）
+                _tabManager.TabCreated += AttachDragEventsToTab;
 
                 CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
                 Window.Current.SetTitleBar(TitleBarDragArea);
@@ -230,181 +251,15 @@ namespace EdgeRebuild
         }
 
         // ---- TabManager 事件处理 ----
-        private void OnTabCreated(TabViewItem viewItem)
+        private void OnTabManagerTabCreated(TabViewItem viewItem)
         {
-            // 创建标签 UI
-            var tab = viewItem.Tab;
-            var colors = ThemeManager.Colors;
-
-            var tabBorder = new Border
-            {
-                Height = 32,
-                Background = colors.TabInactiveBackground,
-                BorderBrush = ThemeManager.GetSeparatorBrush(),
-                BorderThickness = new Thickness(0, 0, 1, 0),
-                Padding = new Thickness(4, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Stretch,
-                Width = LayoutManager.MaxTabWidth
-            };
-
-            var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
-            tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var engineMark = new TextBlock
-            {
-                Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
-                Foreground = tab.Engine == EngineType.EdgeHtml
-                    ? new SolidColorBrush(Colors.DodgerBlue)
-                    : new SolidColorBrush(Colors.MediumSeaGreen),
-                FontSize = 11,
-                FontWeight = Windows.UI.Text.FontWeights.Bold,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 4, 0)
-            };
-            var faviconPlaceholder = new FontIcon
-            {
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                Glyph = "\xE774",
-                FontSize = 12,
-                Foreground = ThemeManager.GetMutedForegroundBrush(),
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            var faviconImage = new Image
-            {
-                Width = 14,
-                Height = 14,
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed
-            };
-            var titleText = new TextBlock
-            {
-                Text = "新标签页",
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                FontSize = 10,
-                Foreground = colors.ForegroundBrush,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            var suspendedIndicator = new TextBlock
-            {
-                Text = "💤",
-                FontSize = 10,
-                Foreground = ThemeManager.GetMutedForegroundBrush(),
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed
-            };
-
-            var loadingRing = new ProgressRing
-            {
-                Width = 20,
-                Height = 20,
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed,
-                IsActive = true,
-                RenderTransform = new ScaleTransform { ScaleX = 0.5, ScaleY = 0.5 },
-                RenderTransformOrigin = new Point(0.5, 0.5)
-            };
-
-            var infoPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            infoPanel.Children.Add(engineMark);
-            infoPanel.Children.Add(faviconPlaceholder);
-            infoPanel.Children.Add(faviconImage);
-            infoPanel.Children.Add(loadingRing);
-            infoPanel.Children.Add(suspendedIndicator);
-            infoPanel.Children.Add(titleText);
-            Grid.SetColumn(infoPanel, 0);
-            tabPanel.Children.Add(infoPanel);
-
-            var closeBtn = new Button
-            {
-                Content = "\xE711",
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 10,
-                Foreground = colors.MutedForegroundBrush,
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(0),
-                Width = 20,
-                Height = 20,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 0, 4, 0)
-            };
-            Grid.SetColumn(closeBtn, 1);
-            tabPanel.Children.Add(closeBtn);
-
-            tabBorder.Child = tabPanel;
-            TabBarPanel.Children.Add(tabBorder);
-
-            // 填充 TabViewItem
-            viewItem.Container = tabBorder;
-            viewItem.TitleText = titleText;
-            viewItem.CloseButton = closeBtn;
-            viewItem.FaviconImage = faviconImage;
-            viewItem.FaviconPlaceholder = faviconPlaceholder;
-            viewItem.EngineMark = engineMark;
-            viewItem.SuspendedIndicator = suspendedIndicator;
-            viewItem.LoadingRing = loadingRing;
-
-            // 内容容器
-            var contentBorder = new Border
-            {
-                Child = tab.ViewElement,
-                Visibility = Visibility.Collapsed,
-                Background = ContentContainer.Background
-            };
-            ContentContainer.Children.Add(contentBorder);
-            viewItem.ContentContainer = contentBorder;
-
-            // 事件绑定
-            closeBtn.Click += (s, e) => _ = _tabManager.CloseTabAsync(viewItem);
-            tabBorder.PointerPressed += OnTabPointerPressed;
-            tabBorder.PointerMoved += OnTabPointerMoved;
-            tabBorder.PointerReleased += OnTabPointerReleased;
-            tabBorder.PointerCanceled += OnTabPointerReleased;
-            tabBorder.RightTapped += OnTabRightTapped;
-
-            tabBorder.PointerEntered += (_, _) =>
-            {
-                if (tab != _tabManager.CurrentTab && !_isDragging)
-                    tabBorder.Background = colors.TabHoverBackground;
-            };
-            tabBorder.PointerExited += (_, _) =>
-            {
-                if (tab != _tabManager.CurrentTab && !_isDragging)
-                    tabBorder.Background = colors.TabInactiveBackground;
-            };
-
-            // 绑定 Tab 事件
-            BindTabEvents(viewItem, tab);
-
-            // 更新布局
+            // TabManager 已经创建了 UI，我们只需要响应事件
             UpdateTabLayout();
             toolbarControl.FocusAddressBarAndClear();
         }
 
-        private void OnTabChanged(TabViewItem viewItem)
+        private void OnTabManagerTabChanged(TabViewItem viewItem)
         {
-            // 切换标签 UI
-            var colors = ThemeManager.Colors;
-
-            // 隐藏所有内容容器，显示激活的
-            foreach (var item in _tabManager.Tabs)
-            {
-                if (item.Container != null)
-                    item.Container.Background = (item == viewItem) ? colors.TabActiveBackground : colors.TabInactiveBackground;
-                if (item.ContentContainer != null)
-                    item.ContentContainer.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
-            }
-
             // 更新工具栏
             var tab = viewItem.Tab;
             toolbarControl.SetEngine(tab.Engine);
@@ -415,167 +270,178 @@ namespace EdgeRebuild
             string host = "";
             try { host = new Uri(tab.CurrentUrl).Host; } catch { }
             toolbarControl.UpdateSiteInfo(isSecure, host);
-
-            // 确保当前内容可见
-            if (viewItem.ContentContainer != null)
-                viewItem.ContentContainer.Visibility = Visibility.Visible;
         }
 
-        private void OnTabCountChanged(int count)
+        private void OnTabManagerTabCountChanged(int count)
         {
             UpdateTabLayout();
             if (count == 0)
                 _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
         }
 
-        private void OnTabClosed(TabViewItem viewItem)
+        private void OnTabManagerTabUrlChanged(IBrowserTab tab, string url)
         {
-            // 从 UI 移除
+            if (_tabManager.CurrentTab == tab)
+            {
+                toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, url);
+                UpdateStarButton();
+
+                bool isSecure = url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                string host = "";
+                try { host = new Uri(url).Host; } catch { }
+                toolbarControl.UpdateSiteInfo(isSecure, host);
+            }
+        }
+
+        private void OnTabManagerCanGoBackChanged(IBrowserTab tab, bool canGoBack)
+        {
+            if (_tabManager.CurrentTab == tab)
+                toolbarControl.UpdateNavState(canGoBack, tab.CanGoForward, tab.CurrentUrl);
+        }
+
+        private void OnTabManagerCanGoForwardChanged(IBrowserTab tab, bool canGoForward)
+        {
+            if (_tabManager.CurrentTab == tab)
+                toolbarControl.UpdateNavState(tab.CanGoBack, canGoForward, tab.CurrentUrl);
+        }
+
+        private void OnTabManagerTabSuspendedChanged(IBrowserTab tab, bool suspended)
+        {
+            _tabManager.UpdateSuspendedState(tab, suspended);
+        }
+
+        private void OnTabManagerNewWindowRequested(string url)
+        {
+            _ = _tabManager.CreateTabAsync(_defaultEngine, url);
+        }
+
+        private void OnTabManagerContextMenuRequested(TabContextMenuEventArgs args)
+        {
+            ShowTabContextMenu(args);
+        }
+
+        // ---- 为每个标签附加拖拽事件 ----
+        private void AttachDragEventsToTab(TabViewItem viewItem)
+        {
             if (viewItem.Container != null)
-                TabBarPanel.Children.Remove(viewItem.Container);
-            if (viewItem.ContentContainer != null)
-                ContentContainer.Children.Remove(viewItem.ContentContainer);
-        }
-
-        private void OnTabSuspendedChanged(IBrowserTab tab, bool suspended)
-        {
-            var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == tab);
-            if (viewItem != null)
             {
-                viewItem.IsSuspended = suspended;
-                if (viewItem.SuspendedIndicator != null)
-                    viewItem.SuspendedIndicator.Visibility = suspended ? Visibility.Visible : Visibility.Collapsed;
-                string originalTitle = tab.Title ?? "新标签页";
-                viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
+                viewItem.Container.PointerPressed += OnTabPointerPressed;
+                viewItem.Container.PointerMoved += OnTabPointerMoved;
+                viewItem.Container.PointerReleased += OnTabPointerReleased;
+                viewItem.Container.PointerCanceled += OnTabPointerReleased;
+                viewItem.Container.RightTapped += OnTabRightTapped;
             }
         }
 
-        // ---- 辅助方法 ----
-        private void BindTabEvents(TabViewItem viewItem, IBrowserTab tab)
+        // ---- 上下文菜单 ----
+        private void ShowTabContextMenu(TabContextMenuEventArgs args)
         {
-            tab.TitleChanged += (title) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            if (_tabManager.CurrentTab is EdgeHtmlTab) return;
+            var flyout = new MenuFlyout();
+            ApplyThemeToFlyout(flyout);
+
+            var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = args.HasSelection };
+            copyItem.Click += async (_, _) =>
             {
-                string displayTitle = string.IsNullOrEmpty(title) ? "新标签页" : title;
-                if (tab.IsSuspended) viewItem.TitleText.Text = "[已挂起] " + displayTitle;
-                else viewItem.TitleText.Text = displayTitle;
-            });
-            tab.UrlChanged += async (u) =>
-            {
-                if (_tabManager.CurrentTab == tab)
+                if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                 {
-                    toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, u);
-                    UpdateStarButton();
-
-                    bool isSecure = u.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-                    string host = "";
-                    try { host = new Uri(u).Host; } catch { }
-                    toolbarControl.UpdateSiteInfo(isSecure, host);
-                }
-                if (!string.IsNullOrEmpty(u) && u != "about:blank") await HistoryManager.AddAsync(tab.Title ?? u, u);
-            };
-            tab.CanGoBackChanged += (can) => { if (_tabManager.CurrentTab == tab) toolbarControl.UpdateNavState(can, tab.CanGoForward, tab.CurrentUrl); };
-            tab.CanGoForwardChanged += (can) => { if (_tabManager.CurrentTab == tab) toolbarControl.UpdateNavState(tab.CanGoBack, can, tab.CurrentUrl); };
-            tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
-            tab.ContextMenuRequested += OnTabContextMenuRequested;
-            tab.NewWindowRequested += (url) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _tabManager.CreateTabAsync(tab.Engine, url));
-
-            tab.LoadingChanged += (isLoading) =>
-            {
-                _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                {
-                    if (viewItem.LoadingRing != null)
-                        viewItem.LoadingRing.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
-
-                    if (viewItem.FaviconImage != null && viewItem.FaviconPlaceholder != null)
+                    string selectedText = await wv2.CoreWebView2.ExecuteScriptAsync("window.getSelection().toString();");
+                    if (!string.IsNullOrEmpty(selectedText))
                     {
-                        if (isLoading)
-                        {
-                            viewItem.FaviconImage.Visibility = Visibility.Collapsed;
-                            viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
-                        }
-                        else
-                        {
-                            if (viewItem.FaviconImage.Source != null)
-                                viewItem.FaviconImage.Visibility = Visibility.Visible;
-                            else
-                                viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
-                        }
+                        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                        dp.SetText(selectedText);
+                        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
                     }
-                });
+                }
             };
-        }
+            flyout.Items.Add(copyItem);
 
-        private void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
-        {
-            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            var pasteItem = new MenuFlyoutItem { Text = "粘贴", IsEnabled = args.IsEditable };
+            pasteItem.Click += async (_, _) =>
+                await new ContentDialog { Title = "粘贴", Content = "请使用键盘快捷键 Ctrl+V 进行粘贴。", CloseButtonText = "确定" }.ShowAsync();
+            flyout.Items.Add(pasteItem);
+
+            var selectAllItem = new MenuFlyoutItem { Text = "全选" };
+            selectAllItem.Click += async (_, _) =>
             {
-                if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
-                {
-                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
-                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
-                    viewItem.FaviconImage.Source = null;
-                    return;
-                }
-                try
-                {
-                    var bitmap = new BitmapImage { UriSource = uri };
-                    viewItem.FaviconImage.Source = bitmap;
-                    viewItem.FaviconImage.Visibility = Visibility.Visible;
-                    viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
-                }
-                catch
-                {
-                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
-                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
-                }
-            });
-        }
+                if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                    await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');");
+            };
+            flyout.Items.Add(selectAllItem);
 
-        private void UpdateStarButton()
-        {
-            if (_tabManager.CurrentTab != null)
-                toolbarControl.UpdateFavoriteButton(FavoritesManager.Instance.ContainsUrl(_tabManager.CurrentTab.CurrentUrl));
-        }
+            flyout.Items.Add(new MenuFlyoutSeparator());
 
-        // ---- 引擎切换（修正为 async void，匹配事件委托） ----
-        private async void ToolbarControl_EngineSwitched(EngineType newEngine)
-        {
-            try
+            var backItem = new MenuFlyoutItem { Text = "后退", IsEnabled = args.CanGoBack };
+            backItem.Click += (_, _) => _tabManager.CurrentTab?.GoBackAsync();
+            flyout.Items.Add(backItem);
+
+            var forwardItem = new MenuFlyoutItem { Text = "前进", IsEnabled = args.CanGoForward };
+            forwardItem.Click += (_, _) => _tabManager.CurrentTab?.GoForwardAsync();
+            flyout.Items.Add(forwardItem);
+
+            var refreshItem = new MenuFlyoutItem { Text = "刷新" };
+            refreshItem.Click += (_, _) => _tabManager.CurrentTab?.RefreshAsync();
+            flyout.Items.Add(refreshItem);
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            if (args.MenuType == ContextMenuType.Link && !string.IsNullOrEmpty(args.LinkUrl))
             {
-                if (_tabManager.CurrentTab == null || _tabManager.CurrentTab.Engine == newEngine) return;
-                var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
-                if (viewItem == null) return;
-                string currentUrl = _tabManager.CurrentTab.CurrentUrl;
-                _tabManager.CurrentTab.Dispose();
+                var openInNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
+                openInNewTabItem.Click += async (_, _) =>
+                    await _tabManager.CreateTabAsync(_tabManager.CurrentTab?.Engine ?? _defaultEngine, args.LinkUrl);
+                flyout.Items.Add(openInNewTabItem);
 
-                IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
-                viewItem.Tab = newTab;
-                // 重新绑定事件
-                BindTabEvents(viewItem, newTab);
-                // 更新引擎标记
-                viewItem.EngineMark.Text = newTab.Engine == EngineType.EdgeHtml ? "E" : "W";
-                viewItem.EngineMark.Foreground = newTab.Engine == EngineType.EdgeHtml
-                    ? new SolidColorBrush(Colors.DodgerBlue)
-                    : new SolidColorBrush(Colors.MediumSeaGreen);
-
-                // 导航到原来的 URL
-                await newTab.NavigateAsync(currentUrl);
-                // 切换到此标签（确保激活）
-                await _tabManager.SwitchToTabAsync(viewItem);
+                var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" };
+                copyLinkItem.Click += (_, _) =>
+                {
+                    var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                    dp.SetText(args.LinkUrl);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+                };
+                flyout.Items.Add(copyLinkItem);
             }
-            catch (Exception ex)
+
+            if (args.MenuType == ContextMenuType.Image && !string.IsNullOrEmpty(args.ImageUrl))
             {
-                Debug.WriteLine($"引擎切换失败: {ex}");
-                await new ContentDialog
+                var copyImageUrlItem = new MenuFlyoutItem { Text = "复制图片地址" };
+                copyImageUrlItem.Click += (_, _) =>
                 {
-                    Title = "引擎切换失败",
-                    Content = ex.Message,
-                    CloseButtonText = "确定"
-                }.ShowAsync();
+                    var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                    dp.SetText(args.ImageUrl);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+                };
+                flyout.Items.Add(copyImageUrlItem);
             }
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            var printItem = new MenuFlyoutItem { Text = "打印" };
+            printItem.Click += (_, _) => PrintCurrentPage();
+            flyout.Items.Add(printItem);
+
+            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
+            sourceItem.Click += async (_, _) => await ViewSourceAsync();
+            flyout.Items.Add(sourceItem);
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            if (_tabManager.CurrentTab is WebView2Tab wv2Tab && wv2Tab.CoreWebView2 != null)
+            {
+                var inspectItem = new MenuFlyoutItem { Text = "检查元素 (F12)" };
+                inspectItem.Click += (_, _) => wv2Tab.CoreWebView2.OpenDevToolsWindow();
+                flyout.Items.Add(inspectItem);
+            }
+
+            var targetElement = _tabManager.CurrentTab?.ViewElement;
+            if (targetElement != null)
+                flyout.ShowAt(targetElement, new Point(
+                    Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)),
+                    Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))
+                ));
         }
 
-        // ---- 标签切换辅助 ----
+        // ---- 导航辅助 ----
         private void SwitchToNextTab()
         {
             var tabs = _tabManager.Tabs;
@@ -662,24 +528,49 @@ namespace EdgeRebuild
                 ? new SolidColorBrush(Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B))
                 : new SolidColorBrush(Colors.White);
 
-            foreach (var item in _tabManager.Tabs)
-            {
-                if (item.Container != null)
-                {
-                    item.Container.Background = (item.Tab == _tabManager.CurrentTab)
-                        ? colors.TabActiveBackground
-                        : colors.TabInactiveBackground;
-                }
-                if (item.TitleText != null)
-                    item.TitleText.Foreground = colors.ForegroundBrush;
-                if (item.CloseButton != null)
-                    item.CloseButton.Foreground = colors.MutedForegroundBrush;
-                if (item.ContentContainer != null)
-                    item.ContentContainer.Background = ContentContainer.Background;
-            }
+            // 让 TabManager 更新所有标签的主题
+            _tabManager?.UpdateTheme(colors);
 
             ThemeManager.UpdateTitleBarColors();
             UpdateTabLayout();
+        }
+
+        // ---- 引擎切换 ----
+        private async void ToolbarControl_EngineSwitched(EngineType newEngine)
+        {
+            try
+            {
+                if (_tabManager.CurrentTab == null || _tabManager.CurrentTab.Engine == newEngine) return;
+                var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
+                if (viewItem == null) return;
+                string currentUrl = _tabManager.CurrentTab.CurrentUrl;
+                _tabManager.CurrentTab.Dispose();
+
+                // 创建新标签并替换
+                IBrowserTab newTab = newEngine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
+                viewItem.Tab = newTab;
+                // 由于 TabManager 内部已绑定事件，需要重新绑定
+                // 简单做法：移除旧标签，创建新标签
+                await _tabManager.CloseTabAsync(viewItem, false);
+                await _tabManager.CreateTabAsync(newEngine, currentUrl);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"引擎切换失败: {ex}");
+                await new ContentDialog
+                {
+                    Title = "引擎切换失败",
+                    Content = ex.Message,
+                    CloseButtonText = "确定"
+                }.ShowAsync();
+            }
+        }
+
+        // ---- 更新收藏按钮 ----
+        private void UpdateStarButton()
+        {
+            if (_tabManager.CurrentTab != null)
+                toolbarControl.UpdateFavoriteButton(FavoritesManager.Instance.ContainsUrl(_tabManager.CurrentTab.CurrentUrl));
         }
 
         // ---- 设置变化 ----
@@ -699,7 +590,7 @@ namespace EdgeRebuild
                         DownloadManager.SetCustomDownloadPath(newValue);
                         break;
                     case "DoNotTrack":
-                        // 应用到所有现有标签
+                        // 应用到所有现有标签（由 TabManager 处理）
                         foreach (var item in _tabManager.Tabs)
                         {
                             if (item.Tab is WebView2Tab wv2)
@@ -899,9 +790,9 @@ namespace EdgeRebuild
 
             var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
             var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" };
-            edgeHtmlItem.Click += (_, _) => ToolbarControl_EngineSwitched(EngineType.EdgeHtml); // 移除 await
+            edgeHtmlItem.Click += (_, _) => ToolbarControl_EngineSwitched(EngineType.EdgeHtml);
             var webView2Item = new MenuFlyoutItem { Text = "WebView2" };
-            webView2Item.Click += (_, _) => ToolbarControl_EngineSwitched(EngineType.WebView2); // 移除 await
+            webView2Item.Click += (_, _) => ToolbarControl_EngineSwitched(EngineType.WebView2);
             engineSub.Items.Add(edgeHtmlItem);
             engineSub.Items.Add(webView2Item);
             menu.Items.Add(engineSub);
@@ -1242,114 +1133,6 @@ namespace EdgeRebuild
             if (index < 0) return;
             foreach (var item in _tabManager.Tabs.Skip(index + 1).ToList())
                 _ = _tabManager.CloseTabAsync(item);
-        }
-
-        // ---- 页面右键菜单 ----
-        private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
-        {
-            if (_tabManager.CurrentTab is EdgeHtmlTab) return;
-            var flyout = new MenuFlyout();
-            ApplyThemeToFlyout(flyout);
-
-            var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = args.HasSelection };
-            copyItem.Click += async (_, _) =>
-            {
-                if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                {
-                    string selectedText = await wv2.CoreWebView2.ExecuteScriptAsync("window.getSelection().toString();");
-                    if (!string.IsNullOrEmpty(selectedText))
-                    {
-                        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                        dp.SetText(selectedText);
-                        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
-                    }
-                }
-            };
-            flyout.Items.Add(copyItem);
-
-            var pasteItem = new MenuFlyoutItem { Text = "粘贴", IsEnabled = args.IsEditable };
-            pasteItem.Click += async (_, _) =>
-                await new ContentDialog { Title = "粘贴", Content = "请使用键盘快捷键 Ctrl+V 进行粘贴。", CloseButtonText = "确定" }.ShowAsync();
-            flyout.Items.Add(pasteItem);
-
-            var selectAllItem = new MenuFlyoutItem { Text = "全选" };
-            selectAllItem.Click += async (_, _) =>
-            {
-                if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                    await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');");
-            };
-            flyout.Items.Add(selectAllItem);
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var backItem = new MenuFlyoutItem { Text = "后退", IsEnabled = args.CanGoBack };
-            backItem.Click += (_, _) => _tabManager.CurrentTab?.GoBackAsync();
-            flyout.Items.Add(backItem);
-
-            var forwardItem = new MenuFlyoutItem { Text = "前进", IsEnabled = args.CanGoForward };
-            forwardItem.Click += (_, _) => _tabManager.CurrentTab?.GoForwardAsync();
-            flyout.Items.Add(forwardItem);
-
-            var refreshItem = new MenuFlyoutItem { Text = "刷新" };
-            refreshItem.Click += (_, _) => _tabManager.CurrentTab?.RefreshAsync();
-            flyout.Items.Add(refreshItem);
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            if (args.MenuType == ContextMenuType.Link && !string.IsNullOrEmpty(args.LinkUrl))
-            {
-                var openInNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
-                openInNewTabItem.Click += async (_, _) =>
-                    await _tabManager.CreateTabAsync(_tabManager.CurrentTab?.Engine ?? _defaultEngine, args.LinkUrl);
-                flyout.Items.Add(openInNewTabItem);
-
-                var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" };
-                copyLinkItem.Click += (_, _) =>
-                {
-                    var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                    dp.SetText(args.LinkUrl);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
-                };
-                flyout.Items.Add(copyLinkItem);
-            }
-
-            if (args.MenuType == ContextMenuType.Image && !string.IsNullOrEmpty(args.ImageUrl))
-            {
-                var copyImageUrlItem = new MenuFlyoutItem { Text = "复制图片地址" };
-                copyImageUrlItem.Click += (_, _) =>
-                {
-                    var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                    dp.SetText(args.ImageUrl);
-                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
-                };
-                flyout.Items.Add(copyImageUrlItem);
-            }
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            var printItem = new MenuFlyoutItem { Text = "打印" };
-            printItem.Click += (_, _) => PrintCurrentPage();
-            flyout.Items.Add(printItem);
-
-            var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
-            sourceItem.Click += async (_, _) => await ViewSourceAsync();
-            flyout.Items.Add(sourceItem);
-
-            flyout.Items.Add(new MenuFlyoutSeparator());
-
-            if (_tabManager.CurrentTab is WebView2Tab wv2Tab && wv2Tab.CoreWebView2 != null)
-            {
-                var inspectItem = new MenuFlyoutItem { Text = "检查元素 (F12)" };
-                inspectItem.Click += (_, _) => wv2Tab.CoreWebView2.OpenDevToolsWindow();
-                flyout.Items.Add(inspectItem);
-            }
-
-            var targetElement = _tabManager.CurrentTab?.ViewElement;
-            if (targetElement != null)
-                flyout.ShowAt(targetElement, new Point(
-                    Math.Max(0, Math.Min(args.Location.X, targetElement.ActualWidth)),
-                    Math.Max(0, Math.Min(args.Location.Y, targetElement.ActualHeight))
-                ));
         }
 
         // ---- 其他功能 ----
