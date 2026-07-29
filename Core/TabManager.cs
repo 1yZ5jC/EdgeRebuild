@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.Foundation;           // 添加此行解决 Point 错误
+using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
@@ -39,6 +39,9 @@ namespace EdgeRebuild.Core
         public event Action<IBrowserTab, bool> TabCanGoForwardChanged;
         public event Action<string> NewWindowRequested;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
+
+        // 新增：标签顺序变化事件（用于拖拽）
+        public event Action TabOrderChanged;
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         public IBrowserTab CurrentTab => _currentTab;
@@ -410,6 +413,7 @@ namespace EdgeRebuild.Core
 
         public void ClearClosedTabs() => _closedTabs.Clear();
 
+        // ---- 挂起管理 ----
         private async Task SuspendTabAsync(IBrowserTab tab)
         {
             if (tab is WebView2Tab wv2 && !wv2.IsSuspended)
@@ -468,6 +472,7 @@ namespace EdgeRebuild.Core
             e.Request.Headers.SetHeader("DNT", "1");
         }
 
+        // ---- 主题更新 ----
         public void UpdateTheme(SkinManager.SkinColors colors)
         {
             foreach (var item in _tabs)
@@ -489,6 +494,23 @@ namespace EdgeRebuild.Core
             }
         }
 
+        // ---- 新增：拖拽排序相关 ----
+        public void ReorderTab(int fromIndex, int toIndex)
+        {
+            if (fromIndex == toIndex || fromIndex < 0 || toIndex < 0 ||
+                fromIndex >= _tabs.Count || toIndex > _tabs.Count) return;
+
+            var item = _tabs[fromIndex];
+            _tabs.RemoveAt(fromIndex);
+            int adjustedIndex = (toIndex > fromIndex) ? toIndex - 1 : toIndex;
+            _tabs.Insert(adjustedIndex, item);
+
+            TabOrderChanged?.Invoke();
+        }
+
+        public int GetTabIndex(TabViewItem item) => _tabs.IndexOf(item);
+
+        // ---- 清理 ----
         public void DisposeAll()
         {
             foreach (var item in _tabs)
