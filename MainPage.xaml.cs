@@ -50,13 +50,6 @@ namespace EdgeRebuild
 
         private double _zoomFactor = 1.0;
 
-        private const int MinTabWidth = 100;
-        private const int MaxTabWidth = 160;
-        private const int AdditionalMargin = 30;
-        private const int MinDragWidth = 20;
-        private const int ButtonBaseOffset = 50;
-        private double _rightReserved;
-
         private TabViewItem _dragItem;
         private Border _dragGhost;
         private Point _dragOffset;
@@ -77,6 +70,8 @@ namespace EdgeRebuild
         private readonly Dictionary<IBrowserTab, DispatcherTimer> _suspendTimers = new Dictionary<IBrowserTab, DispatcherTimer>();
         private const int SuspendDelaySeconds = 120;
         private bool _enableTabSuspend = true;
+
+        private LayoutManager _layoutManager;
 
         public MainPage()
         {
@@ -99,6 +94,7 @@ namespace EdgeRebuild
             Window.Current.SizeChanged -= OnWindowSizeChanged;
             ShortcutManager.Disable();
             ThemeManager.ThemeChanged -= OnThemeChanged;
+            _layoutManager?.Dispose();
         }
 
         private void CleanupStaticEvents()
@@ -129,17 +125,23 @@ namespace EdgeRebuild
 
             try
             {
+                _layoutManager = new LayoutManager(
+                    TabBarBorder,
+                    TabScrollViewer,
+                    TabBarPanel,
+                    RightSidePanel,
+                    ScrollLeftBtn,
+                    ScrollRightBtn
+                );
+                _layoutManager.LayoutUpdated += OnLayoutUpdated;
+
                 CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
                 Window.Current.SetTitleBar(TitleBarDragArea);
                 ThemeManager.UpdateTitleBarColors();
 
-                SetSafeZonePadding();
-                UpdateTabLayout();
                 Window.Current.SizeChanged += OnWindowSizeChanged;
 
-                // 订阅主题变化
                 ThemeManager.ThemeChanged += OnThemeChanged;
-                // 首次应用主题
                 ApplyTheme();
 
                 string askSetting = await SettingsManager.GetAsync("AskBeforeDownload");
@@ -175,7 +177,6 @@ namespace EdgeRebuild
                         await CreateNewTabAsync(_defaultEngine, homeUrl);
                 }
 
-                // ---------- 启用快捷键 ----------
                 ShortcutManager.Enable();
                 ShortcutManager.OnNewTab += async () =>
                 {
@@ -252,13 +253,50 @@ namespace EdgeRebuild
             }
         }
 
-        // 主题变化处理
+        private void OnLayoutUpdated()
+        {
+            double tabWidth = _layoutManager.TabWidth;
+            foreach (var item in _tabViews)
+            {
+                item.Container.Width = tabWidth;
+            }
+        }
+
+        private void UpdateTabLayout()
+        {
+            if (!_isLoaded || _tabViews.Count == 0 || _isDragging) return;
+            _layoutManager.Recalculate(TabBarBorder.ActualWidth, _tabViews.Count);
+        }
+
+        private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
+        {
+            if (!_isDragging)
+                UpdateTabLayout();
+        }
+
+        private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (!_isDragging)
+                UpdateTabLayout();
+        }
+
+        private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _layoutManager?.ScrollToLeft();
+        }
+
+        private void ScrollRightBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _layoutManager?.ScrollToRight();
+        }
+
+        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
+
         private void OnThemeChanged(SkinManager.SkinColors colors, bool isDark)
         {
             ApplyTheme();
         }
 
-        // 应用主题到所有 UI 元素
         private void ApplyTheme()
         {
             var colors = ThemeManager.Colors;
@@ -274,12 +312,10 @@ namespace EdgeRebuild
             hubPane.ApplySkinColors(colors.ForegroundBrush, colors.MutedForegroundBrush, isDark);
             SettingsPaneControl.ApplySkinColors(colors.ToolbarBackground);
 
-            // 更新内容区域背景
             ContentContainer.Background = isDark
                 ? new SolidColorBrush(Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B))
                 : new SolidColorBrush(Colors.White);
 
-            // 更新所有标签样式
             foreach (var item in _tabViews)
             {
                 item.Container.Background = (item.Tab == _currentTab)
@@ -290,6 +326,7 @@ namespace EdgeRebuild
             }
 
             ThemeManager.UpdateTitleBarColors();
+            UpdateTabLayout();
         }
 
         private void SetFocusToCurrentTabContent()
@@ -347,7 +384,6 @@ namespace EdgeRebuild
                     case "DoNotTrack":
                         await ApplyDoNotTrackToAllTabs(newValue == "True" || newValue == "true");
                         break;
-                        // Skin 由 ThemeManager 处理
                 }
             });
         }
@@ -551,7 +587,6 @@ namespace EdgeRebuild
             var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" }; devToolsItem.Click += (_, _) => OpenDevTools(); toolsSub.Items.Add(devToolsItem); menu.Items.Add(toolsSub);
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // 最近关闭的标签子菜单
             var reopenSub = new MenuFlyoutSubItem { Text = "重新打开关闭的标签" };
             if (_closedTabs.Count == 0)
             {
@@ -806,6 +841,8 @@ namespace EdgeRebuild
         private async Task CreateTabViewAndSwitchAsync(IBrowserTab tab, string url)
         {
             var colors = ThemeManager.Colors;
+
+            // 使用 LayoutManager.MaxTabWidth 代替 MaxTabWidth
             var tabBorder = new Border
             {
                 Height = 32,
@@ -814,8 +851,9 @@ namespace EdgeRebuild
                 BorderThickness = new Thickness(0, 0, 1, 0),
                 Padding = new Thickness(4, 0, 4, 0),
                 VerticalAlignment = VerticalAlignment.Stretch,
-                Width = MaxTabWidth
+                Width = LayoutManager.MaxTabWidth // 修复：使用 LayoutManager 的常量
             };
+
             var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
             tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1037,7 +1075,7 @@ namespace EdgeRebuild
                 UpdateTabLayout();
         }
 
-        // ---------- 拖拽逻辑 ----------
+        // ---- 拖拽逻辑 ----
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
@@ -1574,98 +1612,8 @@ namespace EdgeRebuild
         }
 
         private void NewTabBtn_Click(object sender, RoutedEventArgs e) => _ = CreateNewTabAsync(_defaultEngine, "about:blank");
-        private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) => TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset - 100, null, null);
-        private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) => TabScrollViewer.ChangeView(TabScrollViewer.HorizontalOffset + 100, null, null);
-        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
+
         private void SettingsPane_CloseRequested(object sender, EventArgs e) => SettingsSplitView.IsPaneOpen = false;
-
-        private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
-        {
-            SetSafeZonePadding();
-            if (!_isDragging)
-                UpdateTabLayout();
-        }
-
-        private void SetSafeZonePadding()
-        {
-            double systemOverlay = 100;
-            try
-            {
-                var bounds = ApplicationView.GetForCurrentView().VisibleBounds;
-                var windowBounds = Window.Current.Bounds;
-                systemOverlay = windowBounds.Width - bounds.Width;
-            }
-            catch { }
-            if (systemOverlay <= 0)
-                systemOverlay = 100;
-            _rightReserved = systemOverlay + AdditionalMargin;
-            TabBarBorder.Padding = new Thickness(0, 0, _rightReserved, 0);
-        }
-
-        private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
-        {
-            SetSafeZonePadding();
-            if (!_isDragging)
-                UpdateTabLayout();
-        }
-
-        private void UpdateRightPanelMargin()
-        {
-            RightSidePanel.UpdateLayout();
-            double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
-            double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right : 0;
-            double contentWidth = TabBarBorder.ActualWidth - _rightReserved;
-            double requiredForDrag = rightFixed + MinDragWidth;
-            double extraOffset = Math.Max(0, requiredForDrag - (contentWidth - leftFixed));
-            RightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset + extraOffset, 0);
-            RightSidePanel.UpdateLayout();
-        }
-
-        private void UpdateTabLayout()
-        {
-            if (!_isLoaded || _tabViews.Count == 0 || _isDragging) return;
-            TabBarBorder.UpdateLayout();
-            RightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset, 0);
-            RightSidePanel.UpdateLayout();
-            UpdateRightPanelMargin();
-
-            double leftFixed = ScrollLeftBtn.Visibility == Visibility.Visible ? ScrollLeftBtn.ActualWidth + ScrollLeftBtn.Margin.Left + ScrollLeftBtn.Margin.Right : 0;
-            double rightFixed = RightSidePanel.ActualWidth + RightSidePanel.Margin.Left + RightSidePanel.Margin.Right;
-            double contentWidth = TabBarBorder.ActualWidth - _rightReserved;
-            double availableWidth = Math.Max(0, contentWidth - leftFixed - rightFixed - MinDragWidth);
-            double idealTotal = _tabViews.Count * MaxTabWidth;
-            double minTotal = _tabViews.Count * MinTabWidth;
-            bool needScroll = false;
-            double targetTabWidth = MaxTabWidth;
-
-            if (idealTotal <= availableWidth)
-                targetTabWidth = MaxTabWidth;
-            else if (minTotal <= availableWidth)
-                targetTabWidth = availableWidth / _tabViews.Count;
-            else
-            {
-                targetTabWidth = MinTabWidth;
-                needScroll = true;
-            }
-
-            foreach (var item in _tabViews)
-                item.Container.Width = targetTabWidth;
-
-            TabScrollViewer.MaxWidth = availableWidth;
-            if (!needScroll)
-            {
-                TabScrollViewer.HorizontalScrollMode = ScrollMode.Disabled;
-                ScrollLeftBtn.Visibility = Visibility.Collapsed;
-                ScrollRightBtn.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                TabScrollViewer.HorizontalScrollMode = ScrollMode.Enabled;
-                ScrollLeftBtn.Visibility = Visibility.Visible;
-                ScrollRightBtn.Visibility = Visibility.Visible;
-            }
-            UpdateRightPanelMargin();
-        }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
