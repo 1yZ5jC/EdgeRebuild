@@ -117,6 +117,7 @@ namespace EdgeRebuild
                 _uiSettings.ColorValuesChanged -= OnColorValuesChanged;
                 _uiSettings = null;
             }
+            ShortcutManager.Disable();
         }
 
         private void CleanupStaticEvents()
@@ -198,6 +199,86 @@ namespace EdgeRebuild
                     else
                         await CreateNewTabAsync(_defaultEngine, homeUrl);
                 }
+
+                // ---------- 启用快捷键（焦点修复） ----------
+                ShortcutManager.Enable();
+
+                ShortcutManager.OnNewTab += async () =>
+                {
+                    await CreateNewTabAsync(_defaultEngine, "about:blank");
+                    toolbarControl.FocusAddressBarAndClear();
+                };
+
+                ShortcutManager.OnCloseTab += () =>
+                {
+                    if (_currentTab != null)
+                    {
+                        var tabItem = _tabViews.FirstOrDefault(v => v.Tab == _currentTab);
+                        if (tabItem != null)
+                        {
+                            _ = CloseTab(tabItem);
+                            // 如果有剩余标签，焦点移至地址栏
+                            if (_tabViews.Count > 1)
+                                toolbarControl.FocusAddressBarAndClear();
+                        }
+                    }
+                };
+
+                ShortcutManager.OnReopenTab += async () =>
+                {
+                    if (_closedTabs.Count > 0)
+                    {
+                        var info = _closedTabs[0];
+                        _closedTabs.RemoveAt(0);
+                        await CreateNewTabAsync(info.Engine, info.Url);
+                        toolbarControl.FocusAddressBarAndClear();
+                    }
+                };
+
+                ShortcutManager.OnFocusAddressBar += () => toolbarControl.FocusAddressBarAndClear();
+
+                ShortcutManager.OnRefresh += () =>
+                {
+                    _currentTab?.RefreshAsync();
+                    // 刷新后焦点留在页面内容
+                    SetFocusToCurrentTabContent();
+                };
+
+                ShortcutManager.OnAddFavorite += () => ToolbarControl_AddFavoriteClicked();
+
+                ShortcutManager.OnShowHistory += () =>
+                {
+                    HubSplitView.IsPaneOpen = true;
+                    hubPane.ShowHistory();
+                };
+
+                ShortcutManager.OnShowDownloads += () =>
+                {
+                    HubSplitView.IsPaneOpen = true;
+                    hubPane.ShowDownloads();
+                };
+
+                ShortcutManager.OnFind += () => FindOnPage();
+
+                ShortcutManager.OnPrint += () => PrintCurrentPage();
+
+                ShortcutManager.OnNextTab += () =>
+                {
+                    SwitchToNextTab();
+                    SetFocusToCurrentTabContent();
+                };
+
+                ShortcutManager.OnPreviousTab += () =>
+                {
+                    SwitchToPreviousTab();
+                    SetFocusToCurrentTabContent();
+                };
+
+                ShortcutManager.OnSwitchToTab += (index) =>
+                {
+                    SwitchToTabByIndex(index);
+                    SetFocusToCurrentTabContent();
+                };
             }
             catch (Exception ex)
             {
@@ -209,6 +290,39 @@ namespace EdgeRebuild
                     CloseButtonText = "确定"
                 }.ShowAsync();
             }
+        }
+
+        // 修正：移除 CoreWebView2.Focus() 调用，统一使用 Control.Focus()
+        private void SetFocusToCurrentTabContent()
+        {
+            if (_currentTab != null)
+            {
+                var element = _currentTab.ViewElement;
+                if (element is Control control)
+                    control.Focus(FocusState.Programmatic);
+            }
+        }
+
+        private void SwitchToNextTab()
+        {
+            if (_tabViews.Count <= 1) return;
+            int index = _tabViews.FindIndex(v => v.Tab == _currentTab);
+            int nextIndex = (index + 1) % _tabViews.Count;
+            _ = SwitchToTabAsync(_tabViews[nextIndex]);
+        }
+
+        private void SwitchToPreviousTab()
+        {
+            if (_tabViews.Count <= 1) return;
+            int index = _tabViews.FindIndex(v => v.Tab == _currentTab);
+            int prevIndex = (index - 1 + _tabViews.Count) % _tabViews.Count;
+            _ = SwitchToTabAsync(_tabViews[prevIndex]);
+        }
+
+        private void SwitchToTabByIndex(int index)
+        {
+            if (index >= 0 && index < _tabViews.Count)
+                _ = SwitchToTabAsync(_tabViews[index]);
         }
 
         private async void OnColorValuesChanged(UISettings sender, object args)
@@ -584,7 +698,6 @@ namespace EdgeRebuild
             tab.ContextMenuRequested += OnTabContextMenuRequested;
             tab.NewWindowRequested += (url) => _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await CreateNewTabAsync(tab.Engine, url));
 
-            // 加载指示器，并用小环替换 favicon
             tab.LoadingChanged += (isLoading) =>
             {
                 _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
@@ -609,6 +722,32 @@ namespace EdgeRebuild
                     }
                 });
             };
+        }
+
+        private void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
+        {
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
+                {
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                    viewItem.FaviconImage.Source = null;
+                    return;
+                }
+                try
+                {
+                    var bitmap = new BitmapImage { UriSource = uri };
+                    viewItem.FaviconImage.Source = bitmap;
+                    viewItem.FaviconImage.Visibility = Visibility.Visible;
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
+                }
+                catch
+                {
+                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                }
+            });
         }
 
         private async Task RebindTabAndSwitch(TabViewItem viewItem, IBrowserTab newTab, string urlToNavigate = null)
@@ -722,18 +861,16 @@ namespace EdgeRebuild
             var titleText = new TextBlock { Text = "新标签页", TextTrimming = TextTrimming.CharacterEllipsis, FontSize = 10, Foreground = _foregroundBrush, VerticalAlignment = VerticalAlignment.Center };
             var suspendedIndicator = new TextBlock { Text = "💤", FontSize = 10, Foreground = new SolidColorBrush(Colors.Gray), Margin = new Thickness(0, 0, 2, 0), VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
 
-            // 小尺寸加载环 (10x10)
-            // 使用缩放实现更小的加载环（视觉尺寸 = 原始尺寸 × 缩放比例）
             var loadingRing = new ProgressRing
             {
-                Width = 20,          // 原始尺寸
+                Width = 20,
                 Height = 20,
                 Margin = new Thickness(0, 0, 2, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed,
                 IsActive = true,
                 RenderTransform = new ScaleTransform { ScaleX = 0.5, ScaleY = 0.5 },
-                RenderTransformOrigin = new Point(0.5, 0.5)   // 以中心为缩放原点
+                RenderTransformOrigin = new Point(0.5, 0.5)
             };
 
             var infoPanel = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
@@ -805,7 +942,7 @@ namespace EdgeRebuild
             else UpdateTabLayout();
         }
 
-        // ---------- 拖拽逻辑（含中键关闭） ----------
+        // ---------- 拖拽逻辑 ----------
         private void OnTabPointerPressed(object sender, PointerRoutedEventArgs e)
         {
             var properties = e.GetCurrentPoint((UIElement)sender).Properties;
@@ -893,18 +1030,30 @@ namespace EdgeRebuild
             double ghostCenterInCanvas = Canvas.GetLeft(_dragGhost) + _dragGhost.Width / 2;
             double ghostLocalX = ghostCenterInCanvas - _tabBarPanelOffset.X;
             int dragIndex = _tabViews.IndexOf(_dragItem);
-            double accumulatedWidth = 0; int targetIndex = -1;
+            double accumulatedWidth = 0;
+            int targetIndex = -1;
+
             for (int i = 0; i < _tabViews.Count; i++)
             {
                 if (i == dragIndex) continue;
                 var item = _tabViews[i];
                 double containerCenter = accumulatedWidth + item.Container.ActualWidth / 2;
-                if (ghostLocalX < containerCenter) { targetIndex = i; break; }
+                if (ghostLocalX < containerCenter)
+                {
+                    targetIndex = i;
+                    break;
+                }
                 accumulatedWidth += item.Container.ActualWidth;
             }
-            if (targetIndex == -1) targetIndex = _tabViews.Count - 1;
+
+            if (targetIndex == -1)
+                targetIndex = _tabViews.Count;
+
             if (targetIndex == dragIndex) return;
-            _tabViews.RemoveAt(dragIndex); _tabViews.Insert(targetIndex, _dragItem);
+
+            _tabViews.RemoveAt(dragIndex);
+            int adjustedIndex = (targetIndex > dragIndex) ? targetIndex - 1 : targetIndex;
+            _tabViews.Insert(adjustedIndex, _dragItem);
             _lastReorderTime = DateTime.Now;
         }
 
@@ -1128,17 +1277,6 @@ namespace EdgeRebuild
         {
             base.OnNavigatedTo(e);
             if (e.Parameter is string url) _pendingUrl = url;
-        }
-
-        private async void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
-        {
-            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-            {
-                if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
-                { viewItem.FaviconPlaceholder.Visibility = Visibility.Visible; viewItem.FaviconImage.Visibility = Visibility.Collapsed; viewItem.FaviconImage.Source = null; return; }
-                try { var bitmap = new BitmapImage { UriSource = uri }; viewItem.FaviconImage.Source = bitmap; viewItem.FaviconImage.Visibility = Visibility.Visible; viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed; }
-                catch { viewItem.FaviconImage.Visibility = Visibility.Collapsed; viewItem.FaviconPlaceholder.Visibility = Visibility.Visible; }
-            });
         }
     }
 }

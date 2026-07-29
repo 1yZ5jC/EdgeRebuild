@@ -22,7 +22,25 @@ namespace EdgeRebuild.Core
             foreach (var item in items) Favorites.Add(item);
         }
 
-        public bool ContainsUrl(string url) => !string.IsNullOrEmpty(url) && Favorites.Any(f => f.Url == url);
+        private static string NormalizeUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return url;
+            try
+            {
+                var uri = new Uri(url);
+                string normalized = uri.GetComponents(UriComponents.AbsoluteUri, UriFormat.UriEscaped);
+                if (normalized.EndsWith("/") && !normalized.EndsWith("//"))
+                    normalized = normalized.Substring(0, normalized.Length - 1);
+                return normalized;
+            }
+            catch { return url; }
+        }
+
+        public bool ContainsUrl(string url)
+        {
+            var normalized = NormalizeUrl(url);
+            return Favorites.Any(f => NormalizeUrl(f.Url) == normalized);
+        }
 
         public async Task AddAsync(string title, string url)
         {
@@ -36,10 +54,6 @@ namespace EdgeRebuild.Core
             await Services.DatabaseService.Database.DeleteAsync(item);
             Favorites.Remove(item);
         }
-
-        // 便捷同步方法（不推荐，但保持兼容）
-        public void Add(string title, string url) => _ = AddAsync(title, url);
-        public void Remove(FavoriteItem item) => _ = RemoveAsync(item);
 
         public static async Task ExportToHtmlAsync(StorageFile file)
         {

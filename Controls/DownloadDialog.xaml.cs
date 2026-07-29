@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.UI;
@@ -57,7 +58,26 @@ namespace EdgeRebuild.Controls
             this.InitializeComponent();
             FileNameBox.Text = defaultFileName ?? "download";
             UrlBlock.Text = $"来源: {url}";
-            _selectedFolder = defaultFolder ?? KnownFolders.PicturesLibrary;
+
+            // 安全获取默认文件夹
+            _selectedFolder = defaultFolder;
+            if (_selectedFolder == null)
+            {
+                try
+                {
+                    // 优先使用应用自定义下载文件夹
+                    var customFolder = Task.Run(async () => await Services.DownloadManager.GetDownloadFolderAsync()).Result;
+                    if (customFolder != null)
+                        _selectedFolder = customFolder;
+                    else
+                        _selectedFolder = ApplicationData.Current.LocalFolder;
+                }
+                catch
+                {
+                    _selectedFolder = ApplicationData.Current.LocalFolder;
+                }
+            }
+
             FolderPathBlock.Text = _selectedFolder?.Path ?? "请选择文件夹";
 
             if (totalBytes.HasValue && totalBytes.Value > 0)

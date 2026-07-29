@@ -4,10 +4,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <UserControl.Resources>
-        <SolidColorBrush x:Key="ToolbarButtonHoverBrush" Color="#20FFFFFF"/>
-        <SolidColorBrush x:Key="ToolbarButtonPressedBrush" Color="#40FFFFFF"/>
+        <!-- 为工具栏定义独立的笔刷，避免与主页面冲突 -->
+        <SolidColorBrush x:Key="ToolbarRevealHover" Color="#40FFFFFF"/>
+        <SolidColorBrush x:Key="ToolbarRevealPressed" Color="#80FFFFFF"/>
 
-        <Style x:Key="NavigationButtonStyle" TargetType="Button">
+        <Style x:Key="ToolbarNavButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
             <Setter Property="FontSize" Value="14"/>
@@ -24,14 +25,14 @@
                                     <VisualState x:Name="PointerOver">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource ToolbarButtonHoverBrush}"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource ToolbarRevealHover}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
                                         <Storyboard>
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Background">
-                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource ToolbarButtonPressedBrush}"/>
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource ToolbarRevealPressed}"/>
                                             </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
@@ -71,16 +72,15 @@
                            FontSize="13" FontWeight="Bold"/>
             </Border>
 
-            <!-- 前进/后退/刷新按钮 -->
             <Button x:Name="BackBtn" Grid.Column="1" Content="&#xE72B;" IsEnabled="False"
                     Width="32" Height="32" Margin="2,0"
-                    Style="{StaticResource NavigationButtonStyle}" Click="BackBtn_Click"/>
+                    Style="{StaticResource ToolbarNavButtonStyle}" Click="BackBtn_Click"/>
             <Button x:Name="ForwardBtn" Grid.Column="2" Content="&#xE72A;" IsEnabled="False"
                     Width="32" Height="32" Margin="2,0"
-                    Style="{StaticResource NavigationButtonStyle}" Click="ForwardBtn_Click"/>
+                    Style="{StaticResource ToolbarNavButtonStyle}" Click="ForwardBtn_Click"/>
             <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
                     Width="32" Height="32" Margin="2,0"
-                    Style="{StaticResource NavigationButtonStyle}" Click="RefreshBtn_Click"/>
+                    Style="{StaticResource ToolbarNavButtonStyle}" Click="RefreshBtn_Click"/>
 
             <!-- 地址栏：安全图标内嵌在输入框左侧 -->
             <Grid Grid.Column="4">
@@ -99,7 +99,6 @@
                     </FlyoutBase.AttachedFlyout>
                 </TextBox>
 
-                <!-- 站点信息按钮（内嵌在地址栏左侧） -->
                 <Button x:Name="SiteInfoButton" 
                         Width="28" Height="28" Margin="2,0,0,0" Padding="0"
                         HorizontalAlignment="Left" VerticalAlignment="Center"
@@ -110,7 +109,6 @@
                 </Button>
             </Grid>
 
-            <!-- 右侧工具按钮 -->
             <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="4,0" VerticalAlignment="Center">
                 <Button x:Name="AddFavBtn" Content="&#xE734;"
                         Width="32" Height="32" Margin="2,0" Click="AddFavBtn_Click"

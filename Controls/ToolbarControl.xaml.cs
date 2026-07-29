@@ -52,7 +52,6 @@ namespace EdgeRebuild.Controls
             _suggestionTimer.Tick += OnSuggestionTimerTick;
             SuggestionsFlyout.Closed += (_, _) => _isSuggestionsVisible = false;
 
-            // 随机选择 PlaceholderText
             string[] placeholders = new[]
             {
                 "输入网址或搜索（按“↓”来获取建议）",
@@ -83,10 +82,14 @@ namespace EdgeRebuild.Controls
             }
         }
 
+        // 改进：获取焦点后全选文本
         public void FocusAddressBarAndClear()
         {
             UrlBox.Text = string.Empty;
             UrlBox.Focus(FocusState.Programmatic);
+            // 确保光标在文本框内，且全选（或置零）
+            UrlBox.SelectionStart = 0;
+            UrlBox.SelectionLength = 0;
             UpdateSearchEngineIndicator();
         }
 
@@ -141,7 +144,6 @@ namespace EdgeRebuild.Controls
 
         public void ShowMenu(MenuFlyout menu) => menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
 
-        // 由 MainPage 调用，更新站点信息
         public void UpdateSiteInfo(bool isSecure, string host)
         {
             _isSecure = isSecure;
@@ -523,17 +525,31 @@ namespace EdgeRebuild.Controls
             var results = new List<SuggestionItem>();
             if (string.IsNullOrWhiteSpace(query)) return results;
             string lq = query.ToLower();
+
             var favs = FavoritesManager.Instance.Favorites
                 .Where(f => f.Title.ToLower().Contains(lq) || f.Url.ToLower().Contains(lq))
                 .Take(5)
-                .Select(f => new SuggestionItem { DisplayTitle = f.Title, Url = f.Url, IsFavorite = true });
+                .Select(f => new SuggestionItem
+                {
+                    DisplayTitle = string.IsNullOrEmpty(f.Title) ? f.Url : f.Title,
+                    Url = f.Url,
+                    IsFavorite = true
+                });
+
             var hists = HistoryManager.History
                 .Where(h => h.Title.ToLower().Contains(lq) || h.Url.ToLower().Contains(lq))
                 .Take(5)
-                .Select(h => new SuggestionItem { DisplayTitle = h.Title, Url = h.Url, IsFavorite = false });
+                .Select(h => new SuggestionItem
+                {
+                    DisplayTitle = string.IsNullOrEmpty(h.Title) ? h.Url : h.Title,
+                    Url = h.Url,
+                    IsFavorite = false
+                });
+
             results.AddRange(favs);
             foreach (var h in hists)
                 if (!results.Any(r => r.Url == h.Url)) results.Add(h);
+
             return results.Take(8).ToList();
         }
 

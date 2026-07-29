@@ -223,9 +223,6 @@ namespace EdgeRebuild.Core
             else
             {
                 string currentUrl = sender.Source?.ToString() ?? "";
-                if (!_httpsFailed && currentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                {
-                }
                 UrlChanged?.Invoke(currentUrl);
             }
         }
@@ -290,15 +287,31 @@ namespace EdgeRebuild.Core
         {
             if (_disposed) return;
             if (string.IsNullOrWhiteSpace(url)) url = "about:blank";
-            await EnsureInitializedAsync();
-            if (_webView.CoreWebView2 == null) return;
-            _httpsFailed = false;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+
+            try
             {
-                string candidate = "https://" + url;
-                if (!Uri.TryCreate(candidate, UriKind.Absolute, out uri)) uri = new Uri("about:blank");
+                await EnsureInitializedAsync();
+                if (_webView.CoreWebView2 == null)
+                {
+                    LoadingChanged?.Invoke(false);
+                    return;
+                }
+
+                _httpsFailed = false;
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+                {
+                    string candidate = "https://" + url;
+                    if (!Uri.TryCreate(candidate, UriKind.Absolute, out uri))
+                        uri = new Uri("about:blank");
+                }
+                _webView.CoreWebView2.Navigate(uri.AbsoluteUri);
             }
-            _webView.CoreWebView2.Navigate(uri.AbsoluteUri);
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"WebView2 导航异常: {ex.Message}");
+                LoadingChanged?.Invoke(false);
+                UrlChanged?.Invoke($"error://{url}?error={Uri.EscapeDataString(ex.Message)}");
+            }
         }
 
         public async Task GoBackAsync() { await EnsureInitializedAsync(); _webView.CoreWebView2?.GoBack(); }

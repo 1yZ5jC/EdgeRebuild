@@ -522,6 +522,14 @@ namespace EdgeRebuild.Controls
             return btn;
         }
 
+        public void ShowDownloads()
+        {
+            // 切换到下载面板（下载项索引为2，请确保菜单项顺序一致）
+            if (HubNavView.MenuItems.Count > 2)
+                HubNavView.SelectedItem = HubNavView.MenuItems[2];
+            LoadDownloads();
+        }
+
         private void HubNavView_SelectionChanged(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
         {
             if (args.SelectedItem is Microsoft.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
