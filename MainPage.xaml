@@ -262,7 +262,7 @@
                                       HorizontalAlignment="Stretch"
                                       VerticalAlignment="Stretch"/>
                 </SplitView.Pane>
-                <Border x:Name="ContentContainer" Background="White"/>
+                <Grid x:Name="ContentContainer" Background="White"/>
             </SplitView>
 
             <SplitView x:Name="SettingsSplitView" DisplayMode="Overlay"

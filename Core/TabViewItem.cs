@@ -9,6 +9,7 @@ namespace EdgeRebuild.Core
         public TextBlock TitleText { get; set; }
         public Button CloseButton { get; set; }
         public Border Container { get; set; }
+        public Border ContentContainer { get; set; }
         public Image FaviconImage { get; set; }
         public FontIcon FaviconPlaceholder { get; set; }
         public TextBlock EngineMark { get; set; }
