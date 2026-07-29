@@ -49,6 +49,7 @@ namespace EdgeRebuild
                         await FavoritesManager.Instance.LoadAsync();
                         await HistoryManager.LoadAsync();
                         await DownloadManager.LoadDownloadsAsync();
+                        ThemeManager.Initialize();
                     }
                     catch (Exception ex)
                     {
