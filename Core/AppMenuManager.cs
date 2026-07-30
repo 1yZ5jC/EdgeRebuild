@@ -17,7 +17,7 @@ namespace EdgeRebuild.Core
         private readonly Func<Task> _onViewSource;
         private readonly Action _onShowHistory;
         private readonly Action _onShowSettings;
-        private readonly Func<Task> _onClearData;          // 修改为 Func<Task>
+        private readonly Func<Task> _onClearData;
         private readonly Action _onBookmarkAll;
         private readonly Action _onAbout;
         private readonly Action _onNewWindow;
@@ -30,6 +30,7 @@ namespace EdgeRebuild.Core
         private readonly Func<Task> _onNewTab;
         private readonly Action _onClearClosedTabs;
         private readonly Func<bool> _hasClosedTabs;
+        private readonly Action _onCopyCurrentUrl;
 
         public AppMenuManager(
             TabManager tabManager,
@@ -51,7 +52,8 @@ namespace EdgeRebuild.Core
             Func<Task> onReopenTab,
             Func<Task> onNewTab,
             Action onClearClosedTabs,
-            Func<bool> hasClosedTabs)
+            Func<bool> hasClosedTabs,
+            Action onCopyCurrentUrl)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -73,6 +75,7 @@ namespace EdgeRebuild.Core
             _onNewTab = onNewTab;
             _onClearClosedTabs = onClearClosedTabs;
             _hasClosedTabs = hasClosedTabs;
+            _onCopyCurrentUrl = onCopyCurrentUrl;
         }
 
         public MenuFlyout BuildMenu()
@@ -80,7 +83,7 @@ namespace EdgeRebuild.Core
             var menu = new MenuFlyout();
             ApplyThemeToFlyout(menu);
 
-            // ---- 渲染引擎子菜单 ----
+            // 渲染引擎子菜单
             var engineSub = new MenuFlyoutSubItem { Text = "渲染引擎" };
             var edgeHtmlItem = new MenuFlyoutItem { Text = "EdgeHTML" };
             edgeHtmlItem.Click += (_, _) => _onEngineSwitch?.Invoke(EngineType.EdgeHtml);
@@ -91,13 +94,13 @@ namespace EdgeRebuild.Core
             menu.Items.Add(engineSub);
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // ---- 新建窗口 ----
+            // 新建窗口
             var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
             newWindowItem.Click += (_, _) => _onNewWindow?.Invoke();
             menu.Items.Add(newWindowItem);
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // ---- 缩放子菜单 ----
+            // 缩放子菜单
             var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
             var zoomInItem = new MenuFlyoutItem { Text = "放大" };
             zoomInItem.Click += (_, _) => _onZoomAdjust?.Invoke(0.1);
@@ -110,7 +113,7 @@ namespace EdgeRebuild.Core
             zoomSub.Items.Add(zoomResetItem);
             menu.Items.Add(zoomSub);
 
-            // ---- 打印、查找、源代码 ----
+            // 打印、查找、源代码
             var printItem = new MenuFlyoutItem { Text = "打印" };
             printItem.Click += async (_, _) => await _onPrint?.Invoke();
             menu.Items.Add(printItem);
@@ -125,7 +128,7 @@ namespace EdgeRebuild.Core
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // ---- 更多工具 ----
+            // 更多工具
             var toolsSub = new MenuFlyoutSubItem { Text = "更多工具" };
             var devToolsItem = new MenuFlyoutItem { Text = "开发者工具" };
             devToolsItem.Click += (_, _) => _onDevTools?.Invoke();
@@ -134,7 +137,14 @@ namespace EdgeRebuild.Core
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // ---- 重新打开关闭的标签 ----
+            // 复制当前网址
+            var copyUrlItem = new MenuFlyoutItem { Text = "复制当前网址" };
+            copyUrlItem.Click += (_, _) => _onCopyCurrentUrl?.Invoke();
+            menu.Items.Add(copyUrlItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // 重新打开关闭的标签
             var reopenSub = new MenuFlyoutSubItem { Text = "重新打开关闭的标签" };
             if (!_hasClosedTabs())
             {
@@ -153,29 +163,29 @@ namespace EdgeRebuild.Core
             }
             menu.Items.Add(reopenSub);
 
-            // ---- 收藏全部 ----
+            // 收藏全部
             var bookmarkAllItem = new MenuFlyoutItem { Text = "将所有标签加入收藏" };
             bookmarkAllItem.Click += (_, _) => _onBookmarkAll?.Invoke();
             menu.Items.Add(bookmarkAllItem);
 
-            // ---- 历史记录 ----
+            // 历史记录
             var historyItem = new MenuFlyoutItem { Text = "历史记录" };
             historyItem.Click += (_, _) => _onShowHistory?.Invoke();
             menu.Items.Add(historyItem);
 
-            // ---- 清除浏览数据 ----
+            // 清除浏览数据
             var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" };
             clearDataItem.Click += async (_, _) => await _onClearData?.Invoke();
             menu.Items.Add(clearDataItem);
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // ---- 设置 ----
+            // 设置
             var settingsItem = new MenuFlyoutItem { Text = "设置" };
             settingsItem.Click += (_, _) => _onShowSettings?.Invoke();
             menu.Items.Add(settingsItem);
 
-            // ---- 关于 ----
+            // 关于
             var aboutItem = new MenuFlyoutItem { Text = "关于 Edge Rebuild" };
             aboutItem.Click += (_, _) => _onAbout?.Invoke();
             menu.Items.Add(aboutItem);

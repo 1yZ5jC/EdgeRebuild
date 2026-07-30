@@ -24,11 +24,9 @@ namespace EdgeRebuild.Core
         private const int SuspendDelaySeconds = 120;
         private bool _enableTabSuspend = true;
 
-        // UI 容器引用
         private StackPanel _tabBarPanel;
         private Panel _contentContainer;
 
-        // 事件
         public event Action<TabViewItem> TabCreated;
         public event Action<TabViewItem> TabChanged;
         public event Action<int> TabCountChanged;
@@ -39,14 +37,14 @@ namespace EdgeRebuild.Core
         public event Action<IBrowserTab, bool> TabCanGoForwardChanged;
         public event Action<string> NewWindowRequested;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
-
-        // 新增：标签顺序变化事件（用于拖拽）
         public event Action TabOrderChanged;
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         public IBrowserTab CurrentTab => _currentTab;
         public int TabCount => _tabs.Count;
         public bool IsTabSuspendEnabled => _enableTabSuspend;
+
+        public const int PinnedTabWidth = 36;
 
         public TabManager()
         {
@@ -82,7 +80,9 @@ namespace EdgeRebuild.Core
             var viewItem = new TabViewItem
             {
                 Tab = tab,
-                IsSuspended = false
+                IsSuspended = false,
+                IsPinned = false,
+                OriginalTitle = null
             };
 
             BuildTabUI(viewItem);
@@ -164,6 +164,8 @@ namespace EdgeRebuild.Core
                 Foreground = colors.ForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center
             };
+            ToolTipService.SetToolTip(titleText, "新标签页");
+
             var suspendedIndicator = new TextBlock
             {
                 Text = "💤",
@@ -252,8 +254,9 @@ namespace EdgeRebuild.Core
                     CoreDispatcherPriority.Normal, () =>
                     {
                         string displayTitle = string.IsNullOrEmpty(title) ? "新标签页" : title;
-                        if (tab.IsSuspended) viewItem.TitleText.Text = "[已挂起] " + displayTitle;
-                        else viewItem.TitleText.Text = displayTitle;
+                        if (tab.IsSuspended) displayTitle = "[已挂起] " + displayTitle;
+                        viewItem.TitleText.Text = displayTitle;
+                        ToolTipService.SetToolTip(viewItem.TitleText, displayTitle);
                     });
             };
 
@@ -330,14 +333,17 @@ namespace EdgeRebuild.Core
         public void UpdateSuspendedState(IBrowserTab tab, bool suspended)
         {
             var viewItem = _tabs.FirstOrDefault(v => v.Tab == tab);
-            if (viewItem != null)
+            if (viewItem == null) return;
+
+            viewItem.IsSuspended = suspended;
+            if (viewItem.SuspendedIndicator != null)
             {
-                viewItem.IsSuspended = suspended;
-                if (viewItem.SuspendedIndicator != null)
+                if (!viewItem.IsPinned)
                     viewItem.SuspendedIndicator.Visibility = suspended ? Visibility.Visible : Visibility.Collapsed;
-                string originalTitle = tab.Title ?? "新标签页";
-                viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
             }
+            string originalTitle = tab.Title ?? "新标签页";
+            viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
+            ToolTipService.SetToolTip(viewItem.TitleText, viewItem.TitleText.Text);
         }
 
         public async Task SwitchToTabAsync(TabViewItem viewItem)
@@ -369,12 +375,16 @@ namespace EdgeRebuild.Core
         {
             if (viewItem == null || !_tabs.Contains(viewItem)) return;
 
-            string url = viewItem.Tab.CurrentUrl;
-            if (addToClosed && !string.IsNullOrEmpty(url) && url != "about:blank")
+            // 修复：只在需要保存到关闭列表时获取 URL
+            if (addToClosed)
             {
-                _closedTabs.Push((url, viewItem.Tab.Title ?? url, viewItem.Tab.Engine));
-                while (_closedTabs.Count > MaxClosedTabs)
-                    _closedTabs.Pop();
+                string url = viewItem.Tab.CurrentUrl;
+                if (!string.IsNullOrEmpty(url) && url != "about:blank")
+                {
+                    _closedTabs.Push((url, viewItem.Tab.Title ?? url, viewItem.Tab.Engine));
+                    while (_closedTabs.Count > MaxClosedTabs)
+                        _closedTabs.Pop();
+                }
             }
 
             _tabs.Remove(viewItem);
@@ -413,7 +423,6 @@ namespace EdgeRebuild.Core
 
         public void ClearClosedTabs() => _closedTabs.Clear();
 
-        // ---- 挂起管理 ----
         private async Task SuspendTabAsync(IBrowserTab tab)
         {
             if (tab is WebView2Tab wv2 && !wv2.IsSuspended)
@@ -472,7 +481,6 @@ namespace EdgeRebuild.Core
             e.Request.Headers.SetHeader("DNT", "1");
         }
 
-        // ---- 主题更新 ----
         public void UpdateTheme(SkinManager.SkinColors colors)
         {
             foreach (var item in _tabs)
@@ -494,7 +502,6 @@ namespace EdgeRebuild.Core
             }
         }
 
-        // ---- 新增：拖拽排序相关 ----
         public void ReorderTab(int fromIndex, int toIndex)
         {
             if (fromIndex == toIndex || fromIndex < 0 || toIndex < 0 ||
@@ -510,7 +517,87 @@ namespace EdgeRebuild.Core
 
         public int GetTabIndex(TabViewItem item) => _tabs.IndexOf(item);
 
-        // ---- 清理 ----
+        // ---- 固定标签支持 ----
+        public async Task TogglePinTabAsync(TabViewItem viewItem)
+        {
+            if (viewItem == null) return;
+            viewItem.IsPinned = !viewItem.IsPinned;
+
+            if (viewItem.IsPinned)
+            {
+                viewItem.TitleText.Visibility = Visibility.Collapsed;
+                viewItem.EngineMark.Visibility = Visibility.Collapsed;
+                viewItem.SuspendedIndicator.Visibility = Visibility.Collapsed;
+                viewItem.CloseButton.Visibility = Visibility.Collapsed;
+                viewItem.Container.Width = PinnedTabWidth;
+                viewItem.Container.MinWidth = PinnedTabWidth;
+                viewItem.Container.MaxWidth = PinnedTabWidth;
+
+                if (viewItem.FaviconImage.Source != null)
+                {
+                    viewItem.FaviconImage.Visibility = Visibility.Visible;
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                    viewItem.FaviconPlaceholder.Glyph = "\uE75E";
+                }
+
+                ReorderTabToPinnedSection(viewItem);
+            }
+            else
+            {
+                viewItem.TitleText.Visibility = Visibility.Visible;
+                viewItem.EngineMark.Visibility = Visibility.Visible;
+                viewItem.SuspendedIndicator.Visibility = viewItem.Tab.IsSuspended ? Visibility.Visible : Visibility.Collapsed;
+                viewItem.CloseButton.Visibility = Visibility.Visible;
+                viewItem.Container.Width = LayoutManager.MaxTabWidth;
+                viewItem.Container.MinWidth = LayoutManager.MinTabWidth;
+                viewItem.Container.MaxWidth = LayoutManager.MaxTabWidth;
+                viewItem.FaviconImage.Visibility = Visibility.Visible;
+                viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
+
+                string displayTitle = viewItem.Tab.Title ?? "新标签页";
+                if (viewItem.Tab.IsSuspended)
+                    displayTitle = "[已挂起] " + displayTitle;
+                viewItem.TitleText.Text = displayTitle;
+                ToolTipService.SetToolTip(viewItem.TitleText, displayTitle);
+            }
+
+            TabOrderChanged?.Invoke();
+            TabCountChanged?.Invoke(_tabs.Count);
+        }
+
+        private void ReorderTabToPinnedSection(TabViewItem viewItem)
+        {
+            if (viewItem == null || !viewItem.IsPinned) return;
+
+            var pinnedTabs = _tabs.Where(t => t.IsPinned).ToList();
+            if (pinnedTabs.Count <= 1) return;
+
+            int pinnedEndIndex = _tabs.IndexOf(pinnedTabs.Last());
+            int currentIndex = _tabs.IndexOf(viewItem);
+
+            if (currentIndex < pinnedEndIndex)
+            {
+                _tabs.RemoveAt(currentIndex);
+                _tabs.Insert(pinnedEndIndex, viewItem);
+            }
+            else if (currentIndex > pinnedEndIndex)
+            {
+                _tabs.RemoveAt(currentIndex);
+                _tabs.Insert(pinnedEndIndex, viewItem);
+            }
+        }
+
+        public int GetPinnedTabCount() => _tabs.Count(t => t.IsPinned);
+
+        public IReadOnlyList<TabViewItem> GetPinnedTabs() => _tabs.Where(t => t.IsPinned).ToList();
+
+        public bool IsAnyPinnedTab() => _tabs.Any(t => t.IsPinned);
+
         public void DisposeAll()
         {
             foreach (var item in _tabs)

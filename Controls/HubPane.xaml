@@ -9,7 +9,7 @@
     VerticalAlignment="Stretch">
 
     <UserControl.Resources>
-        <!-- 亮色主题：淡蓝悬停/选中 -->
+        <!-- 亮色主题列表项样式 -->
         <Style x:Key="HubListViewItemStyleLight" TargetType="ListViewItem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Height" Value="64"/>
@@ -64,7 +64,7 @@
             </Setter>
         </Style>
 
-        <!-- 暗色主题：深蓝悬停/选中 -->
+        <!-- 暗色主题列表项样式 -->
         <Style x:Key="HubListViewItemStyleDark" TargetType="ListViewItem">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Height" Value="64"/>
@@ -134,8 +134,6 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
 
-            <!-- 已删除 NavigationView.Resources 中的自定义 Style，使用默认透明背景 -->
-
             <muxc:NavigationView.MenuItems>
                 <muxc:NavigationViewItem Content="收藏夹" Tag="Favorites">
                     <muxc:NavigationViewItem.Icon>
@@ -159,6 +157,12 @@
                     <!-- 收藏夹面板 -->
                     <StackPanel x:Name="FavPanel" Visibility="Visible">
                         <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                            <!-- 新增：收藏夹搜索框 -->
+                            <TextBox x:Name="FavoritesSearchBox" 
+                                     PlaceholderText="搜索收藏夹..." 
+                                     Width="180"
+                                     TextChanged="FavoritesSearchBox_TextChanged"
+                                     VerticalAlignment="Center"/>
                             <Button x:Name="ImportFavBtn" Content="导入"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
@@ -205,6 +209,12 @@
                     <!-- 历史记录面板 -->
                     <StackPanel x:Name="HistoryPanel" Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                            <!-- 新增：历史记录搜索框 -->
+                            <TextBox x:Name="HistorySearchBox" 
+                                     PlaceholderText="搜索历史..." 
+                                     Width="180"
+                                     TextChanged="HistorySearchBox_TextChanged"
+                                     VerticalAlignment="Center"/>
                             <Button x:Name="ClearHistoryBtn" Content="清除全部历史"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"

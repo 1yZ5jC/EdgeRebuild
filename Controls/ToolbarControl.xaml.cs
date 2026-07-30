@@ -4,8 +4,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.UI;
+using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
@@ -39,6 +41,13 @@ namespace EdgeRebuild.Controls
         private bool _isSecure = false;
         private string _currentHost = "";
 
+        // ---- 自动补全相关字段 ----
+        private bool _isAutoCompleting = false;
+        private string _lastInputText = "";
+        private string _currentAutoCompleteMatch = "";
+        private string _currentAutoCompleteDisplay = "";
+        private bool _enableDebug = false;   // 调试开关
+
         public ToolbarControl()
         {
             this.InitializeComponent();
@@ -64,6 +73,9 @@ namespace EdgeRebuild.Controls
             _searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
             SettingsManager.SettingChanged += OnSettingChanged;
             UpdateSearchEngineIndicator();
+
+            // 加载调试设置
+            await LoadDebugSettingsAsync();
         }
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -82,12 +94,30 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        // 改进：获取焦点后全选文本
+        private async Task LoadDebugSettingsAsync()
+        {
+            var val = await SettingsManager.GetAsync("AutoCompleteDebug");
+            _enableDebug = (val == "True" || val == "true");
+            if (_enableDebug)
+                System.Diagnostics.Debug.WriteLine("[AC] 调试模式已启用");
+        }
+
+        public async Task ToggleDebugAsync()
+        {
+            var current = await SettingsManager.GetAsync("AutoCompleteDebug");
+            bool newVal = !(current == "True" || current == "true");
+            await SettingsManager.SetAsync("AutoCompleteDebug", newVal ? "True" : "False");
+            _enableDebug = newVal;
+            System.Diagnostics.Debug.WriteLine($"[AC] 调试模式已{(newVal ? "启用" : "禁用")}");
+        }
+
         public void FocusAddressBarAndClear()
         {
             UrlBox.Text = string.Empty;
+            _lastInputText = string.Empty;
+            _currentAutoCompleteMatch = string.Empty;
+            _currentAutoCompleteDisplay = string.Empty;
             UrlBox.Focus(FocusState.Programmatic);
-            // 确保光标在文本框内，且全选（或置零）
             UrlBox.SelectionStart = 0;
             UrlBox.SelectionLength = 0;
             UpdateSearchEngineIndicator();
@@ -121,8 +151,17 @@ namespace EdgeRebuild.Controls
         {
             BackBtn.IsEnabled = canGoBack;
             ForwardBtn.IsEnabled = canGoForward;
-            if (currentUrl == "about:blank") UrlBox.Text = "";
-            else UrlBox.Text = DecodeUrl(currentUrl);
+            if (currentUrl == "about:blank")
+            {
+                UrlBox.Text = "";
+                _lastInputText = "";
+                _currentAutoCompleteMatch = "";
+                _currentAutoCompleteDisplay = "";
+            }
+            else
+            {
+                UrlBox.Text = DecodeUrl(currentUrl);
+            }
         }
 
         public void SetEngine(EngineType engine)
@@ -236,16 +275,25 @@ namespace EdgeRebuild.Controls
         private void HubBtn_Click(object sender, RoutedEventArgs e) => HubClicked?.Invoke();
         private void MenuBtn_Click(object sender, RoutedEventArgs e) => MenuClicked?.Invoke();
 
+        // ---- 地址栏键盘事件 ----
         private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)
         {
             if (e.Key == Windows.System.VirtualKey.Enter)
             {
+                // 如果有建议列表且不为空，选择第一个建议
                 if (_isSuggestionsVisible && _currentSuggestions.Count > 0)
                 {
                     SubmitUrl(_currentSuggestions[0].Url);
                     e.Handled = true;
                     return;
                 }
+
+                // 如果有自动补全，先接受补全再提交
+                if (!string.IsNullOrEmpty(_currentAutoCompleteMatch) && UrlBox.SelectionLength > 0)
+                {
+                    AcceptAutoComplete();
+                }
+
                 string input = UrlBox.Text?.Trim();
                 if (!string.IsNullOrEmpty(input))
                 {
@@ -255,6 +303,20 @@ namespace EdgeRebuild.Controls
                 CloseSuggestions();
                 e.Handled = true;
             }
+            else if (e.Key == Windows.System.VirtualKey.Tab)
+            {
+                // Tab 键：如果有自动补全，接受补全；否则显示建议列表
+                if (!string.IsNullOrEmpty(_currentAutoCompleteMatch) && UrlBox.SelectionLength > 0)
+                {
+                    AcceptAutoComplete();
+                    e.Handled = true;
+                }
+                else
+                {
+                    ShowSuggestionsManually();
+                    e.Handled = true;
+                }
+            }
             else if (e.Key == Windows.System.VirtualKey.Down)
             {
                 ShowSuggestionsManually();
@@ -262,8 +324,17 @@ namespace EdgeRebuild.Controls
             }
             else if (e.Key == Windows.System.VirtualKey.Escape)
             {
-                CloseSuggestions();
-                e.Handled = true;
+                // 如果有自动补全，取消补全
+                if (!string.IsNullOrEmpty(_currentAutoCompleteMatch) && UrlBox.SelectionLength > 0)
+                {
+                    CancelAutoComplete();
+                    e.Handled = true;
+                }
+                else
+                {
+                    CloseSuggestions();
+                    e.Handled = true;
+                }
             }
         }
 
@@ -427,10 +498,61 @@ namespace EdgeRebuild.Controls
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
         }
 
+        // ---- 文本变化（核心：包含自动补全） ----
         private void UrlBox_TextChanged(object sender, TextChangedEventArgs e)
         {
+            // 如果是自动补全触发的文本变化，跳过
+            if (_isAutoCompleting) return;
+
             UpdateSearchEngineIndicator();
 
+            string currentText = UrlBox.Text ?? "";
+            int cursorPosition = UrlBox.SelectionStart;
+
+            // 检测是否是删除操作（文本变短）
+            bool isDeleting = currentText.Length < _lastInputText.Length;
+
+            // 检测光标是否在末尾
+            bool cursorAtEnd = (cursorPosition == currentText.Length);
+
+            // 调试日志
+            if (_enableDebug)
+            {
+                System.Diagnostics.Debug.WriteLine($"[AC] TextChanged: '{currentText}', SelStart={cursorPosition}, Len={currentText.Length}");
+            }
+
+            // 只在非删除、光标在末尾、且文本不为空时触发补全
+            if (!isDeleting && cursorAtEnd && !string.IsNullOrEmpty(currentText))
+            {
+                // 检查是否应该触发补全
+                if (ShouldTriggerAutoComplete(currentText))
+                {
+                    // 查找最佳匹配
+                    var match = FindBestMatch(currentText);
+                    if (match.matchUrl != null)
+                    {
+                        ApplyAutoComplete(currentText, match.matchUrl, match.matchTitle);
+                    }
+                    else
+                    {
+                        // 没有匹配，清除补全状态
+                        ClearAutoCompleteState();
+                    }
+                }
+                else
+                {
+                    ClearAutoCompleteState();
+                }
+            }
+            else
+            {
+                // 删除或光标不在末尾，清除补全状态
+                ClearAutoCompleteState();
+            }
+
+            _lastInputText = currentText;
+
+            // 触发建议列表更新
             if (_isSuggestionsVisible)
             {
                 _suggestionTimer.Stop();
@@ -438,6 +560,297 @@ namespace EdgeRebuild.Controls
             }
         }
 
+        // ---- 自动补全：判断是否应该触发 ----
+        private bool ShouldTriggerAutoComplete(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return false;
+            if (input.Length < 2) return false;
+            if (input.Contains(" ")) return false;
+            if (input.Contains("/") && input.Contains(".")) return false; // 可能是完整URL
+
+            // 如果输入已经是完整URL格式，不触发补全
+            if (input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                // 但如果输入的是 "https://google"，可以补全为 "https://google.com"
+                // 所以这里不直接阻止，而是进一步判断
+                var uri = TryParseUri(input);
+                if (uri != null && !string.IsNullOrEmpty(uri.Host) && uri.Host.Contains("."))
+                {
+                    // 已经是完整域名，不补全
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private Uri TryParseUri(string input)
+        {
+            try
+            {
+                if (Uri.TryCreate(input, UriKind.Absolute, out var uri))
+                    return uri;
+                if (Uri.TryCreate("https://" + input, UriKind.Absolute, out uri))
+                    return uri;
+                return null;
+            }
+            catch { return null; }
+        }
+
+        // ---- 自动补全：查找最佳匹配 ----
+        private (string matchUrl, string matchTitle) FindBestMatch(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return (null, null);
+
+            if (_enableDebug)
+                System.Diagnostics.Debug.WriteLine($"[AC] FindBestMatch('{input}')");
+
+            string inputLower = input.ToLower();
+            var candidates = new List<(string title, string url, bool isFavorite, int score)>();
+
+            // 从收藏夹获取
+            foreach (var fav in FavoritesManager.Instance.Favorites)
+            {
+                string title = fav.Title ?? "";
+                string url = fav.Url ?? "";
+                int score = CalculateMatchScore(title, url, inputLower);
+                if (score > 0)
+                {
+                    candidates.Add((title, url, true, score));
+                }
+            }
+
+            // 从历史记录获取
+            foreach (var hist in HistoryManager.History.Take(20))
+            {
+                string title = hist.Title ?? "";
+                string url = hist.Url ?? "";
+                if (candidates.Any(c => c.url == url)) continue;
+                int score = CalculateMatchScore(title, url, inputLower);
+                if (score > 0)
+                {
+                    candidates.Add((title, url, false, score));
+                    if (_enableDebug)
+                        System.Diagnostics.Debug.WriteLine($"  [历史] 标题='{title}', URL='{url}', 得分={score}");
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                if (_enableDebug)
+                    System.Diagnostics.Debug.WriteLine("[AC] 无匹配候选");
+                return (null, null);
+            }
+
+            // 按得分排序（收藏夹+10）
+            var sorted = candidates
+                .OrderByDescending(c => c.score + (c.isFavorite ? 10 : 0))
+                .ThenByDescending(c => c.isFavorite)
+                .ToList();
+
+            var best = sorted[0];
+            if (_enableDebug)
+            {
+                System.Diagnostics.Debug.WriteLine($"[AC] 最佳匹配: 标题='{best.title}', URL='{best.url}', 得分={best.score + (best.isFavorite ? 10 : 0)}");
+                if (sorted.Count > 1)
+                    System.Diagnostics.Debug.WriteLine($"[AC] 次佳匹配得分: {sorted[1].score + (sorted[1].isFavorite ? 10 : 0)}");
+            }
+
+            // 如果只有一个候选，或明显领先（>2分），直接补全
+            if (sorted.Count == 1 || best.score - sorted[1].score > 2)
+            {
+                if (_enableDebug)
+                    System.Diagnostics.Debug.WriteLine("[AC] 唯一匹配或明显领先，自动补全");
+                return (best.url, best.title);
+            }
+            else if (best.score - sorted[1].score <= 2)
+            {
+                // 得分接近时，使用智能选择
+                var second = sorted[1];
+
+                // 1. 优先标题非空
+                bool bestHasTitle = !string.IsNullOrEmpty(best.title);
+                bool secondHasTitle = !string.IsNullOrEmpty(second.title);
+                if (bestHasTitle && !secondHasTitle)
+                {
+                    if (_enableDebug)
+                        System.Diagnostics.Debug.WriteLine("[AC] 智能选择：最佳有标题");
+                    return (best.url, best.title);
+                }
+                if (!bestHasTitle && secondHasTitle)
+                {
+                    if (_enableDebug)
+                        System.Diagnostics.Debug.WriteLine("[AC] 智能选择：次佳有标题");
+                    return (second.url, second.title);
+                }
+
+                // 2. 优先 URL 更短（更干净的域名）
+                if (best.url.Length < second.url.Length)
+                {
+                    if (_enableDebug)
+                        System.Diagnostics.Debug.WriteLine("[AC] 智能选择：最佳URL更短");
+                    return (best.url, best.title);
+                }
+                if (second.url.Length < best.url.Length)
+                {
+                    if (_enableDebug)
+                        System.Diagnostics.Debug.WriteLine("[AC] 智能选择：次佳URL更短");
+                    return (second.url, second.title);
+                }
+
+                // 3. 都差不多，选第一个
+                if (_enableDebug)
+                    System.Diagnostics.Debug.WriteLine("[AC] 智能选择：默认选最佳");
+                return (best.url, best.title);
+            }
+
+            return (null, null);
+        }
+
+        private int CalculateMatchScore(string title, string url, string inputLower)
+        {
+            if (string.IsNullOrEmpty(title) && string.IsNullOrEmpty(url)) return 0;
+
+            string titleLower = title?.ToLower() ?? "";
+            string urlLower = url?.ToLower() ?? "";
+
+            // 标题开头匹配 - 最高优先级
+            if (titleLower.StartsWith(inputLower))
+                return 100 + inputLower.Length;
+
+            // URL开头匹配 - 次高优先级
+            if (urlLower.StartsWith(inputLower))
+                return 80 + inputLower.Length;
+
+            // 标题包含匹配
+            if (titleLower.Contains(inputLower))
+                return 40 + inputLower.Length;
+
+            // URL包含匹配
+            if (urlLower.Contains(inputLower))
+                return 20 + inputLower.Length;
+
+            return 0;
+        }
+
+        // ---- 自动补全：应用补全 ----
+        private void ApplyAutoComplete(string input, string matchUrl, string matchTitle)
+        {
+            if (string.IsNullOrEmpty(matchUrl)) return;
+
+            // 如果匹配的URL和输入相同，不补全
+            if (matchUrl.Equals(input, StringComparison.OrdinalIgnoreCase)) return;
+
+            // 如果输入是完整URL且匹配相同，不补全
+            if (input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                if (matchUrl.Equals(input, StringComparison.OrdinalIgnoreCase)) return;
+            }
+
+            // 确定补全目标
+            string completeText = matchUrl;
+
+            // 如果输入是URL协议开头，保留协议
+            if (input.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                input.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                // 使用匹配的完整URL
+            }
+            else if (input.Contains(".") && !input.Contains(" "))
+            {
+                // 输入看起来像域名，补全为完整URL
+                if (!matchUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !matchUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    completeText = "https://" + matchUrl;
+                }
+            }
+            else
+            {
+                // 普通补全，使用匹配的URL
+                if (!matchUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !matchUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    completeText = "https://" + matchUrl;
+                }
+            }
+
+            // 检查补全是否真的比输入长
+            if (completeText.Length <= input.Length) return;
+
+            // 检查输入是否真的是completeText的前缀
+            if (!completeText.StartsWith(input, StringComparison.OrdinalIgnoreCase)) return;
+
+            // 应用补全
+            _isAutoCompleting = true;
+            _currentAutoCompleteMatch = completeText;
+            _currentAutoCompleteDisplay = matchTitle ?? matchUrl;
+
+            UrlBox.Text = completeText;
+            // 选中补全的部分（从原输入长度到末尾）
+            UrlBox.SelectionStart = input.Length;
+            UrlBox.SelectionLength = completeText.Length - input.Length;
+
+            _isAutoCompleting = false;
+
+            // 不自动弹出建议列表，保持不打断输入
+
+            if (_enableDebug)
+                System.Diagnostics.Debug.WriteLine($"[AC] ApplyAutoComplete: 输入='{input}', 匹配URL='{matchUrl}', 匹配标题='{matchTitle}'");
+        }
+
+        // ---- 自动补全：接受补全 ----
+        private void AcceptAutoComplete()
+        {
+            if (string.IsNullOrEmpty(_currentAutoCompleteMatch)) return;
+
+            if (_enableDebug)
+                System.Diagnostics.Debug.WriteLine($"[AC] AcceptAutoComplete: '{_currentAutoCompleteMatch}'");
+
+            _isAutoCompleting = true;
+            UrlBox.Text = _currentAutoCompleteMatch;
+            UrlBox.SelectionStart = UrlBox.Text.Length;
+            UrlBox.SelectionLength = 0;
+            _isAutoCompleting = false;
+
+            _currentAutoCompleteMatch = "";
+            _currentAutoCompleteDisplay = "";
+        }
+
+        // ---- 自动补全：取消补全 ----
+        private void CancelAutoComplete()
+        {
+            if (string.IsNullOrEmpty(_currentAutoCompleteMatch)) return;
+
+            if (_enableDebug)
+                System.Diagnostics.Debug.WriteLine($"[AC] CancelAutoComplete: '{_currentAutoCompleteMatch}'");
+
+            string originalText = _lastInputText;
+            _isAutoCompleting = true;
+            UrlBox.Text = originalText;
+            UrlBox.SelectionStart = originalText.Length;
+            UrlBox.SelectionLength = 0;
+            _isAutoCompleting = false;
+
+            _currentAutoCompleteMatch = "";
+            _currentAutoCompleteDisplay = "";
+        }
+
+        // ---- 自动补全：清除状态 ----
+        private void ClearAutoCompleteState()
+        {
+            if (!string.IsNullOrEmpty(_currentAutoCompleteMatch))
+            {
+                if (_enableDebug)
+                    System.Diagnostics.Debug.WriteLine("[AC] ClearAutoCompleteState");
+                _currentAutoCompleteMatch = "";
+                _currentAutoCompleteDisplay = "";
+            }
+        }
+
+        // ---- 建议列表相关 ----
         private void OnSuggestionTimerTick(object sender, object e)
         {
             _suggestionTimer.Stop();
@@ -554,10 +967,14 @@ namespace EdgeRebuild.Controls
         }
 
         private void CloseSuggestions() { SuggestionsFlyout.Hide(); _isSuggestionsVisible = false; }
+
         private void SubmitUrl(string url)
         {
             CloseSuggestions();
+            ClearAutoCompleteState();
             UrlBox.Text = DecodeUrl(url);
+            UrlBox.SelectionStart = UrlBox.Text.Length;
+            UrlBox.SelectionLength = 0;
             UrlSubmitted?.Invoke(url);
         }
 

@@ -18,9 +18,9 @@ namespace EdgeRebuild.Core
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
-        public bool CanGoBack => _webView.CanGoBack;
-        public bool CanGoForward => _webView.CanGoForward;
-        public string CurrentUrl => _webView.Source?.ToString() ?? "";
+        public bool CanGoBack => _webView?.CanGoBack ?? false;
+        public bool CanGoForward => _webView?.CanGoForward ?? false;
+        public string CurrentUrl => _webView?.Source?.ToString() ?? "";
         public EngineType Engine => EngineType.EdgeHtml;
         public string EngineIcon => "🌐";
         public string Title => _title;
@@ -81,6 +81,13 @@ namespace EdgeRebuild.Core
                 UrlChanged?.Invoke(args.Uri?.ToString() ?? "");
                 UpdateTitle();
                 CheckNavigationState();
+                // 延迟一点尝试提取 favicon，确保 DOM 准备就绪
+                await Task.Delay(200);
+                TryExtractFavicon();
+            }
+            else
+            {
+                // 失败时也尝试获取 favicon（可能页面有错误但仍能提取到某些图标）
                 TryExtractFavicon();
             }
         }
@@ -89,6 +96,8 @@ namespace EdgeRebuild.Core
         {
             var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
             await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(false));
+            // 失败时也尝试获取 favicon
+            TryExtractFavicon();
         }
 
         private void UpdateTitle()
@@ -102,7 +111,12 @@ namespace EdgeRebuild.Core
             catch { }
         }
 
-        private void OnDOMContentLoaded(WebView sender, WebViewDOMContentLoadedEventArgs args) { UpdateTitle(); TryExtractFavicon(); }
+        private void OnDOMContentLoaded(WebView sender, WebViewDOMContentLoadedEventArgs args)
+        {
+            UpdateTitle();
+            // DOM 加载完成时再尝试提取 favicon
+            TryExtractFavicon();
+        }
 
         private void CheckNavigationState()
         {
@@ -112,19 +126,42 @@ namespace EdgeRebuild.Core
 
         private async void TryExtractFavicon()
         {
-            if (_webView?.Source == null || _webView.Source.AbsoluteUri == "about:blank") return;
+            if (_webView?.Source == null || _webView.Source.AbsoluteUri == "about:blank")
+            {
+                // 空白页不设置 favicon
+                return;
+            }
+
             try
             {
-                var result = await _webView.InvokeScriptAsync("eval", new[] { "document.querySelector('link[rel*=\"icon\"]')?.href || ''" });
-                if (!string.IsNullOrEmpty(result)) SetFaviconUri(result.Trim('"'));
-                else SetFaviconUri($"{_webView.Source.Scheme}://{_webView.Source.Host}/favicon.ico");
+                // 尝试获取页面的 favicon 链接
+                var result = await _webView.InvokeScriptAsync("eval", new[] {
+                    "document.querySelector('link[rel*=\"icon\"]')?.href || ''"
+                });
+
+                if (!string.IsNullOrEmpty(result) && Uri.TryCreate(result, UriKind.Absolute, out _))
+                {
+                    SetFaviconUri(result.Trim('"'));
+                    return;
+                }
+
+                // 如果未找到，尝试使用默认路径 /favicon.ico
+                string defaultFavicon = $"{_webView.Source.Scheme}://{_webView.Source.Host}/favicon.ico";
+                SetFaviconUri(defaultFavicon);
             }
-            catch { }
+            catch
+            {
+                // 异常时忽略
+            }
         }
 
         private void SetFaviconUri(string url)
         {
-            if (url != _faviconUri) { _faviconUri = url; FaviconChanged?.Invoke(url); }
+            if (url != _faviconUri && !string.IsNullOrEmpty(url))
+            {
+                _faviconUri = url;
+                FaviconChanged?.Invoke(url);
+            }
         }
 
         public async Task<string> ExecuteScriptAsync(string script)
@@ -153,13 +190,6 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
-            _webView.NewWindowRequested -= OnNewWindowRequested;
-            _webView.NavigationStarting -= OnNavigationStarting;
-            _webView.NavigationCompleted -= OnNavigationCompleted;
-            _webView.DOMContentLoaded -= OnDOMContentLoaded;
-            _webView.NavigationFailed -= OnNavigationFailed;
-            _webView = null;
-
             TitleChanged = null;
             UrlChanged = null;
             CanGoBackChanged = null;
@@ -168,6 +198,21 @@ namespace EdgeRebuild.Core
             ContextMenuRequested = null;
             NewWindowRequested = null;
             LoadingChanged = null;
+
+            if (_webView == null) return;
+
+            try { _webView.NewWindowRequested -= OnNewWindowRequested; } catch { }
+            try { _webView.NavigationStarting -= OnNavigationStarting; } catch { }
+            try { _webView.NavigationCompleted -= OnNavigationCompleted; } catch { }
+            try { _webView.DOMContentLoaded -= OnDOMContentLoaded; } catch { }
+            try { _webView.NavigationFailed -= OnNavigationFailed; } catch { }
+
+            try
+            {
+                (_webView.Parent as Panel)?.Children.Remove(_webView);
+                _webView = null;
+            }
+            catch { }
         }
     }
 }

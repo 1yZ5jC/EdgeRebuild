@@ -15,6 +15,11 @@ namespace EdgeRebuild.Core
         public TextBlock EngineMark { get; set; }
         public TextBlock SuspendedIndicator { get; set; }
         public bool IsSuspended { get; set; }
-        public ProgressRing LoadingRing { get; set; }  // 新增：加载指示器
+        public ProgressRing LoadingRing { get; set; }
+        public int Id { get; set; }
+
+        // 固定标签支持
+        public bool IsPinned { get; set; }
+        public string OriginalTitle { get; set; }
     }
 }

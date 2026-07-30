@@ -24,9 +24,9 @@ namespace EdgeRebuild.Core
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
-        public bool CanGoBack => _webView?.CoreWebView2?.CanGoBack ?? false;
+        public bool CanGoBack => _webView?.CoreWebView2?.CanGoBack ?? false;  // 空检查
         public bool CanGoForward => _webView?.CoreWebView2?.CanGoForward ?? false;
-        public string CurrentUrl => _isSuspended ? _suspendedUrl : (_webView?.Source?.ToString() ?? "");
+        public string CurrentUrl => _isSuspended ? _suspendedUrl : (_webView?.Source?.ToString() ?? "");  // 空检查
         public EngineType Engine => EngineType.WebView2;
         public string EngineIcon => "🧬";
         public string Title => _title;
@@ -321,20 +321,34 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
+            if (_disposed) return;
             _disposed = true;
+
             _initLock?.Dispose();
             if (_webView == null) return;
+
+            // 解除事件
             _webView.NavigationCompleted -= OnNavigationCompleted;
             if (_webView.CoreWebView2 != null)
             {
-                _webView.CoreWebView2.DocumentTitleChanged -= OnDocumentTitleChanged;
-                _webView.CoreWebView2.HistoryChanged -= OnHistoryChanged;
-                _webView.CoreWebView2.ContextMenuRequested -= OnContextMenuRequested;
-                _webView.CoreWebView2.DownloadStarting -= OnDownloadStarting;
-                _webView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
-                _webView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
+                try
+                {
+                    _webView.CoreWebView2.DocumentTitleChanged -= OnDocumentTitleChanged;
+                    _webView.CoreWebView2.HistoryChanged -= OnHistoryChanged;
+                    _webView.CoreWebView2.ContextMenuRequested -= OnContextMenuRequested;
+                    _webView.CoreWebView2.DownloadStarting -= OnDownloadStarting;
+                    _webView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
+                    _webView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
+                }
+                catch { /* 忽略 */ }
             }
-            try { (_webView.Parent as Panel)?.Children.Remove(_webView); _webView.Close(); } catch { }
+
+            try
+            {
+                (_webView.Parent as Panel)?.Children.Remove(_webView);
+                _webView.Close();
+            }
+            catch { /* 忽略 */ }
             _webView = null;
 
             TitleChanged = null;

@@ -3,6 +3,7 @@ using EdgeRebuild.Services;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -24,6 +25,10 @@ namespace EdgeRebuild.Controls
         public SolidColorBrush MutedForegroundBrush { get; set; } = new SolidColorBrush(Colors.DimGray);
 
         private readonly Dictionary<DownloadItem, Grid> _downloadContainers = new Dictionary<DownloadItem, Grid>();
+
+        // 搜索过滤
+        private string _historySearchFilter = "";
+        private string _favoritesSearchFilter = "";
 
         public HubPane()
         {
@@ -47,6 +52,8 @@ namespace EdgeRebuild.Controls
             ImportFavBtn.Foreground = foreground;
             ExportFavBtn.Foreground = foreground;
             ClearHistoryBtn.Foreground = foreground;
+            FavoritesSearchBox.Foreground = foreground;
+            HistorySearchBox.Foreground = foreground;
 
             Style itemStyle = isDark
                 ? (Style)Resources["HubListViewItemStyleDark"]
@@ -63,29 +70,61 @@ namespace EdgeRebuild.Controls
             LoadDownloads();
         }
 
+        // ---- 收藏夹搜索 ----
+        private void FavoritesSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _favoritesSearchFilter = FavoritesSearchBox.Text?.Trim() ?? "";
+            RefreshFavorites();
+        }
+
         public void RefreshFavorites()
         {
             if (FavListView == null) return;
             FavListView.Items.Clear();
-            foreach (var fav in FavoritesManager.Instance.Favorites)
+            var items = string.IsNullOrEmpty(_favoritesSearchFilter)
+                ? FavoritesManager.Instance.Favorites
+                : FavoritesManager.Instance.Favorites.Where(f =>
+                    f.Title?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true ||
+                    f.Url?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true);
+            foreach (var fav in items)
                 FavListView.Items.Add(fav);
+        }
+
+        // ---- 历史记录搜索 ----
+        private void HistorySearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _historySearchFilter = HistorySearchBox.Text?.Trim() ?? "";
+            RefreshHistory();
         }
 
         public void RefreshHistory()
         {
             if (HistoryListView == null) return;
             HistoryListView.Items.Clear();
-            foreach (var hist in HistoryManager.History)
-                HistoryListView.Items.Add(hist);
+            var items = string.IsNullOrEmpty(_historySearchFilter)
+                ? HistoryManager.History
+                : HistoryManager.History.Where(h =>
+                    h.Title?.Contains(_historySearchFilter, StringComparison.OrdinalIgnoreCase) == true ||
+                    h.Url?.Contains(_historySearchFilter, StringComparison.OrdinalIgnoreCase) == true);
+            foreach (var item in items)
+                HistoryListView.Items.Add(item);
         }
-
-        public void RefreshDownloads() => LoadDownloads();
 
         public void ShowHistory()
         {
             if (HubNavView.MenuItems.Count > 1)
                 HubNavView.SelectedItem = HubNavView.MenuItems[1];
+            RefreshHistory();
         }
+
+        public void ShowDownloads()
+        {
+            if (HubNavView.MenuItems.Count > 2)
+                HubNavView.SelectedItem = HubNavView.MenuItems[2];
+            LoadDownloads();
+        }
+
+        public void RefreshDownloads() => LoadDownloads();
 
         private async void ImportFavBtn_Click(object sender, RoutedEventArgs e)
         {
@@ -522,14 +561,6 @@ namespace EdgeRebuild.Controls
             return btn;
         }
 
-        public void ShowDownloads()
-        {
-            // 切换到下载面板（下载项索引为2，请确保菜单项顺序一致）
-            if (HubNavView.MenuItems.Count > 2)
-                HubNavView.SelectedItem = HubNavView.MenuItems[2];
-            LoadDownloads();
-        }
-
         private void HubNavView_SelectionChanged(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
         {
             if (args.SelectedItem is Microsoft.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
@@ -537,6 +568,8 @@ namespace EdgeRebuild.Controls
                 FavPanel.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
                 HistoryPanel.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
                 DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
+                if (tag == "Favorites") RefreshFavorites();
+                if (tag == "History") RefreshHistory();
                 if (tag == "Downloads") LoadDownloads();
             }
         }

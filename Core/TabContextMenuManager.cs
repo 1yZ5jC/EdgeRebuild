@@ -17,44 +17,66 @@ namespace EdgeRebuild.Core
         private readonly Func<EngineType> _getCurrentEngine;
         private readonly Func<Task> _onPrintRequested;
         private readonly Func<Task> _onViewSourceRequested;
+        private readonly Action<TabViewItem> _onTogglePin;
 
         public TabContextMenuManager(
             TabManager tabManager,
             EngineType defaultEngine,
             Func<EngineType> getCurrentEngine,
             Func<Task> onPrintRequested,
-            Func<Task> onViewSourceRequested)
+            Func<Task> onViewSourceRequested,
+            Action<TabViewItem> onTogglePin = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
             _getCurrentEngine = getCurrentEngine;
             _onPrintRequested = onPrintRequested;
             _onViewSourceRequested = onViewSourceRequested;
+            _onTogglePin = onTogglePin;
         }
 
         public void ShowTabRightClickMenu(Border tabBorder, TabViewItem viewItem)
         {
+            if (viewItem == null) return;
+
             var menu = new MenuFlyout();
             ApplyThemeToFlyout(menu);
 
+            // ---- 新建标签页 ----
             var newTabItem = new MenuFlyoutItem { Text = "新建标签页" };
             newTabItem.Click += async (_, _) => await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
             menu.Items.Add(newTabItem);
 
+            // ---- 重新加载 ----
             var reloadItem = new MenuFlyoutItem { Text = "重新加载" };
             reloadItem.Click += (_, _) => viewItem.Tab?.RefreshAsync();
             menu.Items.Add(reloadItem);
 
+            // ---- 关闭标签页 ----
             var closeItem = new MenuFlyoutItem { Text = "关闭标签页" };
             closeItem.Click += (_, _) => _ = _tabManager.CloseTabAsync(viewItem);
             menu.Items.Add(closeItem);
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
+            // ---- 固定/取消固定 ----
+            if (_onTogglePin != null)
+            {
+                var pinItem = new MenuFlyoutItem
+                {
+                    Text = viewItem.IsPinned ? "取消固定" : "固定标签"
+                };
+                pinItem.Click += (_, _) => _onTogglePin?.Invoke(viewItem);
+                menu.Items.Add(pinItem);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
+            // ---- 关闭其他标签页 ----
             var closeOthersItem = new MenuFlyoutItem { Text = "关闭其他标签页" };
             closeOthersItem.Click += (_, _) => CloseOtherTabs(viewItem);
             menu.Items.Add(closeOthersItem);
 
+            // ---- 关闭右侧标签页 ----
             var closeRightItem = new MenuFlyoutItem { Text = "关闭右侧标签页" };
             closeRightItem.Click += (_, _) => CloseTabsToRight(viewItem);
             menu.Items.Add(closeRightItem);
@@ -70,7 +92,7 @@ namespace EdgeRebuild.Core
             var flyout = new MenuFlyout();
             ApplyThemeToFlyout(flyout);
 
-            // 复制
+            // ---- 复制 ----
             var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = args.HasSelection };
             copyItem.Click += async (_, _) =>
             {
@@ -87,13 +109,13 @@ namespace EdgeRebuild.Core
             };
             flyout.Items.Add(copyItem);
 
-            // 粘贴
+            // ---- 粘贴 ----
             var pasteItem = new MenuFlyoutItem { Text = "粘贴", IsEnabled = args.IsEditable };
             pasteItem.Click += async (_, _) =>
                 await new ContentDialog { Title = "粘贴", Content = "请使用键盘快捷键 Ctrl+V 进行粘贴。", CloseButtonText = "确定" }.ShowAsync();
             flyout.Items.Add(pasteItem);
 
-            // 全选
+            // ---- 全选 ----
             var selectAllItem = new MenuFlyoutItem { Text = "全选" };
             selectAllItem.Click += async (_, _) =>
             {
@@ -104,22 +126,24 @@ namespace EdgeRebuild.Core
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // 后退/前进/刷新
+            // ---- 后退 ----
             var backItem = new MenuFlyoutItem { Text = "后退", IsEnabled = args.CanGoBack };
             backItem.Click += (_, _) => _tabManager.CurrentTab?.GoBackAsync();
             flyout.Items.Add(backItem);
 
+            // ---- 前进 ----
             var forwardItem = new MenuFlyoutItem { Text = "前进", IsEnabled = args.CanGoForward };
             forwardItem.Click += (_, _) => _tabManager.CurrentTab?.GoForwardAsync();
             flyout.Items.Add(forwardItem);
 
+            // ---- 刷新 ----
             var refreshItem = new MenuFlyoutItem { Text = "刷新" };
             refreshItem.Click += (_, _) => _tabManager.CurrentTab?.RefreshAsync();
             flyout.Items.Add(refreshItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // 链接相关
+            // ---- 链接相关 ----
             if (args.MenuType == ContextMenuType.Link && !string.IsNullOrEmpty(args.LinkUrl))
             {
                 var openInNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
@@ -137,7 +161,7 @@ namespace EdgeRebuild.Core
                 flyout.Items.Add(copyLinkItem);
             }
 
-            // 图片相关
+            // ---- 图片相关 ----
             if (args.MenuType == ContextMenuType.Image && !string.IsNullOrEmpty(args.ImageUrl))
             {
                 var copyImageUrlItem = new MenuFlyoutItem { Text = "复制图片地址" };
@@ -152,18 +176,19 @@ namespace EdgeRebuild.Core
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // 打印和查看源代码
+            // ---- 打印 ----
             var printItem = new MenuFlyoutItem { Text = "打印" };
             printItem.Click += async (_, _) => await _onPrintRequested?.Invoke();
             flyout.Items.Add(printItem);
 
+            // ---- 查看源代码 ----
             var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
             sourceItem.Click += async (_, _) => await _onViewSourceRequested?.Invoke();
             flyout.Items.Add(sourceItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 
-            // 开发者工具
+            // ---- 开发者工具 ----
             if (_tabManager.CurrentTab is WebView2Tab wv2Tab && wv2Tab.CoreWebView2 != null)
             {
                 var inspectItem = new MenuFlyoutItem { Text = "检查元素 (F12)" };

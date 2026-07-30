@@ -10,6 +10,7 @@ namespace EdgeRebuild.Core
         // 公开常量，供外部使用
         public const int MinTabWidth = 100;
         public const int MaxTabWidth = 160;
+        public const int PinnedTabWidth = 36;
         private const int AdditionalMargin = 30;
         private const int MinDragWidth = 20;
         private const int ButtonBaseOffset = 50;
@@ -59,7 +60,7 @@ namespace EdgeRebuild.Core
             }
         }
 
-        public void Recalculate(double containerWidth, int tabCount)
+        public void Recalculate(double containerWidth, int tabCount, int pinnedCount = 0)
         {
             if (containerWidth <= 0 || tabCount == 0) return;
 
@@ -79,23 +80,35 @@ namespace EdgeRebuild.Core
             double contentWidth = containerWidth - _rightReserved;
             double availableWidth = Math.Max(0, contentWidth - leftFixed - rightFixed - MinDragWidth);
 
-            double idealTotal = tabCount * MaxTabWidth;
-            double minTotal = tabCount * MinTabWidth;
-            _needScroll = false;
-            _tabWidth = MaxTabWidth;
+            // 固定标签占用固定宽度
+            double pinnedTotalWidth = pinnedCount * LayoutManager.PinnedTabWidth;
+            int normalTabCount = tabCount - pinnedCount;
+            double availableForNormal = availableWidth - pinnedTotalWidth;
 
-            if (idealTotal <= availableWidth)
+            _needScroll = false;
+
+            if (normalTabCount > 0)
             {
-                _tabWidth = MaxTabWidth;
-            }
-            else if (minTotal <= availableWidth)
-            {
-                _tabWidth = availableWidth / tabCount;
+                double idealTotal = normalTabCount * MaxTabWidth;
+                double minTotal = normalTabCount * MinTabWidth;
+
+                if (idealTotal <= availableForNormal)
+                {
+                    _tabWidth = MaxTabWidth;
+                }
+                else if (minTotal <= availableForNormal)
+                {
+                    _tabWidth = availableForNormal / normalTabCount;
+                }
+                else
+                {
+                    _tabWidth = MinTabWidth;
+                    _needScroll = true;
+                }
             }
             else
             {
                 _tabWidth = MinTabWidth;
-                _needScroll = true;
             }
 
             if (_tabScrollViewer != null)

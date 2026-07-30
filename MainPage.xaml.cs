@@ -1,6 +1,7 @@
 ﻿using EdgeRebuild.Controls;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
 using System;
 using System.Collections.Generic;
@@ -30,6 +31,7 @@ namespace EdgeRebuild
         private string _pendingUrl;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
         private double _zoomFactor = 1.0;
+        private bool _isEngineSwitching = false;
 
         // ---- 管理器 ----
         private TabManager _tabManager;
@@ -125,7 +127,8 @@ namespace EdgeRebuild
                     _defaultEngine,
                     () => _tabManager.CurrentTab?.Engine ?? _defaultEngine,
                     PrintCurrentPageAsync,
-                    ViewSourceAsync
+                    ViewSourceAsync,
+                    (viewItem) => _ = _tabManager.TogglePinTabAsync(viewItem)
                 );
 
                 // ---- 下载协调器 ----
@@ -153,7 +156,8 @@ namespace EdgeRebuild
                     async () => { if (_tabManager.TryReopenClosedTab(out EngineType engine, out string url, out _)) await _tabManager.CreateTabAsync(engine, url); },
                     async () => await _tabManager.CreateTabAsync(_defaultEngine, "about:blank"),
                     () => _tabManager.ClearClosedTabs(),
-                    () => _tabManager.TryReopenClosedTab(out _, out _, out _)
+                    () => _tabManager.TryReopenClosedTab(out _, out _, out _),
+                    CopyCurrentUrl
                 );
 
                 // ---- 为所有标签附加拖拽事件 ----
@@ -272,8 +276,11 @@ namespace EdgeRebuild
         // ---- TabManager 事件处理 ----
         private void OnTabOrderChanged() => SyncTabPanelOrder();
 
-        private void OnTabManagerTabCreated(TabViewItem viewItem)
+        // ---- 核心修复：新建标签后自动激活并焦点到地址栏 ----
+        private async void OnTabManagerTabCreated(TabViewItem viewItem)
         {
+            // 切换到新标签
+            await _tabManager.SwitchToTabAsync(viewItem);
             UpdateTabLayout();
             toolbarControl.FocusAddressBarAndClear();
         }
@@ -289,12 +296,14 @@ namespace EdgeRebuild
             string host = "";
             try { host = new Uri(tab.CurrentUrl).Host; } catch { }
             toolbarControl.UpdateSiteInfo(isSecure, host);
+
+            SetFocusToCurrentTabContent();
         }
 
         private void OnTabManagerTabCountChanged(int count)
         {
             UpdateTabLayout();
-            if (count == 0)
+            if (count == 0 && !_isEngineSwitching)
                 _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
         }
 
@@ -362,6 +371,42 @@ namespace EdgeRebuild
             await _tabManager.CloseTabAsync(item);
         }
 
+        // ---- 焦点控制 ----
+        private void SetFocusToCurrentTabContent()
+        {
+            if (_tabManager.CurrentTab == null) return;
+
+            var element = _tabManager.CurrentTab.ViewElement;
+            if (element == null) return;
+
+            if (element is WebView2 wv2)
+            {
+                wv2.Focus(FocusState.Programmatic);
+                return;
+            }
+
+            if (element is Control control)
+            {
+                control.Focus(FocusState.Programmatic);
+            }
+        }
+
+        // ---- 复制当前网址 ----
+        private void CopyCurrentUrl()
+        {
+            if (_tabManager.CurrentTab != null)
+            {
+                var url = _tabManager.CurrentTab.CurrentUrl;
+                if (!string.IsNullOrEmpty(url) && url != "about:blank")
+                {
+                    var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                    dp.SetText(url);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+                    NotificationService.ShowToast("已复制", "网址已复制到剪贴板");
+                }
+            }
+        }
+
         // ---- 导航辅助 ----
         private void SwitchToNextTab()
         {
@@ -388,12 +433,6 @@ namespace EdgeRebuild
                 _ = _tabManager.SwitchToTabAsync(tabs[index]);
         }
 
-        private void SetFocusToCurrentTabContent()
-        {
-            if (_tabManager.CurrentTab != null && _tabManager.CurrentTab.ViewElement is Control control)
-                control.Focus(FocusState.Programmatic);
-        }
-
         // ---- 布局更新 ----
         private void OnLayoutUpdated()
         {
@@ -408,7 +447,8 @@ namespace EdgeRebuild
         private void UpdateTabLayout()
         {
             if (!_isLoaded || _tabManager.TabCount == 0 || _isDragging) return;
-            _layoutManager.Recalculate(TabBarBorder.ActualWidth, _tabManager.TabCount);
+            int pinnedCount = _tabManager.GetPinnedTabCount();
+            _layoutManager.Recalculate(TabBarBorder.ActualWidth, _tabManager.TabCount, pinnedCount);
         }
 
         private void SyncTabPanelOrder()
@@ -473,12 +513,13 @@ namespace EdgeRebuild
                 await _tabManager.CurrentTab.NavigateAsync(url);
                 if (!string.IsNullOrEmpty(url) && url != "about:blank")
                     await HistoryManager.AddAsync(_tabManager.CurrentTab.Title ?? url, url);
+                SetFocusToCurrentTabContent();
             }
         }
 
-        private async void ToolbarControl_BackRequested() { if (_tabManager.CurrentTab?.CanGoBack == true) await _tabManager.CurrentTab.GoBackAsync(); }
-        private async void ToolbarControl_ForwardRequested() { if (_tabManager.CurrentTab?.CanGoForward == true) await _tabManager.CurrentTab.GoForwardAsync(); }
-        private async void ToolbarControl_RefreshRequested() { if (_tabManager.CurrentTab != null) await _tabManager.CurrentTab.RefreshAsync(); }
+        private async void ToolbarControl_BackRequested() { if (_tabManager.CurrentTab?.CanGoBack == true) { await _tabManager.CurrentTab.GoBackAsync(); SetFocusToCurrentTabContent(); } }
+        private async void ToolbarControl_ForwardRequested() { if (_tabManager.CurrentTab?.CanGoForward == true) { await _tabManager.CurrentTab.GoForwardAsync(); SetFocusToCurrentTabContent(); } }
+        private async void ToolbarControl_RefreshRequested() { if (_tabManager.CurrentTab != null) { await _tabManager.CurrentTab.RefreshAsync(); SetFocusToCurrentTabContent(); } }
 
         private async void ToolbarControl_AddFavoriteClicked()
         {
@@ -519,13 +560,21 @@ namespace EdgeRebuild
             try
             {
                 if (_tabManager.CurrentTab == null || _tabManager.CurrentTab.Engine == newEngine) return;
+
                 var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
                 if (viewItem == null) return;
+
                 string currentUrl = _tabManager.CurrentTab.CurrentUrl;
-                _tabManager.CurrentTab.Dispose();
+
+                _isEngineSwitching = true;
 
                 await _tabManager.CloseTabAsync(viewItem, false);
+
                 await _tabManager.CreateTabAsync(newEngine, currentUrl);
+
+                SetFocusToCurrentTabContent();
+
+                Debug.WriteLine($"[EngineSwitch] 切换到 {newEngine} 成功");
             }
             catch (Exception ex)
             {
@@ -536,6 +585,10 @@ namespace EdgeRebuild
                     Content = ex.Message,
                     CloseButtonText = "确定"
                 }.ShowAsync();
+            }
+            finally
+            {
+                _isEngineSwitching = false;
             }
         }
 
