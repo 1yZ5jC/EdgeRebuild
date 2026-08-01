@@ -37,15 +37,27 @@ namespace EdgeRebuild.Services
             try
             {
                 string js = await LoadReadabilityJsAsync();
+                Diagnostics.Log($"[阅读模式] Readability.js 加载成功 长度={js.Length} engine={tab.Engine} url={tab.CurrentUrl}");
                 var article = await ExtractAsync(tab, js);
-                if (article == null || string.IsNullOrWhiteSpace(article.Content)) return false;
+                if (article == null)
+                {
+                    Diagnostics.Log("[阅读模式] 提取结果为空（脚本返回 null 或解析失败）");
+                    return false;
+                }
+                if (string.IsNullOrWhiteSpace(article.Content))
+                {
+                    Diagnostics.Log($"[阅读模式] 提取到标题但没有正文 title=\"{article.Title}\"");
+                    return false;
+                }
 
                 string html = BuildReaderHtml(article);
+                Diagnostics.Log($"[阅读模式] 提取成功 title=\"{article.Title}\" 正文长度={article.Content.Length}，切换阅读视图");
                 await tab.NavigateToHtmlAsync(html);
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Diagnostics.Log($"[阅读模式] 异常: {ex}");
                 return false;
             }
         }
@@ -80,6 +92,10 @@ namespace EdgeRebuild.Services
 })()";
 
             string result = await tab.ExecuteScriptAsync(readabilityJs + "\n" + extractScript);
+            if (string.IsNullOrEmpty(result))
+                Diagnostics.Log("[阅读模式] ExecuteScriptAsync 返回空（脚本未执行，可能被引擎拒绝或页面不可注入）");
+            else
+                Diagnostics.Log($"[阅读模式] 脚本原始返回（截断200字符）: {result.Substring(0, Math.Min(200, result.Length))}");
             return ParseResult(result);
         }
 
@@ -90,17 +106,22 @@ namespace EdgeRebuild.Services
             string json = raw.Trim();
             if (json.StartsWith("\""))
             {
-                try { json = JsonSerializer.Deserialize<string>(json); }
-                catch { return null; }
+                try { json = JsonSerializer.Deserialize(json, AppJsonContext.Default.String); }
+                catch (Exception ex)
+                {
+                    Diagnostics.Log($"[阅读模式] 外层字符串解析失败 原始长度={raw.Length}: {ex.Message}");
+                    return null;
+                }
             }
             if (string.IsNullOrEmpty(json)) return null;
 
             try
             {
-                return JsonSerializer.Deserialize<ArticleResult>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                return JsonSerializer.Deserialize(json, AppJsonContext.Default.ArticleResult);
             }
-            catch
+            catch (Exception ex)
             {
+                Diagnostics.Log($"[阅读模式] 文章 JSON 解析失败 长度={json.Length}: {ex.Message}");
                 return null;
             }
         }

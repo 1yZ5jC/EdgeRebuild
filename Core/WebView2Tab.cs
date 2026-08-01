@@ -272,9 +272,23 @@ namespace EdgeRebuild.Core
             var target = e.ContextMenuTarget;
             if (target != null)
             {
-                if (target.Kind == CoreWebView2ContextMenuTargetKind.Image) { args.MenuType = ContextMenuType.Image; args.ImageUrl = target.SourceUri; }
-                else if (!string.IsNullOrEmpty(target.LinkUri)) { args.MenuType = ContextMenuType.Link; args.LinkUrl = target.LinkUri; }
-                args.HasSelection = target.HasSelection; args.SelectionText = target.SelectionText ?? ""; args.IsEditable = target.IsEditable;
+                try
+                {
+                    // 已知 WebView2 问题：ContextMenuTarget 的属性（Kind/LinkUri/
+                    // SelectionText 等）在页面导航/目标失效时会抛
+                    // InvalidOperationException (0x8000000E)，整体防护，失败降级为普通菜单
+                    if (target.Kind == CoreWebView2ContextMenuTargetKind.Image) { args.MenuType = ContextMenuType.Image; args.ImageUrl = target.SourceUri; }
+                    else if (!string.IsNullOrEmpty(target.LinkUri)) { args.MenuType = ContextMenuType.Link; args.LinkUrl = target.LinkUri; }
+                    args.HasSelection = target.HasSelection;
+                    try { args.SelectionText = target.SelectionText ?? ""; } catch { args.SelectionText = ""; }
+                    args.IsEditable = target.IsEditable;
+                }
+                catch
+                {
+                    args.HasSelection = false;
+                    args.SelectionText = "";
+                    args.IsEditable = false;
+                }
             }
             ContextMenuRequested?.Invoke(args);
             e.Handled = true;
