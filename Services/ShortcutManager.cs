@@ -70,37 +70,52 @@ namespace EdgeRebuild.Services
                 _shortcuts.Add(combined, action);
         }
 
+        private static int _enableCount;
+
         public static void Enable()
         {
-            Window.Current.CoreWindow.KeyDown += OnKeyDown;
+            _enableCount++;
+            if (_enableCount == 1)
+                Window.Current.CoreWindow.KeyDown += OnKeyDown;
         }
 
         public static void Disable()
         {
-            Window.Current.CoreWindow.KeyDown -= OnKeyDown;
+            _enableCount = Math.Max(0, _enableCount - 1);
+            if (_enableCount == 0)
+                Window.Current.CoreWindow.KeyDown -= OnKeyDown;
         }
 
         private static void OnKeyDown(CoreWindow sender, KeyEventArgs args)
         {
+            args.Handled = TryHandle(args.VirtualKey);
+        }
+
+        /// <summary>
+        /// 处理一个按键：匹配修饰键+快捷键表并触发事件，返回是否已处理。
+        /// 主窗口由 CoreWindow.KeyDown 调用；AppWindow 子窗口的键盘输入不经过
+        /// CoreWindow，由各窗口 XAML 根的 KeyDown 调用本方法。
+        /// </summary>
+        public static bool TryHandle(VirtualKey key)
+        {
             var modifiers = GetModifiers();
-            var key = args.VirtualKey;
 
             // 数字键 Ctrl+1~9 单独处理
             if (modifiers.HasFlag(VirtualKeyModifiers.Control) && key >= VirtualKey.Number1 && key <= VirtualKey.Number9)
             {
-                int index = key - VirtualKey.Number1;
                 if (_shortcuts.TryGetValue((VirtualKeyModifiers.Control, key), out var action))
                     action?.Invoke();
-                args.Handled = true;
-                return;
+                return true;
             }
 
             var combined = (modifiers, key);
             if (_shortcuts.TryGetValue(combined, out var matchedAction))
             {
                 matchedAction?.Invoke();
-                args.Handled = true;
+                return true;
             }
+
+            return false;
         }
 
         private static VirtualKeyModifiers GetModifiers()

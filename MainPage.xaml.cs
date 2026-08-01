@@ -13,10 +13,13 @@ using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
+using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
+using Windows.System;
 
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
 
@@ -24,15 +27,13 @@ namespace EdgeRebuild
 {
     public sealed partial class MainPage : Page
     {
-        public static MainPage Instance { get; private set; }
-
         // ---- 字段 ----
         private bool _isLoaded;
         private string _pendingUrl;
+        private EngineType? _pendingEngine;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
         private double _zoomFactor = 1.0;
         private bool _isEngineSwitching = false;
-
         // ---- 管理器 ----
         private TabManager _tabManager;
         private LayoutManager _layoutManager;
@@ -43,10 +44,22 @@ namespace EdgeRebuild
 
         // ---- 拖拽状态 ----
         private bool _isDragging;
+        private bool _isNewWindow;
+
+        // ---- 阅读模式：tab -> 原始 URL ----
+        private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
+
+        // ---- 辅助窗口引用（AppWindow；主窗口为 null）----
+        private AppWindow _appWindow;
+
+        // ---- 快捷键处理器引用（用于跨窗口守卫和反注册） ----
+        private Action _shortcutNewTab, _shortcutCloseTab, _shortcutReopenTab, _shortcutFocusAddressBar,
+            _shortcutRefresh, _shortcutAddFavorite, _shortcutShowHistory, _shortcutShowDownloads,
+            _shortcutFind, _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab;
+        private Action<int> _shortcutSwitchToTab;
 
         public MainPage()
         {
-            Instance = this;
             this.InitializeComponent();
             this.Loaded += OnLoaded;
             this.Unloaded += OnUnloaded;
@@ -60,9 +73,11 @@ namespace EdgeRebuild
 
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
+            if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnUnloaded 触发（窗口被关闭）");
             CleanupStaticEvents();
+            _ = SessionManager.FlushAsync();
             _downloadCoordinator?.CleanupAll();
-            Window.Current.SizeChanged -= OnWindowSizeChanged;
+            if (this.XamlRoot != null) this.XamlRoot.Changed -= OnXamlRootChanged;
             ShortcutManager.Disable();
             ThemeManager.ThemeChanged -= OnThemeChanged;
             _layoutManager?.Dispose();
@@ -77,11 +92,26 @@ namespace EdgeRebuild
             DownloadManager.RetryDownloadRequested -= OnRetryDownloadRequested;
             EdgeHtmlTab.DownloadRequested -= OnEdgeHtmlDownloadRequested;
             SettingsManager.SettingChanged -= OnSettingChanged;
+
+            ShortcutManager.OnNewTab -= _shortcutNewTab;
+            ShortcutManager.OnCloseTab -= _shortcutCloseTab;
+            ShortcutManager.OnReopenTab -= _shortcutReopenTab;
+            ShortcutManager.OnFocusAddressBar -= _shortcutFocusAddressBar;
+            ShortcutManager.OnRefresh -= _shortcutRefresh;
+            ShortcutManager.OnAddFavorite -= _shortcutAddFavorite;
+            ShortcutManager.OnShowHistory -= _shortcutShowHistory;
+            ShortcutManager.OnShowDownloads -= _shortcutShowDownloads;
+            ShortcutManager.OnFind -= _shortcutFind;
+            ShortcutManager.OnPrint -= _shortcutPrint;
+            ShortcutManager.OnNextTab -= _shortcutNextTab;
+            ShortcutManager.OnPreviousTab -= _shortcutPreviousTab;
+            ShortcutManager.OnSwitchToTab -= _shortcutSwitchToTab;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
+            if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 开始");
 
             try
             {
@@ -103,6 +133,7 @@ namespace EdgeRebuild
                 _tabManager.TabCreated += OnTabManagerTabCreated;
                 _tabManager.TabChanged += OnTabManagerTabChanged;
                 _tabManager.TabCountChanged += OnTabManagerTabCountChanged;
+                _tabManager.TabClosed += OnTabManagerTabClosedCleanup;
                 _tabManager.TabUrlChanged += OnTabManagerTabUrlChanged;
                 _tabManager.TabCanGoBackChanged += OnTabManagerCanGoBackChanged;
                 _tabManager.TabCanGoForwardChanged += OnTabManagerCanGoForwardChanged;
@@ -114,8 +145,8 @@ namespace EdgeRebuild
                 _dragManager = new TabDragManager(_tabManager, TabBarPanel, DragCanvas, _layoutManager);
                 _dragManager.SortRequested += OnDragSortRequested;
                 _dragManager.DetachRequested += OnDragDetachRequested;
-                _dragManager.DragStarted += () => _isDragging = true;
-                _dragManager.DragCompleted += () => { _isDragging = false; UpdateTabLayout(); };
+                _dragManager.DragStarted += () => { _isDragging = true; Services.Diagnostics.Log("[拖拽] DragStarted 事件"); };
+                _dragManager.DragCompleted += () => { _isDragging = false; UpdateTabLayout(); Services.Diagnostics.Log("[拖拽] DragCompleted 事件"); };
                 _dragManager.TabRightTapped += (border, viewItem) =>
                 {
                     _contextMenuManager?.ShowTabRightClickMenu(border, viewItem);
@@ -147,7 +178,7 @@ namespace EdgeRebuild
                     ClearBrowsingDataAsync,
                     BookmarkAllTabs,
                     ShowAboutDialog,
-                    () => { _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank"); },
+                    async () => { if (!await WindowManager.OpenNewWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开新窗口", "创建窗口失败"); },
                     AdjustZoom,
                     ResetZoom,
                     FindOnPage,
@@ -157,7 +188,9 @@ namespace EdgeRebuild
                     async () => await _tabManager.CreateTabAsync(_defaultEngine, "about:blank"),
                     () => _tabManager.ClearClosedTabs(),
                     () => _tabManager.TryReopenClosedTab(out _, out _, out _),
-                    CopyCurrentUrl
+                    CopyCurrentUrl,
+                    () => _tabManager.CurrentTab != null && _readerModeUrls.ContainsKey(_tabManager.CurrentTab),
+                    ToggleReaderMode
                 );
 
                 // ---- 为所有标签附加拖拽事件 ----
@@ -168,11 +201,28 @@ namespace EdgeRebuild
                 _tabManager.TabCreated += viewItem => _dragManager.AttachEvents(viewItem);
 
                 // ---- 窗口设置 ----
-                CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
-                Window.Current.SetTitleBar(TitleBarDragArea);
-                ThemeManager.UpdateTitleBarColors();
+                if (_appWindow != null)
+                {
+                    // 子窗口（AppWindow）：恢复自定义标题栏外观（扩展标题栏）。
+                    // 注意：UWP AppWindow 无 SetTitleBar/SetDragRectangles，
+                    // 系统把顶部条带设为默认拖拽区并吞掉该区域所有指针输入，
+                    // 因此子窗口标签栏内的按钮点击无效——先隐藏新建标签按钮；
+                    // 标签切换/关闭请用快捷键（Ctrl+Tab / Ctrl+W）。
+                    try { _appWindow.Title = "EdgeRebuild"; } catch { }
+                    _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
+                    ApplyAppWindowTitleBarColors();
+                    NewTabButton.Visibility = Visibility.Collapsed;
+                    this.KeyDown += OnWindowKeyDown;
+                }
+                else
+                {
+                    // 主窗口：扩展标题栏 + 自定义拖拽区域
+                    CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
+                    Window.Current.SetTitleBar(TitleBarDragArea);
+                    ThemeManager.UpdateTitleBarColors();
+                }
 
-                Window.Current.SizeChanged += OnWindowSizeChanged;
+                this.XamlRoot.Changed += OnXamlRootChanged;
 
                 ThemeManager.ThemeChanged += OnThemeChanged;
                 ApplyTheme();
@@ -182,7 +232,8 @@ namespace EdgeRebuild
                 _downloadCoordinator.UpdateAskSetting(askSetting == "True" || askSetting == "true");
 
                 string engineSetting = await SettingsManager.GetAsync("DefaultEngine");
-                _defaultEngine = (engineSetting == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
+                if (_pendingEngine == null)
+                    _defaultEngine = (engineSetting == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
 
                 string downloadPath = await SettingsManager.GetAsync("DownloadFolder");
                 if (!string.IsNullOrEmpty(downloadPath))
@@ -199,25 +250,47 @@ namespace EdgeRebuild
                 EdgeHtmlTab.DownloadRequested += OnEdgeHtmlDownloadRequested;
                 SettingsManager.SettingChanged += OnSettingChanged;
 
-                // ---- 创建首页标签 ----
+                // ---- 创建首页标签 / 恢复会话 ----
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 if (_tabManager.TabCount == 0)
                 {
                     if (!string.IsNullOrEmpty(_pendingUrl))
+                    {
                         await _tabManager.CreateTabAsync(_defaultEngine, _pendingUrl);
+                    }
                     else
-                        await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);
+                    {
+                        string restoreSetting = await SettingsManager.GetAsync("RestoreSession") ?? "True";
+                        bool restoreSession = (restoreSetting == "True" || restoreSetting == "true");
+                        var sessionTabs = await SessionManager.LoadTabsAsync();
+
+                        if (restoreSession && sessionTabs.Count > 0)
+                        {
+                            foreach (var rec in sessionTabs)
+                            {
+                                if (string.IsNullOrEmpty(rec.Url)) continue;
+                                EngineType engine = (rec.Engine == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
+                                await _tabManager.CreateTabAsync(engine, rec.Url, rec.IsPinned);
+                            }
+                        }
+                        else
+                        {
+                            await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);
+                        }
+                    }
                 }
 
                 // ---- 快捷键 ----
                 ShortcutManager.Enable();
-                ShortcutManager.OnNewTab += async () =>
+
+                _shortcutNewTab = () =>
                 {
-                    await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
-                    toolbarControl.FocusAddressBarAndClear();
+                    if (!IsFocusedWindow()) return;
+                    _ = CreateNewTabAndFocusAsync();
                 };
-                ShortcutManager.OnCloseTab += () =>
+                _shortcutCloseTab = () =>
                 {
+                    if (!IsFocusedWindow()) return;
                     if (_tabManager.CurrentTab != null)
                     {
                         var tabItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
@@ -225,52 +298,95 @@ namespace EdgeRebuild
                             _ = _tabManager.CloseTabAsync(tabItem);
                     }
                 };
-                ShortcutManager.OnReopenTab += async () =>
+                _shortcutReopenTab = async () =>
                 {
+                    if (!IsFocusedWindow()) return;
                     if (_tabManager.TryReopenClosedTab(out EngineType engine, out string url, out _))
                         await _tabManager.CreateTabAsync(engine, url);
                 };
-                ShortcutManager.OnFocusAddressBar += () => toolbarControl.FocusAddressBarAndClear();
-                ShortcutManager.OnRefresh += () => _tabManager.CurrentTab?.RefreshAsync();
-                ShortcutManager.OnAddFavorite += () => ToolbarControl_AddFavoriteClicked();
-                ShortcutManager.OnShowHistory += () =>
+                _shortcutFocusAddressBar = () =>
                 {
+                    if (!IsFocusedWindow()) return;
+                    toolbarControl.FocusAddressBarAndClear();
+                };
+                _shortcutRefresh = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    _ = _tabManager.CurrentTab?.RefreshAsync();
+                };
+                _shortcutAddFavorite = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    ToolbarControl_AddFavoriteClicked();
+                };
+                _shortcutShowHistory = () =>
+                {
+                    if (!IsFocusedWindow()) return;
                     HubSplitView.IsPaneOpen = true;
                     hubPane.ShowHistory();
                 };
-                ShortcutManager.OnShowDownloads += () =>
+                _shortcutShowDownloads = () =>
                 {
+                    if (!IsFocusedWindow()) return;
                     HubSplitView.IsPaneOpen = true;
                     hubPane.ShowDownloads();
                 };
-                ShortcutManager.OnFind += () => FindOnPage();
-                ShortcutManager.OnPrint += () => _ = PrintCurrentPageAsync();
-                ShortcutManager.OnNextTab += () =>
+                _shortcutFind = () =>
                 {
+                    if (!IsFocusedWindow()) return;
+                    FindOnPage();
+                };
+                _shortcutPrint = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    _ = PrintCurrentPageAsync();
+                };
+                _shortcutNextTab = () =>
+                {
+                    if (!IsFocusedWindow()) return;
                     SwitchToNextTab();
                     SetFocusToCurrentTabContent();
                 };
-                ShortcutManager.OnPreviousTab += () =>
+                _shortcutPreviousTab = () =>
                 {
+                    if (!IsFocusedWindow()) return;
                     SwitchToPreviousTab();
                     SetFocusToCurrentTabContent();
                 };
-                ShortcutManager.OnSwitchToTab += (index) =>
+                _shortcutSwitchToTab = (index) =>
                 {
+                    if (!IsFocusedWindow()) return;
                     SwitchToTabByIndex(index);
                     SetFocusToCurrentTabContent();
                 };
+
+                ShortcutManager.OnNewTab += _shortcutNewTab;
+                ShortcutManager.OnCloseTab += _shortcutCloseTab;
+                ShortcutManager.OnReopenTab += _shortcutReopenTab;
+                ShortcutManager.OnFocusAddressBar += _shortcutFocusAddressBar;
+                ShortcutManager.OnRefresh += _shortcutRefresh;
+                ShortcutManager.OnAddFavorite += _shortcutAddFavorite;
+                ShortcutManager.OnShowHistory += _shortcutShowHistory;
+                ShortcutManager.OnShowDownloads += _shortcutShowDownloads;
+                ShortcutManager.OnFind += _shortcutFind;
+                ShortcutManager.OnPrint += _shortcutPrint;
+                ShortcutManager.OnNextTab += _shortcutNextTab;
+                ShortcutManager.OnPreviousTab += _shortcutPreviousTab;
+                ShortcutManager.OnSwitchToTab += _shortcutSwitchToTab;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[OnLoaded] 异常: {ex}");
+                if (_isNewWindow) Services.Diagnostics.Log($"[窗口] OnLoaded 异常: {ex}");
                 await new ContentDialog
                 {
                     Title = "界面初始化失败",
                     Content = ex.ToString(),
-                    CloseButtonText = "确定"
+                    CloseButtonText = "确定",
+                    XamlRoot = this.XamlRoot
                 }.ShowAsync();
             }
+            if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 完成");
         }
 
         // ---- TabManager 事件处理 ----
@@ -293,11 +409,21 @@ namespace EdgeRebuild
             UpdateStarButton();
 
             bool isSecure = tab.CurrentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-            string host = "";
-            try { host = new Uri(tab.CurrentUrl).Host; } catch { }
+            string host = GetHostName(tab.CurrentUrl);
             toolbarControl.UpdateSiteInfo(isSecure, host);
 
+            if (_appWindow != null)
+            {
+                try { _appWindow.Title = tab.Title ?? "新标签页"; } catch { }
+            }
+
             SetFocusToCurrentTabContent();
+        }
+
+        private static string GetHostName(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return "";
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri.Host : "";
         }
 
         private void OnTabManagerTabCountChanged(int count)
@@ -315,8 +441,7 @@ namespace EdgeRebuild
                 UpdateStarButton();
 
                 bool isSecure = url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-                string host = "";
-                try { host = new Uri(url).Host; } catch { }
+                string host = GetHostName(url);
                 toolbarControl.UpdateSiteInfo(isSecure, host);
             }
         }
@@ -337,6 +462,8 @@ namespace EdgeRebuild
         {
             _tabManager.UpdateSuspendedState(tab, suspended);
         }
+
+        private void OnTabManagerTabClosedCleanup(TabViewItem viewItem) => _readerModeUrls.Remove(viewItem.Tab);
 
         private void OnTabManagerNewWindowRequested(string url)
         {
@@ -363,12 +490,23 @@ namespace EdgeRebuild
 
         private async void OnDragDetachRequested(TabViewItem item)
         {
+            // 保留原标签的 URL（空白标签直接传 about:blank，与应用新建标签约定一致，不替换为搜索引擎）
             string url = item.Tab.CurrentUrl;
             EngineType engine = item.Tab.Engine;
-            if (string.IsNullOrWhiteSpace(url) || url == "about:blank")
-                url = "https://www.bing.com";
-            await _tabManager.CreateTabAsync(engine, url);
-            await _tabManager.CloseTabAsync(item);
+
+            Services.Diagnostics.Log($"[拖拽] 脱离请求 url={url} engine={engine}");
+            bool shown = await WindowManager.OpenNewWindowAsync(engine, url);
+            Services.Diagnostics.Log($"[拖拽] 新窗口显示结果={shown}");
+            if (shown)
+            {
+                await _tabManager.CloseTabAsync(item);
+                Services.Diagnostics.Log($"[拖拽] 原窗口标签已关闭，剩余标签数={_tabManager.TabCount}");
+            }
+            else
+            {
+                NotificationService.ShowToast("无法打开新窗口", "拖出标签页失败");
+                Services.Diagnostics.Log("[拖拽] 新窗口打开失败，标签保留在原窗口");
+            }
         }
 
         // ---- 焦点控制 ----
@@ -388,6 +526,37 @@ namespace EdgeRebuild
             if (element is Control control)
             {
                 control.Focus(FocusState.Programmatic);
+            }
+        }
+
+        // ---- 阅读模式 ----
+        private async void ToggleReaderMode()
+        {
+            var tab = _tabManager.CurrentTab;
+            if (tab == null) return;
+
+            if (_readerModeUrls.TryGetValue(tab, out string originalUrl))
+            {
+                _readerModeUrls.Remove(tab);
+                await tab.NavigateAsync(originalUrl);
+                return;
+            }
+
+            string currentUrl = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(currentUrl) || currentUrl == "about:blank")
+            {
+                NotificationService.ShowToast("无法使用阅读模式", "当前页面没有可阅读的内容");
+                return;
+            }
+
+            bool entered = await ReaderService.EnterReaderModeAsync(tab);
+            if (entered)
+            {
+                _readerModeUrls[tab] = currentUrl;
+            }
+            else
+            {
+                NotificationService.ShowToast("无法使用阅读模式", "此页面没有可提取的正文内容");
             }
         }
 
@@ -461,10 +630,53 @@ namespace EdgeRebuild
             }
         }
 
-        private void OnWindowSizeChanged(object sender, WindowSizeChangedEventArgs e)
+        private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
         {
             if (!_isDragging)
                 UpdateTabLayout();
+        }
+
+        // AppWindow 多窗口共享主 UI 线程，Window.Current 恒定指向主窗口，
+        // 需用 XamlRoot 判断快捷键事件是否属于本窗口（是否有焦点元素）。
+        private bool IsFocusedWindow()
+        {
+            try { return FocusManager.GetFocusedElement(this.XamlRoot) != null; }
+            catch { return false; }
+        }
+
+        // ---- 子窗口（AppWindow）标题栏配色 ----
+        // 仅用于给系统标题栏按钮（最小化/最大化/关闭）和条带着色；
+        // 拖拽区域由系统管理（无 SetDragRectangles），交互控件不能放在条带内。
+        private void ApplyAppWindowTitleBarColors()
+        {
+            if (_appWindow == null) return;
+            bool isDark = ThemeManager.IsDarkTheme;
+            var transparent = Color.FromArgb(0, 0, 0, 0);
+            var fg = isDark
+                ? Color.FromArgb(255, 255, 255, 255)
+                : Color.FromArgb(255, 0, 0, 0);
+
+            _appWindow.TitleBar.ForegroundColor = fg;
+            _appWindow.TitleBar.BackgroundColor = transparent;
+            _appWindow.TitleBar.InactiveBackgroundColor = transparent;
+            _appWindow.TitleBar.ButtonForegroundColor = fg;
+            _appWindow.TitleBar.ButtonBackgroundColor = transparent;
+            _appWindow.TitleBar.ButtonInactiveBackgroundColor = transparent;
+            _appWindow.TitleBar.ButtonHoverBackgroundColor = isDark
+                ? Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0x30, 0x00, 0x00, 0x00);
+            _appWindow.TitleBar.ButtonPressedBackgroundColor = isDark
+                ? Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0x40, 0x00, 0x00, 0x00);
+        }
+
+        // ---- 子窗口（AppWindow）键盘快捷键 ----
+        // AppWindow 的键盘输入不经过 CoreWindow（主窗口钩子收不到），
+        // 键盘事件以 XAML 路由事件形式送达焦点所在的窗口，在页面根上处理。
+        private void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (ShortcutManager.TryHandle(e.Key))
+                e.Handled = true;
         }
 
         private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -478,7 +690,10 @@ namespace EdgeRebuild
         private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
 
         // ---- 主题 ----
-        private void OnThemeChanged(SkinManager.SkinColors colors, bool isDark) => ApplyTheme();
+        private void OnThemeChanged(SkinManager.SkinColors colors, bool isDark)
+        {
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => ApplyTheme());
+        }
 
         private void ApplyTheme()
         {
@@ -502,6 +717,7 @@ namespace EdgeRebuild
             _tabManager?.UpdateTheme(colors);
 
             ThemeManager.UpdateTitleBarColors();
+            ApplyAppWindowTitleBarColors();
             UpdateTabLayout();
         }
 
@@ -583,7 +799,8 @@ namespace EdgeRebuild
                 {
                     Title = "引擎切换失败",
                     Content = ex.Message,
-                    CloseButtonText = "确定"
+                    CloseButtonText = "确定",
+                    XamlRoot = this.XamlRoot
                 }.ShowAsync();
             }
             finally
@@ -644,7 +861,7 @@ namespace EdgeRebuild
 
         private async void OnEdgeHtmlDownloadRequested(string url)
         {
-            await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url);
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url));
         }
 
         // ---- 其他功能方法 ----
@@ -684,7 +901,8 @@ namespace EdgeRebuild
                                 IsTextSelectionEnabled = true
                             }
                         },
-                        PrimaryButtonText = "关闭"
+                        PrimaryButtonText = "关闭",
+                        XamlRoot = this.XamlRoot
                     }.ShowAsync();
                 }
                 catch (Exception ex)
@@ -693,7 +911,8 @@ namespace EdgeRebuild
                     {
                         Title = "错误",
                         Content = $"获取源代码失败：{ex.Message}",
-                        CloseButtonText = "确定"
+                        CloseButtonText = "确定",
+                        XamlRoot = this.XamlRoot
                     }.ShowAsync();
                 }
             }
@@ -748,7 +967,8 @@ namespace EdgeRebuild
             {
                 Title = "完成",
                 Content = $"已将 {count} 个标签页加入收藏。",
-                CloseButtonText = "确定"
+                CloseButtonText = "确定",
+                XamlRoot = this.XamlRoot
             }.ShowAsync();
         }
 
@@ -763,7 +983,8 @@ namespace EdgeRebuild
             {
                 Title = "已清除",
                 Content = "浏览数据已清除。",
-                CloseButtonText = "确定"
+                CloseButtonText = "确定",
+                XamlRoot = this.XamlRoot
             }.ShowAsync();
         }
 
@@ -784,7 +1005,8 @@ namespace EdgeRebuild
             {
                 Title = "Edge Rebuild",
                 Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。",
-                CloseButtonText = "确定"
+                CloseButtonText = "确定",
+                XamlRoot = this.XamlRoot
             }.ShowAsync();
         }
 
@@ -794,7 +1016,8 @@ namespace EdgeRebuild
             {
                 Title = "即将推出",
                 Content = $"功能“{feature}”尚未实现。",
-                CloseButtonText = "确定"
+                CloseButtonText = "确定",
+                XamlRoot = this.XamlRoot
             }.ShowAsync();
         }
 
@@ -812,8 +1035,26 @@ namespace EdgeRebuild
         protected override void OnNavigatedTo(NavigationEventArgs e)
         {
             base.OnNavigatedTo(e);
-            if (e.Parameter is string url)
+            if (e.Parameter is NewWindowArgs args)
+            {
+                _pendingUrl = args.Url;
+                _pendingEngine = args.Engine;
+                _defaultEngine = args.Engine;
+                _appWindow = args.AppWindow;
+                _isNewWindow = true;
+                string windowId = _appWindow != null ? "AppWindow" : "main";
+                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window={windowId} url={args.Url}");
+            }
+            else if (e.Parameter is string url)
+            {
                 _pendingUrl = url;
+            }
+        }
+
+        private async Task CreateNewTabAndFocusAsync()
+        {
+            await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
+            toolbarControl.FocusAddressBarAndClear();
         }
     }
 }

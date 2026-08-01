@@ -37,13 +37,16 @@ namespace EdgeRebuild.Services
         public async Task HandleEdgeHtmlDownloadRequested(string url)
         {
             string defaultFileName = "download";
-            try
+            if (!string.IsNullOrWhiteSpace(url))
             {
-                string name = Path.GetFileName(new Uri(url).AbsolutePath);
-                if (!string.IsNullOrWhiteSpace(name))
-                    defaultFileName = name;
+                try
+                {
+                    string name = Path.GetFileName(new Uri(url).AbsolutePath);
+                    if (!string.IsNullOrWhiteSpace(name))
+                        defaultFileName = name;
+                }
+                catch { }
             }
-            catch { }
 
             if (_askBeforeDownload)
             {
@@ -51,6 +54,7 @@ namespace EdgeRebuild.Services
                 try { defaultFolder = await DownloadManager.GetDownloadFolderAsync(); } catch { }
 
                 var dialog = new DownloadDialog(defaultFileName, url, defaultFolder, null);
+                dialog.XamlRoot = _rootPanel?.XamlRoot;
                 var result = await dialog.ShowAsync();
 
                 if (result != ContentDialogResult.Primary)
@@ -58,7 +62,7 @@ namespace EdgeRebuild.Services
 
                 if (!DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
                 {
-                    await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定" }.ShowAsync();
+                    await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定", XamlRoot = _rootPanel?.XamlRoot }.ShowAsync();
                     return;
                 }
 
@@ -92,12 +96,15 @@ namespace EdgeRebuild.Services
         {
             StorageFolder folder = await DownloadManager.GetDownloadFolderAsync();
             string fileName = "download";
-            try
+            if (!string.IsNullOrWhiteSpace(url))
             {
-                string name = Path.GetFileName(new Uri(url).AbsolutePath);
-                if (!string.IsNullOrWhiteSpace(name)) fileName = name;
+                try
+                {
+                    string name = Path.GetFileName(new Uri(url).AbsolutePath);
+                    if (!string.IsNullOrWhiteSpace(name)) fileName = name;
+                }
+                catch { }
             }
-            catch { }
 
             string targetPath = Path.Combine(folder.Path, fileName);
             if (File.Exists(targetPath))

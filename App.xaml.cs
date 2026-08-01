@@ -1,8 +1,7 @@
 ﻿using EdgeRebuild.Core;
 using EdgeRebuild.Services;
 using System;
-using System.Diagnostics;
-using System.IO;
+using System.Threading;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 using Windows.Storage;
@@ -21,10 +20,9 @@ namespace EdgeRebuild
 
             this.UnhandledException += (s, e) =>
             {
-                string logPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "crash.log");
-                string log = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} | Unhandled Exception: {e.Exception}\n";
-                File.AppendAllText(logPath, log);
-                Debug.WriteLine($"[FATAL] {log}");
+                Services.Diagnostics.Log(
+                    $"Unhandled Exception (线程 {Environment.CurrentManagedThreadId}): {e.Exception}\n" +
+                    $"当前调用栈: {Environment.StackTrace}");
                 // 不再强制标记 Handled，让严重异常正常传播
             };
         }
@@ -80,6 +78,7 @@ namespace EdgeRebuild
             var deferral = e.SuspendingOperation.GetDeferral();
             try
             {
+                await SessionManager.FlushAsync();
                 await DownloadManager.SaveAllDownloadsAsync();
             }
             catch { }

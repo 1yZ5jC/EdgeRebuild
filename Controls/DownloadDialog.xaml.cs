@@ -111,7 +111,8 @@ namespace EdgeRebuild.Controls
                 {
                     Title = "文件名无效",
                     Content = error,
-                    CloseButtonText = "确定"
+                    CloseButtonText = "确定",
+                    XamlRoot = this.XamlRoot
                 }.ShowAsync();
             }
         }

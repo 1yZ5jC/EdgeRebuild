@@ -77,10 +77,9 @@ namespace EdgeRebuild.Core
             NewWindowRequested?.Invoke(e.Uri);
         }
 
-        private async void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
+        private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
-            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
-            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(true));
+            LoadingChanged?.Invoke(true);
         }
 
         public async Task SuspendAsync()
@@ -149,6 +148,7 @@ namespace EdgeRebuild.Core
                         op.Uri,
                         defaultFolder,
                         op.TotalBytesToReceive > 0 ? (long?)op.TotalBytesToReceive : null);
+                    dialog.XamlRoot = ViewElement?.XamlRoot;
 
                     var result = await dialog.ShowAsync();
                     if (result != ContentDialogResult.Primary)
@@ -160,7 +160,7 @@ namespace EdgeRebuild.Core
                     if (!Controls.DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
                     {
                         e.Cancel = true;
-                        await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定" }.ShowAsync();
+                        await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定", XamlRoot = ViewElement?.XamlRoot }.ShowAsync();
                         return;
                     }
 
@@ -206,11 +206,10 @@ namespace EdgeRebuild.Core
             finally { deferral.Complete(); }
         }
 
-        private async void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
+        private void OnNavigationCompleted(WebView2 sender, CoreWebView2NavigationCompletedEventArgs e)
         {
             if (_isSuspended || _disposed) return;
-            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
-            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(false));
+            LoadingChanged?.Invoke(false);
 
             if (e.IsSuccess)
             {
@@ -311,6 +310,20 @@ namespace EdgeRebuild.Core
                 System.Diagnostics.Debug.WriteLine($"WebView2 导航异常: {ex.Message}");
                 LoadingChanged?.Invoke(false);
                 UrlChanged?.Invoke($"error://{url}?error={Uri.EscapeDataString(ex.Message)}");
+            }
+        }
+
+        public async Task NavigateToHtmlAsync(string html)
+        {
+            if (_disposed || string.IsNullOrEmpty(html)) return;
+            try
+            {
+                await EnsureInitializedAsync();
+                _webView.CoreWebView2?.NavigateToString(html);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"WebView2 NavigateToString 异常: {ex.Message}");
             }
         }
 

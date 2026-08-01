@@ -130,9 +130,20 @@ namespace EdgeRebuild.Core
             double systemOverlay = 100;
             try
             {
-                var bounds = Windows.UI.ViewManagement.ApplicationView.GetForCurrentView().VisibleBounds;
-                var windowBounds = Windows.UI.Xaml.Window.Current.Bounds;
-                systemOverlay = windowBounds.Width - bounds.Width;
+                var xamlRoot = _container.XamlRoot;
+                if (xamlRoot != null)
+                {
+                    // AppWindow 多窗口共享主 UI 线程：Window.Current / GetForCurrentView
+                    // 只反映主窗口状态，改用 XamlRoot 获取本窗口尺寸
+                    systemOverlay = xamlRoot.Size.Width
+                        - Windows.UI.ViewManagement.ApplicationView.GetForCurrentView().VisibleBounds.Width;
+                }
+                else
+                {
+                    var bounds = Windows.UI.ViewManagement.ApplicationView.GetForCurrentView().VisibleBounds;
+                    var windowBounds = Windows.UI.Xaml.Window.Current.Bounds;
+                    systemOverlay = windowBounds.Width - bounds.Width;
+                }
             }
             catch { }
 

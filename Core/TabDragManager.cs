@@ -22,12 +22,12 @@ namespace EdgeRebuild.Core
         private Border _dragGhost;
         private Point _dragOffset;
         private Point _dragStartCanvasPoint;
-        private Point _dragStartScreenPoint;
         private Point _tabBarPanelOffset;
         private bool _isDragging;
         private bool _hasMoved;
         private bool _isDetaching;
         private DateTime _lastReorderTime;
+        private DateTime _lastMoveLogTime;
         private const int ReorderThrottleMs = 200;
         private const double DetachThreshold = 20;
 
@@ -114,7 +114,6 @@ namespace EdgeRebuild.Core
             _isDragging = false;
             _isDetaching = false;
             _dragStartCanvasPoint = e.GetCurrentPoint(_dragCanvas).Position;
-            _dragStartScreenPoint = CoreWindow.GetForCurrentThread().PointerPosition;
 
             var colors = ThemeManager.Colors;
             _dragGhost = new Border
@@ -153,6 +152,8 @@ namespace EdgeRebuild.Core
             e.Handled = true;
 
             DragStarted?.Invoke();
+            Services.Diagnostics.Log($"[拖拽] 拖拽开始 tab=\"{_dragItem.Tab.Title}\" index={_tabManager.Tabs.ToList().IndexOf(_dragItem)} tabCount={_tabManager.TabCount} " +
+                $"barOffset=({_tabBarPanelOffset.X:0},{_tabBarPanelOffset.Y:0}) barSize=({_tabBarPanel.ActualWidth:0}x{_tabBarPanel.ActualHeight:0})");
         }
 
         private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
@@ -166,10 +167,17 @@ namespace EdgeRebuild.Core
             {
                 _hasMoved = true;
                 _isDragging = true;
+                Services.Diagnostics.Log($"[拖拽] 超过阈值开始拖动 pos=({posInCanvas.X:0},{posInCanvas.Y:0})");
             }
 
             if (_isDragging)
             {
+                // 关键修复：重排时 SyncTabOrder 会 Clear/重建 TabBarPanel，
+                // 被捕获的标签容器从视觉树移除会释放指针捕获；
+                // 一旦捕获丢失，指针离开标签本身后不再收到 move 事件，拖不出去。
+                // CapturePointer 幂等，直接无条件重捕获。
+                (sender as UIElement)?.CapturePointer(e.Pointer);
+
                 double newLeft = posInCanvas.X - _dragOffset.X;
                 Canvas.SetLeft(_dragGhost, newLeft);
                 Canvas.SetTop(_dragGhost, posInCanvas.Y - _dragOffset.Y);
@@ -188,14 +196,25 @@ namespace EdgeRebuild.Core
                 bool outside = posInCanvas.Y < tabBarBounds.Top - DetachThreshold ||
                                posInCanvas.Y > tabBarBounds.Bottom + DetachThreshold;
 
+                // 拖拽诊断：节流记录指针位置与脱离判定
+                if ((DateTime.Now - _lastMoveLogTime).TotalMilliseconds >= 300)
+                {
+                    _lastMoveLogTime = DateTime.Now;
+                    Services.Diagnostics.Log($"[拖拽] move pos=({posInCanvas.X:0},{posInCanvas.Y:0}) ghost=({newLeft:0},{posInCanvas.Y - _dragOffset.Y:0}) " +
+                        $"bar=(T:{tabBarBounds.Top:0},B:{tabBarBounds.Bottom:0}) outside={outside} detaching={_isDetaching}");
+                }
+
                 if (!_isDetaching && outside)
                 {
                     _isDetaching = true;
+                    Services.Diagnostics.Log($"[拖拽] 拖出标签栏区域，准备脱离 tab=\"{_dragItem.Tab.Title}\" pos=({posInCanvas.X:0},{posInCanvas.Y:0}) barBounds=({tabBarBounds.X:0},{tabBarBounds.Y:0},{tabBarBounds.Width:0}x{tabBarBounds.Height:0})");
                     CleanupGhostAndRestoreItem();
                     DetachRequested?.Invoke(_dragItem);
                     _dragItem = null;
                     _isDragging = false;
                     _hasMoved = false;
+                    // 通知 UI 拖拽结束，避免 _isDragging 卡死导致标签栏不再重排
+                    DragCompleted?.Invoke();
                 }
             }
             e.Handled = true;
@@ -232,6 +251,7 @@ namespace EdgeRebuild.Core
             {
                 SortRequested?.Invoke(dragIndex, targetIndex);
                 _lastReorderTime = DateTime.Now;
+                Services.Diagnostics.Log($"[拖拽] 重排 {dragIndex} -> {targetIndex} (ghostX={ghostLocalX:0})");
             }
         }
 
@@ -244,11 +264,13 @@ namespace EdgeRebuild.Core
 
                 if (!_hasMoved)
                 {
+                    Services.Diagnostics.Log($"[拖拽] 未移动，视为点击切换 tab=\"{_dragItem.Tab.Title}\"");
                     _ = _tabManager.SwitchToTabAsync(_dragItem);
                     return;
                 }
 
                 SortRequested?.Invoke(-1, -1);
+                Services.Diagnostics.Log($"[拖拽] 释放，完成重排");
             }
             finally
             {
@@ -259,6 +281,7 @@ namespace EdgeRebuild.Core
 
         private void OnPointerCanceled(object sender, PointerRoutedEventArgs e)
         {
+            Services.Diagnostics.Log("[拖拽] 指针取消，清理拖拽状态");
             CleanupDragState();
         }
 

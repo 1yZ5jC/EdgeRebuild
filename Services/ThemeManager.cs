@@ -16,7 +16,10 @@ namespace EdgeRebuild.Services
 
         public static event Action<SkinManager.SkinColors, bool> ThemeChanged;
 
-        public static SkinManager.SkinColors Colors => _currentColors;
+        // 画笔是 XAML DependencyObject，具有线程亲和性：
+        // 不能跨窗口共享（辅助窗口布局时会抛 RPC_E_WRONG_THREAD），
+        // 因此 Colors 每次都在调用线程上新建一套。
+        public static SkinManager.SkinColors Colors => SkinManager.GetSkinColors(_currentSkin, _isDarkTheme);
         public static bool IsDarkTheme => _isDarkTheme;
         public static string CurrentSkin => _currentSkin;
 
@@ -103,15 +106,16 @@ namespace EdgeRebuild.Services
         }
 
         // ---- 便利访问方法 ----
-        public static Brush GetToolbarBackground() => _currentColors?.ToolbarBackground;
-        public static SolidColorBrush GetForegroundBrush() => _currentColors?.ForegroundBrush;
-        public static SolidColorBrush GetMutedForegroundBrush() => _currentColors?.MutedForegroundBrush;
-        public static SolidColorBrush GetTabActiveBackground() => _currentColors?.TabActiveBackground;
-        public static SolidColorBrush GetTabInactiveBackground() => _currentColors?.TabInactiveBackground;
-        public static SolidColorBrush GetTabHoverBackground() => _currentColors?.TabHoverBackground;
-        public static SolidColorBrush GetSeparatorBrush() => _currentColors?.SeparatorBrush;
-        public static SolidColorBrush GetAddressBarBackground() => _currentColors?.AddressBarBackground;
-        public static SolidColorBrush GetAddressBarBorder() => _currentColors?.AddressBarBorder;
-        public static SolidColorBrush GetAddressBarFocusBorder() => _currentColors?.AddressBarFocusBorder;
+        // 每次调用都在当前线程新建画笔，保证多窗口下线程安全
+        public static Brush GetToolbarBackground() => Colors.ToolbarBackground;
+        public static SolidColorBrush GetForegroundBrush() => Colors.ForegroundBrush;
+        public static SolidColorBrush GetMutedForegroundBrush() => Colors.MutedForegroundBrush;
+        public static SolidColorBrush GetTabActiveBackground() => Colors.TabActiveBackground;
+        public static SolidColorBrush GetTabInactiveBackground() => Colors.TabInactiveBackground;
+        public static SolidColorBrush GetTabHoverBackground() => Colors.TabHoverBackground;
+        public static SolidColorBrush GetSeparatorBrush() => Colors.SeparatorBrush;
+        public static SolidColorBrush GetAddressBarBackground() => Colors.AddressBarBackground;
+        public static SolidColorBrush GetAddressBarBorder() => Colors.AddressBarBorder;
+        public static SolidColorBrush GetAddressBarFocusBorder() => Colors.AddressBarFocusBorder;
     }
 }

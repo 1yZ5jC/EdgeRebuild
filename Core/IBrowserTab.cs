@@ -21,6 +21,8 @@ namespace EdgeRebuild.Core
         Task ResumeAsync();
 
         Task NavigateAsync(string url);
+        Task NavigateToHtmlAsync(string html);
+        Task<string> ExecuteScriptAsync(string script);
         Task GoBackAsync();
         Task GoForwardAsync();
         Task RefreshAsync();

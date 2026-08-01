@@ -63,7 +63,7 @@ namespace EdgeRebuild.Core
             _enableTabSuspend = (setting == "True" || setting == "true");
         }
 
-        public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null)
+        public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false)
         {
             IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
 
@@ -100,6 +100,11 @@ namespace EdgeRebuild.Core
 
             if (_currentTab == null)
                 await SwitchToTabAsync(viewItem);
+
+            if (isPinned && !viewItem.IsPinned)
+                await TogglePinTabAsync(viewItem);
+
+            SessionManager.ScheduleSave(_tabs);
 
             return viewItem;
         }
@@ -244,25 +249,32 @@ namespace EdgeRebuild.Core
             closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
         }
 
+        private static void RunOnUiThread(Action action)
+        {
+            var dispatcher = CoreWindow.GetForCurrentThread()?.Dispatcher;
+            if (dispatcher == null) return;
+            _ = dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => action());
+        }
+
         private void BindTabEvents(TabViewItem viewItem)
         {
             var tab = viewItem.Tab;
 
             tab.TitleChanged += (title) =>
             {
-                _ = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(
-                    CoreDispatcherPriority.Normal, () =>
-                    {
-                        string displayTitle = string.IsNullOrEmpty(title) ? "新标签页" : title;
-                        if (tab.IsSuspended) displayTitle = "[已挂起] " + displayTitle;
-                        viewItem.TitleText.Text = displayTitle;
-                        ToolTipService.SetToolTip(viewItem.TitleText, displayTitle);
-                    });
+                RunOnUiThread(() =>
+                {
+                    string displayTitle = string.IsNullOrEmpty(title) ? "新标签页" : title;
+                    if (tab.IsSuspended) displayTitle = "[已挂起] " + displayTitle;
+                    viewItem.TitleText.Text = displayTitle;
+                    ToolTipService.SetToolTip(viewItem.TitleText, displayTitle);
+                });
             };
 
             tab.UrlChanged += (url) =>
             {
                 TabUrlChanged?.Invoke(tab, url);
+                SessionManager.ScheduleSave(_tabs);
                 if (!string.IsNullOrEmpty(url) && url != "about:blank")
                     _ = HistoryManager.AddAsync(tab.Title ?? url, url);
             };
@@ -278,36 +290,34 @@ namespace EdgeRebuild.Core
 
             tab.LoadingChanged += (isLoading) =>
             {
-                _ = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(
-                    CoreDispatcherPriority.Normal, () =>
-                    {
-                        if (viewItem.LoadingRing != null)
-                            viewItem.LoadingRing.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+                RunOnUiThread(() =>
+                {
+                    if (viewItem.LoadingRing != null)
+                        viewItem.LoadingRing.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
 
-                        if (viewItem.FaviconImage != null && viewItem.FaviconPlaceholder != null)
+                    if (viewItem.FaviconImage != null && viewItem.FaviconPlaceholder != null)
+                    {
+                        if (isLoading)
                         {
-                            if (isLoading)
-                            {
-                                viewItem.FaviconImage.Visibility = Visibility.Collapsed;
-                                viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
-                            }
-                            else
-                            {
-                                if (viewItem.FaviconImage.Source != null)
-                                    viewItem.FaviconImage.Visibility = Visibility.Visible;
-                                else
-                                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
-                            }
+                            viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                            viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
                         }
-                    });
+                        else
+                        {
+                            if (viewItem.FaviconImage.Source != null)
+                                viewItem.FaviconImage.Visibility = Visibility.Visible;
+                            else
+                                viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                        }
+                    }
+                });
             };
         }
 
         private void UpdateFavicon(TabViewItem viewItem, string faviconUrl)
         {
-            _ = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(
-                CoreDispatcherPriority.Normal, () =>
-                {
+            RunOnUiThread(() =>
+            {
                     if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
                     {
                         viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
@@ -327,7 +337,7 @@ namespace EdgeRebuild.Core
                         viewItem.FaviconImage.Visibility = Visibility.Collapsed;
                         viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
                     }
-                });
+            });
         }
 
         public void UpdateSuspendedState(IBrowserTab tab, bool suspended)
@@ -406,6 +416,7 @@ namespace EdgeRebuild.Core
 
             TabClosed?.Invoke(viewItem);
             TabCountChanged?.Invoke(_tabs.Count);
+            SessionManager.ScheduleSave(_tabs);
         }
 
         public bool TryReopenClosedTab(out EngineType engine, out string url, out string title)
@@ -513,6 +524,7 @@ namespace EdgeRebuild.Core
             _tabs.Insert(adjustedIndex, item);
 
             TabOrderChanged?.Invoke();
+            SessionManager.ScheduleSave(_tabs);
         }
 
         public int GetTabIndex(TabViewItem item) => _tabs.IndexOf(item);
@@ -568,6 +580,7 @@ namespace EdgeRebuild.Core
 
             TabOrderChanged?.Invoke();
             TabCountChanged?.Invoke(_tabs.Count);
+            SessionManager.ScheduleSave(_tabs);
         }
 
         private void ReorderTabToPinnedSection(TabViewItem viewItem)

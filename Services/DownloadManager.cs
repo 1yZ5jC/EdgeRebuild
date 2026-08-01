@@ -159,6 +159,15 @@ namespace EdgeRebuild.Services
             {
                 try { return await StorageFolder.GetFolderFromPathAsync(_customDownloadPath); } catch { }
             }
+            // DownloadsFolder API 在 OneDrive 已知文件夹重定向（KFM）下会抛“参数错误”（E_INVALIDARG），
+            // 优先用 UserDataPaths 解析真实下载路径，失败再退回 API 和 LocalFolder。
+            try
+            {
+                string realPath = UserDataPaths.GetDefault().Downloads;
+                if (!string.IsNullOrEmpty(realPath))
+                    return await StorageFolder.GetFolderFromPathAsync(realPath);
+            }
+            catch { }
             try { return await DownloadsFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists); } catch { }
             return await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
         }

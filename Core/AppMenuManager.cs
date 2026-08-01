@@ -31,6 +31,8 @@ namespace EdgeRebuild.Core
         private readonly Action _onClearClosedTabs;
         private readonly Func<bool> _hasClosedTabs;
         private readonly Action _onCopyCurrentUrl;
+        private readonly Func<bool> _isReaderModeActive;
+        private readonly Action _onToggleReaderMode;
 
         public AppMenuManager(
             TabManager tabManager,
@@ -53,7 +55,9 @@ namespace EdgeRebuild.Core
             Func<Task> onNewTab,
             Action onClearClosedTabs,
             Func<bool> hasClosedTabs,
-            Action onCopyCurrentUrl)
+            Action onCopyCurrentUrl,
+            Func<bool> isReaderModeActive,
+            Action onToggleReaderMode)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -76,6 +80,8 @@ namespace EdgeRebuild.Core
             _onClearClosedTabs = onClearClosedTabs;
             _hasClosedTabs = hasClosedTabs;
             _onCopyCurrentUrl = onCopyCurrentUrl;
+            _isReaderModeActive = isReaderModeActive;
+            _onToggleReaderMode = onToggleReaderMode;
         }
 
         public MenuFlyout BuildMenu()
@@ -114,6 +120,10 @@ namespace EdgeRebuild.Core
             menu.Items.Add(zoomSub);
 
             // 打印、查找、源代码
+            var readerItem = new MenuFlyoutItem { Text = (_isReaderModeActive?.Invoke() ?? false) ? "退出阅读模式" : "阅读模式" };
+            readerItem.Click += (_, _) => _onToggleReaderMode?.Invoke();
+            menu.Items.Add(readerItem);
+
             var printItem = new MenuFlyoutItem { Text = "打印" };
             printItem.Click += async (_, _) => await _onPrint?.Invoke();
             menu.Items.Add(printItem);

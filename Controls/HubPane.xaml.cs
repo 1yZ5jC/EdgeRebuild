@@ -139,7 +139,8 @@ namespace EdgeRebuild.Controls
                 {
                     Title = "导入完成",
                     Content = $"成功导入 {imported} 个书签。",
-                    CloseButtonText = "确定"
+                    CloseButtonText = "确定",
+                    XamlRoot = this.XamlRoot
                 }.ShowAsync();
                 RefreshFavorites();
             }
@@ -159,7 +160,8 @@ namespace EdgeRebuild.Controls
                 Title = "导出成功",
                 Content = $"收藏夹已导出为 HTML 书签文件。\n保存位置：{file.Path}",
                 PrimaryButtonText = "打开文件夹",
-                CloseButtonText = "确定"
+                CloseButtonText = "确定",
+                XamlRoot = this.XamlRoot
             };
             var result = await dialog.ShowAsync();
             if (result == ContentDialogResult.Primary)
@@ -409,7 +411,8 @@ namespace EdgeRebuild.Controls
                     Title = "删除下载",
                     Content = item.IsActive ? "下载正在进行，确定取消并删除吗？" : "确定删除这条下载记录吗？",
                     PrimaryButtonText = "确定",
-                    SecondaryButtonText = "取消"
+                    SecondaryButtonText = "取消",
+                    XamlRoot = this.XamlRoot
                 };
                 var result = await dlg.ShowAsync();
                 if (result == ContentDialogResult.Primary)

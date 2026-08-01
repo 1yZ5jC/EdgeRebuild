@@ -55,10 +55,9 @@ namespace EdgeRebuild.Core
             NewWindowRequested?.Invoke(args.Uri?.ToString() ?? "");
         }
 
-        private async void OnNavigationStarting(WebView sender, WebViewNavigationStartingEventArgs args)
+        private void OnNavigationStarting(WebView sender, WebViewNavigationStartingEventArgs args)
         {
-            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
-            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(true));
+            LoadingChanged?.Invoke(true);
 
             string[] exts = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
             string url = args.Uri?.ToString() ?? "";
@@ -66,14 +65,13 @@ namespace EdgeRebuild.Core
             {
                 args.Cancel = true;
                 DownloadRequested?.Invoke(url);
-                await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(false));
+                LoadingChanged?.Invoke(false);
             }
         }
 
-        private async void OnNavigationCompleted(WebView sender, WebViewNavigationCompletedEventArgs args)
+        private void OnNavigationCompleted(WebView sender, WebViewNavigationCompletedEventArgs args)
         {
-            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
-            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(false));
+            LoadingChanged?.Invoke(false);
 
             if (args.IsSuccess)
             {
@@ -81,8 +79,7 @@ namespace EdgeRebuild.Core
                 UrlChanged?.Invoke(args.Uri?.ToString() ?? "");
                 UpdateTitle();
                 CheckNavigationState();
-                // 延迟一点尝试提取 favicon，确保 DOM 准备就绪
-                await Task.Delay(200);
+                // favicon 提取由 OnDOMContentLoaded 和此处共同完成
                 TryExtractFavicon();
             }
             else
@@ -92,10 +89,9 @@ namespace EdgeRebuild.Core
             }
         }
 
-        private async void OnNavigationFailed(object sender, WebViewNavigationFailedEventArgs e)
+        private void OnNavigationFailed(object sender, WebViewNavigationFailedEventArgs e)
         {
-            var dispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher;
-            await dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => LoadingChanged?.Invoke(false));
+            LoadingChanged?.Invoke(false);
             // 失败时也尝试获取 favicon
             TryExtractFavicon();
         }
@@ -180,6 +176,13 @@ namespace EdgeRebuild.Core
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) uri = new Uri("about:blank");
             _httpsFailed = false;
             _webView.Navigate(uri);
+            return Task.CompletedTask;
+        }
+
+        public Task NavigateToHtmlAsync(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return Task.CompletedTask;
+            try { _webView.NavigateToString(html); } catch { }
             return Task.CompletedTask;
         }
 

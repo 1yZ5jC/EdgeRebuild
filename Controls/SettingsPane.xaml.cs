@@ -13,7 +13,7 @@ namespace EdgeRebuild.Controls
         public event EventHandler CloseRequested;
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle;
+        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle;
         private TextBox _homePageBox;
         private ComboBox _searchEngineCombo;
         private TextBlock _downloadPathBlock;
@@ -47,6 +47,9 @@ namespace EdgeRebuild.Controls
             generalPanel.Children.Add(new TextBlock { Text = "主页", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _homePageBox = new TextBox { PlaceholderText = "about:blank", Margin = new Thickness(0, 0, 0, 12) };
             generalPanel.Children.Add(_homePageBox);
+
+            _restoreToggle = new ToggleSwitch { Header = "启动时恢复上次会话", Margin = new Thickness(0, 0, 0, 8) };
+            generalPanel.Children.Add(_restoreToggle);
 
             generalPanel.Children.Add(new TextBlock { Text = "搜索引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _searchEngineCombo = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
@@ -116,7 +119,7 @@ namespace EdgeRebuild.Controls
             {
                 try
                 {
-                    var mainPage = EdgeRebuild.MainPage.Instance;
+                    var mainPage = (this.XamlRoot?.Content as Frame)?.Content as MainPage;
                     if (mainPage != null)
                     {
                         await mainPage.ClearAllCookiesInternalAsync();
@@ -124,7 +127,8 @@ namespace EdgeRebuild.Controls
                         {
                             Title = "已清除",
                             Content = "已清除所有 WebView2 标签页的 Cookie。",
-                            CloseButtonText = "确定"
+                            CloseButtonText = "确定",
+                            XamlRoot = this.XamlRoot
                         }.ShowAsync();
                     }
                 }
@@ -134,7 +138,8 @@ namespace EdgeRebuild.Controls
                     {
                         Title = "错误",
                         Content = $"清除 Cookie 失败: {ex.Message}",
-                        CloseButtonText = "确定"
+                        CloseButtonText = "确定",
+                        XamlRoot = this.XamlRoot
                     }.ShowAsync();
                 }
             };
@@ -182,6 +187,9 @@ namespace EdgeRebuild.Controls
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 _homePageBox.Text = homeUrl;
 
+                string restoreSession = await SettingsManager.GetAsync("RestoreSession") ?? "True";
+                _restoreToggle.IsOn = (restoreSession == "True" || restoreSession == "true");
+
                 string searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
                 _searchEngineCombo.SelectedIndex = searchEngine switch { "Bing" => 1, "DuckDuckGo" => 2, _ => 0 };
 
@@ -209,6 +217,7 @@ namespace EdgeRebuild.Controls
                 _autoCleanDownloadToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AutoCleanDownload", _autoCleanDownloadToggle.IsOn.ToString());
                 _doNotTrackToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("DoNotTrack", _doNotTrackToggle.IsOn.ToString());
                 _homePageBox.TextChanged += async (s, e) => await SettingsManager.SetAsync("HomePage", _homePageBox.Text);
+                _restoreToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("RestoreSession", _restoreToggle.IsOn.ToString());
                 _searchEngineCombo.SelectionChanged += async (s, e) =>
                 {
                     string engineName = _searchEngineCombo.SelectedItem?.ToString() ?? "Google";
