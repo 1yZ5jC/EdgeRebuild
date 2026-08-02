@@ -9,6 +9,7 @@ namespace EdgeRebuild.Services
     /// </summary>
     [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
     [JsonSerializable(typeof(ArticleResult))]
+    [JsonSerializable(typeof(FindResult))]
     [JsonSerializable(typeof(string))]
     internal partial class AppJsonContext : JsonSerializerContext
     {

@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
 using Windows.Foundation;
@@ -55,8 +56,14 @@ namespace EdgeRebuild
         // ---- 快捷键处理器引用（用于跨窗口守卫和反注册） ----
         private Action _shortcutNewTab, _shortcutCloseTab, _shortcutReopenTab, _shortcutFocusAddressBar,
             _shortcutRefresh, _shortcutAddFavorite, _shortcutShowHistory, _shortcutShowDownloads,
-            _shortcutFind, _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab;
+            _shortcutFind, _shortcutFindNext, _shortcutFindPrevious, _shortcutCloseFind,
+            _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab;
         private Action<int> _shortcutSwitchToTab;
+        private Action<PageShortcutKey> _shortcutPageKey;
+
+        // ---- EdgeHTML 页面内快捷键轮询（ScriptNotify 受白名单限制，改用 marker 轮询） ----
+        private DispatcherTimer _pageKeyTimer;
+        private bool _pageKeyPolling;
 
         public MainPage()
         {
@@ -83,6 +90,11 @@ namespace EdgeRebuild
             _layoutManager?.Dispose();
             _tabManager?.DisposeAll();
             _dragManager?.Dispose();
+            if (_appWindow != null)
+            {
+                this.KeyDown -= OnWindowKeyDown;
+                this.KeyUp -= OnWindowKeyUp;
+            }
         }
 
         private void CleanupStaticEvents()
@@ -102,10 +114,16 @@ namespace EdgeRebuild
             ShortcutManager.OnShowHistory -= _shortcutShowHistory;
             ShortcutManager.OnShowDownloads -= _shortcutShowDownloads;
             ShortcutManager.OnFind -= _shortcutFind;
+            ShortcutManager.OnFindNext -= _shortcutFindNext;
+            ShortcutManager.OnFindPrevious -= _shortcutFindPrevious;
+            ShortcutManager.OnCloseFind -= _shortcutCloseFind;
             ShortcutManager.OnPrint -= _shortcutPrint;
             ShortcutManager.OnNextTab -= _shortcutNextTab;
             ShortcutManager.OnPreviousTab -= _shortcutPreviousTab;
             ShortcutManager.OnSwitchToTab -= _shortcutSwitchToTab;
+            if (_tabManager != null) _tabManager.PageKeyPressed -= _shortcutPageKey;
+            _pageKeyTimer?.Stop();
+            _pageKeyTimer = null;
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -213,6 +231,7 @@ namespace EdgeRebuild
                     ApplyAppWindowTitleBarColors();
                     NewTabButton.Visibility = Visibility.Collapsed;
                     this.KeyDown += OnWindowKeyDown;
+                    this.KeyUp += OnWindowKeyUp;
                 }
                 else
                 {
@@ -336,6 +355,28 @@ namespace EdgeRebuild
                     if (!IsFocusedWindow()) return;
                     FindOnPage();
                 };
+                _shortcutFindNext = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    if (FindBar.Visibility == Visibility.Visible)
+                        _ = RunFindAsync(FindBox.Text, "next");
+                    else
+                        FindOnPage();
+                };
+                _shortcutFindPrevious = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    if (FindBar.Visibility == Visibility.Visible)
+                        _ = RunFindAsync(FindBox.Text, "prev");
+                    else
+                        FindOnPage();
+                };
+                _shortcutCloseFind = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    if (FindBar.Visibility == Visibility.Visible)
+                        CloseFindBar();
+                };
                 _shortcutPrint = () =>
                 {
                     if (!IsFocusedWindow()) return;
@@ -369,10 +410,27 @@ namespace EdgeRebuild
                 ShortcutManager.OnShowHistory += _shortcutShowHistory;
                 ShortcutManager.OnShowDownloads += _shortcutShowDownloads;
                 ShortcutManager.OnFind += _shortcutFind;
+                ShortcutManager.OnFindNext += _shortcutFindNext;
+                ShortcutManager.OnFindPrevious += _shortcutFindPrevious;
+                ShortcutManager.OnCloseFind += _shortcutCloseFind;
                 ShortcutManager.OnPrint += _shortcutPrint;
                 ShortcutManager.OnNextTab += _shortcutNextTab;
                 ShortcutManager.OnPreviousTab += _shortcutPreviousTab;
                 ShortcutManager.OnSwitchToTab += _shortcutSwitchToTab;
+
+                // 页面内快捷键（焦点在网页内容内时，键击被引擎吞掉、CoreWindow 收不到，
+                // 由页面注入脚本经消息通道回传）——与上方 _shortcutFind 系列逻辑一致。
+                _shortcutPageKey = (key) =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    HandlePageKey(key);
+                };
+                _tabManager.PageKeyPressed += _shortcutPageKey;
+
+                // ---- EdgeHTML 页面内快捷键：marker 轮询（见 EdgeHtmlTab.PageKeyBridgeJs 注释）----
+                _pageKeyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                _pageKeyTimer.Tick += OnPageKeyTimerTick;
+                _pageKeyTimer.Start();
             }
             catch (Exception ex)
             {
@@ -387,6 +445,59 @@ namespace EdgeRebuild
                 }.ShowAsync();
             }
             if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 完成");
+        }
+
+        // ---- 页面内快捷键的统一处理（CoreWindow 钩子、WebView2 消息、EdgeHTML marker 轮询共用） ----
+        private void HandlePageKey(PageShortcutKey key)
+        {
+            switch (key)
+            {
+                case PageShortcutKey.Find:
+                    FindOnPage();
+                    break;
+                case PageShortcutKey.FindNext:
+                    if (FindBar.Visibility == Visibility.Visible)
+                        _ = RunFindAsync(FindBox.Text, "next");
+                    else
+                        FindOnPage();
+                    break;
+                case PageShortcutKey.FindPrevious:
+                    if (FindBar.Visibility == Visibility.Visible)
+                        _ = RunFindAsync(FindBox.Text, "prev");
+                    else
+                        FindOnPage();
+                    break;
+                case PageShortcutKey.CloseFind:
+                    if (FindBar.Visibility == Visibility.Visible)
+                        CloseFindBar();
+                    break;
+            }
+        }
+
+        // EdgeHTML 引擎无可靠的按键回传通道（ScriptNotify 需白名单、WebView 无输入事件、
+        // AddWebAllowedObject 需独立组件），故仅对当前活动的 EdgeHTML 标签轮询 marker。
+        private async void OnPageKeyTimerTick(object sender, object e)
+        {
+            if (!IsFocusedWindow()) return;
+            if (_pageKeyPolling) return;
+            if (!(_tabManager?.CurrentTab is EdgeHtmlTab edgeTab)) return;
+            _pageKeyPolling = true;
+            try
+            {
+                string key = await edgeTab.PollPageKeyAsync();
+                if (string.IsNullOrEmpty(key)) return;
+                switch (key)
+                {
+                    case "cf": HandlePageKey(PageShortcutKey.Find); break;
+                    case "f3":
+                    case "cg": HandlePageKey(PageShortcutKey.FindNext); break;
+                    case "sf3":
+                    case "scg": HandlePageKey(PageShortcutKey.FindPrevious); break;
+                    case "esc": HandlePageKey(PageShortcutKey.CloseFind); break;
+                }
+            }
+            catch { }
+            finally { _pageKeyPolling = false; }
         }
 
         // ---- TabManager 事件处理 ----
@@ -407,6 +518,9 @@ namespace EdgeRebuild
             toolbarControl.SetEngine(tab.Engine);
             toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, tab.CurrentUrl);
             UpdateStarButton();
+
+            if (FindBar.Visibility == Visibility.Visible)
+                CloseFindBar();
 
             bool isSecure = tab.CurrentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
             string host = GetHostName(tab.CurrentUrl);
@@ -437,6 +551,9 @@ namespace EdgeRebuild
         {
             if (_tabManager.CurrentTab == tab)
             {
+                if (FindBar.Visibility == Visibility.Visible)
+                    CloseFindBar();
+
                 toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, url);
                 UpdateStarButton();
 
@@ -675,8 +792,14 @@ namespace EdgeRebuild
         // 键盘事件以 XAML 路由事件形式送达焦点所在的窗口，在页面根上处理。
         private void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            ShortcutManager.UpdateModifiers(e.Key, true);
             if (ShortcutManager.TryHandle(e.Key))
                 e.Handled = true;
+        }
+
+        private void OnWindowKeyUp(object sender, KeyRoutedEventArgs e)
+        {
+            ShortcutManager.UpdateModifiers(e.Key, false);
         }
 
         private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -713,6 +836,13 @@ namespace EdgeRebuild
             ContentContainer.Background = isDark
                 ? new SolidColorBrush(Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B))
                 : new SolidColorBrush(Colors.White);
+
+            FindBar.Background = colors.ToolbarBackground;
+            FindBar.BorderBrush = colors.MutedForegroundBrush;
+            FindResultText.Foreground = colors.MutedForegroundBrush;
+            FindPrevBtn.Foreground = colors.ForegroundBrush;
+            FindNextBtn.Foreground = colors.ForegroundBrush;
+            FindCloseBtn.Foreground = colors.ForegroundBrush;
 
             _tabManager?.UpdateTheme(colors);
 
@@ -875,10 +1005,200 @@ namespace EdgeRebuild
 
         private void FindOnPage()
         {
-            if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
-                _ = wv2.CoreWebView2.ExecuteScriptAsync("window.find('');");
-            else
-                ShowNotImplementedDialog("查找（请切换到 WebView2）");
+            FindBar.Visibility = Visibility.Visible;
+            FindBox.Focus(FocusState.Programmatic);
+            FindBox.SelectAll();
+            _ = RunFindAsync(FindBox.Text, "new");
+        }
+
+        // ---- 页内查找（双引擎注入，带高亮/计数/上一下一）----
+        private int _findGeneration;
+
+        private async void FindBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            _findGeneration++;
+            int gen = _findGeneration;
+            await Task.Delay(150);
+            if (gen != _findGeneration || FindBar.Visibility != Visibility.Visible)
+                return;
+            _ = RunFindAsync(FindBox.Text, "new");
+        }
+
+        private void FindBox_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            bool shift = CoreWindow.GetForCurrentThread().GetKeyState(VirtualKey.Shift) == CoreVirtualKeyStates.Down;
+            if (e.Key == VirtualKey.Enter || e.Key == VirtualKey.Down)
+            {
+                _ = RunFindAsync(FindBox.Text, shift ? "prev" : "next");
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Up)
+            {
+                _ = RunFindAsync(FindBox.Text, "prev");
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Escape)
+            {
+                CloseFindBar();
+                e.Handled = true;
+            }
+        }
+
+        private void FindPrevBtn_Click(object sender, RoutedEventArgs e) => _ = RunFindAsync(FindBox.Text, "prev");
+
+        private void FindNextBtn_Click(object sender, RoutedEventArgs e) => _ = RunFindAsync(FindBox.Text, "next");
+
+        private void FindCloseBtn_Click(object sender, RoutedEventArgs e) => CloseFindBar();
+
+        private async void CloseFindBar()
+        {
+            FindBar.Visibility = Visibility.Collapsed;
+            await RunFindAsync("", "new");
+        }
+
+        private async Task RunFindAsync(string query, string mode)
+        {
+            var tab = _tabManager.CurrentTab;
+            if (tab == null) return;
+            try
+            {
+                string result = await tab.ExecuteScriptAsync(BuildFindScript(query ?? "", mode));
+                var info = ParseFindResult(result);
+                Services.Diagnostics.Log($"[查找] query='{query}' mode={mode} engine={tab.Engine} " +
+                    $"result=({(result?.Length ?? -1)}字符) raw={(result == null ? "null" : result.Length > 120 ? result.Substring(0, 120) : result)} " +
+                    $"parsed={(info != null ? $"{info.Count}/{info.Index}" : "null")}");
+                if (FindBar.Visibility != Visibility.Visible)
+                    return;
+                FindResultText.Text = (info != null && info.Count > 0) ? $"{info.Index + 1}/{info.Count}" : "0/0";
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[查找] 异常: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private static FindResult ParseFindResult(string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return null;
+            string json = raw.Trim();
+            if (json.StartsWith("\""))
+            {
+                try { json = JsonSerializer.Deserialize(json, AppJsonContext.Default.String); }
+                catch { return null; }
+            }
+            if (string.IsNullOrEmpty(json)) return null;
+            try { return JsonSerializer.Deserialize(json, AppJsonContext.Default.FindResult); }
+            catch { return null; }
+        }
+
+        private static string BuildFindScript(string query, string mode)
+        {
+            string q = JsonSerializer.Serialize(query, AppJsonContext.Default.String);
+            string m = JsonSerializer.Serialize(mode, AppJsonContext.Default.String);
+            return $@"
+;(function(){{
+    if (typeof document === 'undefined') return '{{""count"":0,""index"":-1}}';
+    if (!document.getElementById('edg-find-style')) {{
+        var st = document.createElement('style');
+        st.id = 'edg-find-style';
+        st.textContent = 'mark.edg-find{{background:#ffe58f;color:inherit;padding:0;}} mark.edg-find-current{{background:#ff9632;}}';
+        (document.head || document.documentElement).appendChild(st);
+    }}
+    var query = {q};
+    var mode = {m};
+    var state = window.__edgFindState || null;
+    function clearMarks(ms) {{
+        for (var i = ms.length - 1; i >= 0; i--) {{
+            var m = ms[i];
+            if (m.parentNode) m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+        }}
+    }}
+    if (!query) {{
+        if (state) {{ clearMarks(state.marks); window.__edgFindState = null; }}
+        return '{{""count"":0,""index"":-1}}';
+    }}
+    // 同 query 的上/下一个：不重扫 DOM，只移动当前高亮（页面 SPA 重渲染不会破坏导航）
+    if (state && state.query === query && mode !== 'new') {{
+        var live = [];
+        for (var a = 0; a < state.marks.length; a++) if (state.marks[a].parentNode) live.push(state.marks[a]);
+        if (live.length > 0) {{
+            var idx = (state.index + (mode === 'next' ? 1 : live.length - 1)) % live.length;
+            for (var b = 0; b < live.length; b++) live[b].className = b === idx ? 'edg-find edg-find-current' : 'edg-find';
+            var cur = live[idx];
+            try {{ cur.scrollIntoView({{ block: 'center' }}); }} catch (e) {{ cur.scrollIntoView(true); }}
+            state.index = idx;
+            state.marks = live;
+            return '{{""count"":' + live.length + ',""index"":' + idx + '}}';
+        }}
+    }}
+    // 全量重扫（query 变化或状态失效）
+    if (state) clearMarks(state.marks);
+    window.__edgFindState = null;
+    var olds = document.querySelectorAll('mark.edg-find');
+    for (var i = olds.length - 1; i >= 0; i--) {{
+        var p = olds[i].parentNode;
+        p.replaceChild(document.createTextNode(olds[i].textContent), olds[i]);
+    }}
+    if (document.body) document.body.normalize();
+    var rx;
+    try {{ rx = new RegExp(query.replace(/[.*+?^${{}}()|[\]\\]/g, '\\$&'), 'gi'); }}
+    catch (e) {{ return '{{""count"":0,""index"":-1}}'; }}
+    var hits = [];
+    var visited = 0;
+    function scan(root) {{
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {{
+            acceptNode: function (node) {{
+                var tag = node.parentNode ? node.parentNode.tagName : '';
+                if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'MARK') return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            }}
+        }});
+        var nd;
+        while ((nd = walker.nextNode()) !== null) {{
+            visited++;
+            var text = nd.nodeValue;
+            if (!text || !text.trim()) continue;
+            rx.lastIndex = 0;
+            var mm;
+            while ((mm = rx.exec(text)) !== null) {{
+                hits.push({{ node: nd, start: mm.index, end: mm.index + mm[0].length }});
+                if (mm[0].length === 0) {{ rx.lastIndex = mm.index + 1; break; }}
+            }}
+        }}
+    }}
+    scan(document.documentElement);
+    var all = document.querySelectorAll('*');
+    for (var j = 0; j < all.length; j++) {{
+        if (all[j].shadowRoot) scan(all[j].shadowRoot);
+    }}
+    var marks = [];
+    for (var k = hits.length - 1; k >= 0; k--) {{
+        var h = hits[k];
+        try {{
+            var range = document.createRange();
+            range.setStart(h.node, h.start);
+            range.setEnd(h.node, h.end);
+            var mark = document.createElement('mark');
+            mark.className = 'edg-find';
+            range.surroundContents(mark);
+            marks.unshift(mark);
+        }} catch (e) {{}}
+    }}
+    var count = marks.length;
+    if (count === 0) {{
+        var bt = document.body && document.body.innerText ? document.body.innerText : '';
+        var sample = bt.replace(/\s+/g, ' ').substr(0, 60).replace(/\\/g, '\\\\').replace(/""/g, '\\""');
+        return '{{""count"":0,""index"":-1,""nodes"":' + visited + ',""textLen"":' + bt.length + ',""sample"":""' + sample + '""}}';
+    }}
+    var idx2 = 0;
+    if (mode === 'next') idx2 = 1 % count;
+    else if (mode === 'prev') idx2 = (count - 1) % count;
+    window.__edgFindState = {{ query: query, marks: marks, index: idx2 }};
+    var cur2 = marks[idx2];
+    try {{ cur2.scrollIntoView({{ block: 'center' }}); }} catch (e) {{ cur2.scrollIntoView(true); }}
+    cur2.className = 'edg-find edg-find-current';
+    return '{{""count"":' + count + ',""index"":' + idx2 + '}}';
+}})();";
         }
 
         private async Task ViewSourceAsync()
@@ -1056,5 +1376,11 @@ namespace EdgeRebuild
             await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
             toolbarControl.FocusAddressBarAndClear();
         }
+    }
+
+    public class FindResult
+    {
+        public int Count { get; set; }
+        public int Index { get; set; }
     }
 }

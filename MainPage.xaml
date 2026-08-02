@@ -276,6 +276,34 @@
                     <controls:SettingsPane x:Name="SettingsPaneControl" CloseRequested="SettingsPane_CloseRequested"/>
                 </SplitView.Pane>
             </SplitView>
+
+            <Border x:Name="FindBar" Visibility="Collapsed"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,8,16,0" Padding="8,6"
+                    Background="{StaticResource ToolbarAcrylicBrush}"
+                    BorderBrush="{StaticResource MutedForegroundBrush}"
+                    BorderThickness="1"
+                    Canvas.ZIndex="80">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBox x:Name="FindBox" Width="220" PlaceholderText="在页面中查找"
+                             TextChanged="FindBox_TextChanged" KeyDown="FindBox_KeyDown"/>
+                    <TextBlock x:Name="FindResultText" VerticalAlignment="Center"
+                               MinWidth="44" TextAlignment="Center" FontSize="12"
+                               Foreground="{StaticResource MutedForegroundBrush}"/>
+                    <Button x:Name="FindPrevBtn" Content="&#xE70E;" Width="30" Height="30"
+                            Style="{StaticResource RevealButtonStyle}"
+                            ToolTipService.ToolTip="上一个（Shift+Enter）"
+                            Click="FindPrevBtn_Click"/>
+                    <Button x:Name="FindNextBtn" Content="&#xE70D;" Width="30" Height="30"
+                            Style="{StaticResource RevealButtonStyle}"
+                            ToolTipService.ToolTip="下一个（Enter）"
+                            Click="FindNextBtn_Click"/>
+                    <Button x:Name="FindCloseBtn" Content="&#xE711;" Width="30" Height="30"
+                            Style="{StaticResource RevealButtonStyle}"
+                            ToolTipService.ToolTip="关闭（Esc）"
+                            Click="FindCloseBtn_Click"/>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"

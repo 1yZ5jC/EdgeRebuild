@@ -44,6 +44,36 @@ namespace EdgeRebuild.Core
         public event Action<string> NewWindowRequested;
         public event Action<string, StorageFolder, string> DownloadRequested;
         public event Action<bool> LoadingChanged;
+        public event Action<PageShortcutKey> PageShortcutKeyPressed;
+
+        // 页面内快捷键桥：焦点在网页内容内时键击被引擎吞掉、宿主收不到，
+        // 注入监听脚本经 window.chrome.webview.postMessage 回传（ES5，双引擎通用）。
+        private const string PageKeyBridgeJs =
+            "(function(){ if (window.__edgPageKeyBridge) return; window.__edgPageKeyBridge = true;"
+            + " function send(s){ try { window.chrome.webview.postMessage(s); } catch(e){ try { window.external.notify(s); } catch(e2){} } }"
+            + " window.addEventListener('keydown', function(e){"
+            + " var c=e.ctrlKey, s=e.shiftKey, k=e.keyCode;"
+            + " if (c && !s && k===70) { send('cf'); e.preventDefault(); e.stopPropagation(); return; }"
+            + " if (c && s && k===71) { send('scg'); e.preventDefault(); return; }"
+            + " if (c && !s && k===71) { send('cg'); e.preventDefault(); return; }"
+            + " if (!c && s && k===114) { send('sf3'); e.preventDefault(); return; }"
+            + " if (!c && !s && k===114) { send('f3'); e.preventDefault(); return; }"
+            + " if (!c && !s && k===27) { send('esc'); return; }"
+            + " }, false); })();";
+
+        private static PageShortcutKey? ParsePageKey(string msg)
+        {
+            switch (msg)
+            {
+                case "cf": return PageShortcutKey.Find;
+                case "f3":
+                case "cg": return PageShortcutKey.FindNext;
+                case "sf3":
+                case "scg": return PageShortcutKey.FindPrevious;
+                case "esc": return PageShortcutKey.CloseFind;
+                default: return null;
+            }
+        }
 
         public WebView2Tab()
         {
@@ -66,6 +96,12 @@ namespace EdgeRebuild.Core
                 _webView.CoreWebView2.DownloadStarting += OnDownloadStarting;
                 _webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
                 _webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
+                _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageKeyBridgeJs);
+                // UWP 版 WebView2 无 IsFindEnabled（WinUI3 专有），
+                // 禁用浏览器加速键以免 Ctrl+F 弹出原生查找条；
+                // Ctrl+F/Ctrl+P/Ctrl+R 由应用层快捷键接管，F5 已在 ShortcutManager 注册。
+                _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
                 CheckNavigationState();
             }
             finally { _initLock.Release(); }
@@ -80,6 +116,14 @@ namespace EdgeRebuild.Core
         private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
             LoadingChanged?.Invoke(true);
+        }
+
+        private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            string msg = e.TryGetWebMessageAsString() ?? "";
+            var key = ParsePageKey(msg);
+            if (key.HasValue)
+                PageShortcutKeyPressed?.Invoke(key.Value);
         }
 
         public async Task SuspendAsync()

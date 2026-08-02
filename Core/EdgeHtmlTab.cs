@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.UI.Core;
@@ -13,6 +14,7 @@ namespace EdgeRebuild.Core
         private string _faviconUri = "";
         private string _title = "";
         private bool _httpsFailed = false;
+        private bool _disposed = false;
 
         public static event Action<string> DownloadRequested;
 
@@ -35,6 +37,41 @@ namespace EdgeRebuild.Core
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action<string> NewWindowRequested;
         public event Action<bool> LoadingChanged;
+        public event Action<PageShortcutKey> PageShortcutKeyPressed;
+
+        // 页面内快捷键桥（EdgeHTML 版）：外部网站的 window.external.notify 会被
+        // ApplicationContentUriRules 白名单拦截（且不允许域通配），AddWebAllowedObject
+        // 又要求独立 WinRT 组件程序集；故改用「写入全局 marker 变量 + 宿主定时轮询」：
+        // 脚本只写 window.__edgKeyMarker，宿主用 InvokeScriptAsync 读取并清空。
+        private const string PageKeyBridgeJs =
+            "(function(){ if (window.__edgPageKeyBridge) return; window.__edgPageKeyBridge = true;"
+            + " function mark(s){ window.__edgKeyMarker = s; }"
+            + " window.addEventListener('keydown', function(e){"
+            + " var c=e.ctrlKey, s=e.shiftKey, k=e.keyCode;"
+            + " if (c && !s && k===70) { mark('cf'); e.preventDefault(); e.stopPropagation(); return; }"
+            + " if (c && s && k===71) { mark('scg'); e.preventDefault(); return; }"
+            + " if (c && !s && k===71) { mark('cg'); e.preventDefault(); return; }"
+            + " if (!c && s && k===114) { mark('sf3'); e.preventDefault(); return; }"
+            + " if (!c && !s && k===114) { mark('f3'); e.preventDefault(); return; }"
+            + " if (!c && !s && k===27) { mark('esc'); return; }"
+            + " }, false); })();";
+
+        private void InjectPageKeyBridge()
+        {
+            _ = ExecuteScriptAsync(PageKeyBridgeJs);
+        }
+
+        /// <summary>
+        /// 读取并清空页面内快捷键 marker（由 MainPage 定时轮询，仅对当前活动 EdgeHTML 标签）。
+        /// </summary>
+        public async Task<string> PollPageKeyAsync()
+        {
+            if (_disposed) return "";
+            var raw = await ExecuteScriptAsync("(window.__edgKeyMarker)||''");
+            if (string.IsNullOrEmpty(raw) || raw == "\"\"") return "";
+            _ = ExecuteScriptAsync("window.__edgKeyMarker='';");
+            return raw.Trim('"');
+        }
 
         public Task SuspendAsync() => Task.CompletedTask;
         public Task ResumeAsync() => Task.CompletedTask;
@@ -72,6 +109,7 @@ namespace EdgeRebuild.Core
         private void OnNavigationCompleted(WebView sender, WebViewNavigationCompletedEventArgs args)
         {
             LoadingChanged?.Invoke(false);
+            InjectPageKeyBridge();
 
             if (args.IsSuccess)
             {
@@ -130,9 +168,9 @@ namespace EdgeRebuild.Core
 
             try
             {
-                // 尝试获取页面的 favicon 链接
-                var result = await _webView.InvokeScriptAsync("eval", new[] {
-                    "document.querySelector('link[rel*=\"icon\"]')?.href || ''"
+                // 尝试获取页面的 favicon 链接（EdgeHTML 不支持可选链，用 ES5 写法）
+                var result = await _webView.InvokeScriptAsync("eval", new List<string> {
+                    "(function(){ var l=document.querySelector('link[rel*=\"icon\"]'); return l?l.href:''; })()"
                 });
 
                 if (!string.IsNullOrEmpty(result) && Uri.TryCreate(result, UriKind.Absolute, out _))
@@ -162,8 +200,9 @@ namespace EdgeRebuild.Core
 
         public async Task<string> ExecuteScriptAsync(string script)
         {
-            try { return await _webView.InvokeScriptAsync("eval", new[] { script }); }
-            catch { return ""; }
+            // AOT 下 string[] 无法创建 CCW（InvalidCastException），需用 List<string> 传参
+            try { return await _webView.InvokeScriptAsync("eval", new List<string> { script }); }
+            catch (Exception ex) { Services.Diagnostics.Log($"[EdgeHTML] ExecuteScriptAsync 异常: {ex.GetType().Name}: {ex.Message}"); return ""; }
         }
 
         public Task NavigateAsync(string url)
@@ -193,6 +232,7 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
+            _disposed = true;
             TitleChanged = null;
             UrlChanged = null;
             CanGoBackChanged = null;
