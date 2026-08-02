@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EPUB 阅读器</title>
+<link rel="stylesheet" href="reader.css">
+</head>
+<body>
+  <div id="topbar">
+    <button id="tocBtn" class="tool-btn" title="目录">&#xE8FD;</button>
+    <span id="bookTitle">EPUB 阅读器</span>
+    <div id="navGroup">
+      <button id="prevBtn" class="tool-btn" title="上一页">&#xE76B;</button>
+      <button id="nextBtn" class="tool-btn" title="下一页">&#xE76C;</button>
+    </div>
+  </div>
+
+  <div id="tocPanel" class="hidden">
+    <div id="tocList"></div>
+  </div>
+
+  <div id="viewer"></div>
+
+  <div id="statusBar">
+    <span id="statusText">正在打开电子书…</span>
+  </div>
+
+  <script src="epub.min.js"></script>
+  <script src="reader.js"></script>
+</body>
+</html>

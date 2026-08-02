@@ -1,9 +1,11 @@
 ﻿using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
+using EdgeRebuild.Services;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Windows.ApplicationModel;
 using Windows.Storage;
 using Windows.UI.Core;
 using Windows.UI.Xaml;
@@ -105,6 +107,7 @@ namespace EdgeRebuild.Core
                 // 禁用浏览器加速键以免 Ctrl+F 弹出原生查找条；
                 // Ctrl+F/Ctrl+P/Ctrl+R 由应用层快捷键接管，F5 已在 ShortcutManager 注册。
                 _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
+                SetupLocalViewerHosts();
                 CheckNavigationState();
             }
             finally { _initLock.Release(); }
@@ -119,6 +122,32 @@ namespace EdgeRebuild.Core
         private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
             LoadingChanged?.Invoke(true);
+
+            // PDF/EPUB 导航：Chromium 内置 PDF 插件会直接接管（不触发 DownloadStarting），
+            // 必须在此拦截，经本地 pdf.js 查看器 / epubjs 阅读器渲染。
+            if (IsViewerDocUrl(e.Uri))
+            {
+                e.Cancel = true;
+                _ = OpenLocalViewerAsync(e.Uri.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "pdf" : "epub", e.Uri);
+            }
+        }
+
+        private static bool IsViewerDocUrl(string uri)
+        {
+            if (string.IsNullOrEmpty(uri)) return false;
+            try
+            {
+                // 本地查看器域（虚拟主机）不拦截：viewer.html 的 file 参数里编码了
+                // contentcache.local 的 .pdf/.epub 路径，URL 整体以 .pdf 结尾会误判。
+                var host = new Uri(uri).Host;
+                if (host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith("epubreader.local", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith("contentcache.local", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            catch { return false; }
+            return uri.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                || uri.EndsWith(".epub", StringComparison.OrdinalIgnoreCase);
         }
 
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -166,10 +195,88 @@ namespace EdgeRebuild.Core
             }
         }
 
+        /// <summary>
+        /// 本地静态资源托管：pdf.js 查看器 / epubjs 阅读器 / 文档缓存（同源加载免 CORS）。
+        /// </summary>
+        private void SetupLocalViewerHosts()
+        {
+            try
+            {
+                var basePath = Package.Current.InstalledLocation.Path;
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "pdfviewer.local",
+                    Path.Combine(basePath, "Assets", "PdfViewer"),
+                    CoreWebView2HostResourceAccessKind.Allow);
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "epubreader.local",
+                    Path.Combine(basePath, "Assets", "EpubReader"),
+                    CoreWebView2HostResourceAccessKind.Allow);
+                var cacheDir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache");
+                Directory.CreateDirectory(cacheDir);
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "contentcache.local",
+                    cacheDir,
+                    CoreWebView2HostResourceAccessKind.Allow);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[本地查看器] 虚拟主机映射失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 下载文档到本地缓存，再经本地查看器/阅读器打开。
+        /// 用 Windows.Web.Http（UWP 原生网络栈，与 WebView2/系统代理一致），
+        /// 比 System.Net.Http 在 UWP 沙箱中可靠。
+        /// </summary>
+        private async Task OpenLocalViewerAsync(string kind, string url)
+        {
+            try
+            {
+                using var client = new Windows.Web.Http.HttpClient();
+                var response = await client.GetAsync(new Uri(url));
+                response.EnsureSuccessStatusCode();
+                var buffer = await response.Content.ReadAsBufferAsync();
+                byte[] bytes = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(buffer);
+                string ext = kind == "pdf" ? ".pdf" : ".epub";
+                var filePath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache",
+                    $"doc_{DateTime.Now:yyyyMMdd_HHmmss_fff}{ext}");
+                await File.WriteAllBytesAsync(filePath, bytes);
+                string page = kind == "pdf" ? "viewer.html" : "reader.html";
+                string viewerHost = kind == "pdf" ? "pdfviewer.local" : "epubreader.local";
+                _webView.CoreWebView2?.Navigate(
+                    $"https://{viewerHost}/{page}?file=https://contentcache.local/{Path.GetFileName(filePath)}");
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[本地查看器] 打开 {kind} 失败: {ex}");
+                try { NotificationService.ShowToast("打开失败", ex.Message); } catch { }
+            }
+        }
+
         private static bool IsPdfLike(CoreWebView2DownloadOperation op)
         {
             return (op.MimeType?.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) == true)
                 || (op.Uri?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        private static bool IsEpubLike(CoreWebView2DownloadOperation op)
+        {
+            return (op.MimeType?.Equals("application/epub+zip", StringComparison.OrdinalIgnoreCase) == true)
+                || (op.Uri?.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        private static bool IsLocalCacheUrl(string uri)
+        {
+            if (string.IsNullOrEmpty(uri)) return false;
+            try
+            {
+                var host = new Uri(uri).Host;
+                return host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith("epubreader.local", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith("contentcache.local", StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
         }
 
         /// <summary>
@@ -183,12 +290,19 @@ namespace EdgeRebuild.Core
 
         private async void OnDownloadStarting(object sender, CoreWebView2DownloadStartingEventArgs e)
         {
-            // PDF：Content-Disposition 为 inline（或无头）时，取消下载并放行导航，
-            // 由 WebView2 内置 PDF 查看器渲染；attachment 的 PDF 仍走下载流程。
-            if (IsPdfLike(e.DownloadOperation) && !IsAttachmentDisposition(e.DownloadOperation.ContentDisposition))
+            // PDF（inline）与 EPUB 下载：取消下载，经本地查看器/阅读器渲染。
+            // 本地查看器域（contentcache 等）的下载不拦截，走正常下载流程（如查看器内"保存"）。
+            if (!IsLocalCacheUrl(e.DownloadOperation.Uri)
+                && !e.DownloadOperation.Uri.StartsWith("blob:", StringComparison.OrdinalIgnoreCase)
+                && ((IsPdfLike(e.DownloadOperation) && !IsAttachmentDisposition(e.DownloadOperation.ContentDisposition))
+                    || IsEpubLike(e.DownloadOperation)))
             {
                 e.Cancel = true;
-                try { _webView.CoreWebView2?.Navigate(e.DownloadOperation.Uri); } catch { }
+                _ = OpenLocalViewerAsync(
+                    e.DownloadOperation.MimeType?.StartsWith("application/pdf", StringComparison.OrdinalIgnoreCase) == true
+                        || e.DownloadOperation.Uri?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true
+                        ? "pdf" : "epub",
+                    e.DownloadOperation.Uri);
                 return;
             }
 

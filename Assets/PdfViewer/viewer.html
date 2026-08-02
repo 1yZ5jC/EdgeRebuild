@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF 查看器</title>
+  <link rel="stylesheet" href="lib/pdf_viewer.css">
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <div id="toolbar">
+    <button id="sidebarToggle" class="tool-btn" title="缩略图">&#xE700;</button>
+    <div class="tgroup left">
+      <button id="saveBtn" class="tool-btn" title="保存">&#xE74E;</button>
+    </div>
+    <div class="tgroup center">
+      <button id="prevBtn" class="tool-btn nav-btn" title="上一页">&#xE76B;</button>
+      <input id="pageNum" type="text" value="1" title="页码">
+      <span id="numPages">/ 1</span>
+      <button id="nextBtn" class="tool-btn nav-btn" title="下一页">&#xE76C;</button>
+    </div>
+    <div class="tgroup right">
+      <div class="tgroup annotate">
+        <button id="cursorBtn" class="tool-btn" title="选择">&#xE7C9;</button>
+        <button id="highlightBtn" class="tool-btn" title="高亮（批注）">&#xE7E6;</button>
+        <button id="freetextBtn" class="tool-btn" title="添加文本">&#xE97C;</button>
+        <button id="inkBtn" class="tool-btn" title="画笔">&#xE76D;</button>
+      </div>
+      <div id="searchBox" class="hidden">
+        <input id="searchInput" type="text" placeholder="在页面中查找" title="查找">
+        <span id="searchCount"></span>
+        <button id="searchPrev" class="tool-btn mini" title="上一个">&#xE892;</button>
+        <button id="searchNext" class="tool-btn mini" title="下一个">&#xE893;</button>
+      </div>
+      <button id="searchBtn" class="tool-btn" title="搜索">&#xE721;</button>
+      <button id="fitPageBtn" class="tool-btn" title="适合页面">&#xE799;</button>
+      <button id="rotateBtn" class="tool-btn" title="旋转">&#xE7AD;</button>
+      <button id="zoomOutBtn" class="tool-btn" title="缩小">&#xE71F;</button>
+      <span id="zoomLabel">100%</span>
+      <button id="zoomInBtn" class="tool-btn" title="放大">&#xE8A3;</button>
+      <button id="fullscreenBtn" class="tool-btn" title="全屏">&#xE740;</button>
+    </div>
+  </div>
+
+  <div id="colorBar" class="hidden">
+    <div id="colorBarRow">
+      <span class="colorBar-label">颜色</span>
+      <button class="color-dot" data-color="#E11D48" title="红"></button>
+      <button class="color-dot" data-color="#F97316" title="橙"></button>
+      <button class="color-dot" data-color="#FACC15" title="黄"></button>
+      <button class="color-dot" data-color="#22C55E" title="绿"></button>
+      <button class="color-dot" data-color="#2563EB" title="蓝"></button>
+      <button class="color-dot" data-color="#A855F7" title="紫"></button>
+      <button class="color-dot" data-color="#171717" title="黑"></button>
+      <button class="color-dot" data-color="#FFFFFF" title="白"></button>
+    </div>
+    <div id="thickRow">
+      <span class="colorBar-label">粗细</span>
+      <button class="thick-dot" data-thick="1" title="细"><i></i></button>
+      <button class="thick-dot" data-thick="2" title="中"><i></i></button>
+      <button class="thick-dot" data-thick="4" title="粗"><i></i></button>
+      <button class="thick-dot" data-thick="8" title="特粗"><i></i></button>
+    </div>
+  </div>
+
+  <div id="sidebar" class="hidden">
+    <div id="outlineHeader" class="hidden">目录</div>
+    <div id="outline"></div>
+    <div id="thumbnails"></div>
+  </div>
+
+  <div id="mainContainer">
+    <div id="pdfViewer" class="pdfViewer"></div>
+  </div>
+
+  <div id="statusBar">
+    <span id="statusText">正在打开文档…</span>
+  </div>
+
+  <script type="module" src="viewer.js"></script>
+  <div id="debugPanel" class="hidden">
+    <div id="debugLog"></div>
+    <button id="debugCopyBtn" type="button">复制日志</button>
+  </div>
+</body>
+</html>

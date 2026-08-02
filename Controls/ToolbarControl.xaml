@@ -113,7 +113,7 @@
                 <Button x:Name="AddFavBtn" Content="&#xE734;"
                         Width="32" Height="32" Margin="2,0" Click="AddFavBtn_Click"
                         Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
-                <Button x:Name="CaptureBtn" Content="&#xE7C8;"
+                <Button x:Name="CaptureBtn" Content="&#xE931;"
                         Width="32" Height="32" Margin="2,0" Click="CaptureBtn_Click"
                         Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"
                         ToolTipService.ToolTip="网页捕获（截图批注）"/>

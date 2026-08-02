@@ -96,12 +96,18 @@ namespace EdgeRebuild.Core
             ApplyThemeToFlyout(flyout);
 
             // ---- 复制 ----
-            var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = args.HasSelection };
+            // PDF 查看器等场景下 WebView2 的 HasSelection 不可靠（常为 false），
+            // 因此菜单始终可用，点击时再取当前选区
+            var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = true };
             copyItem.Click += async (_, _) =>
             {
                 if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                 {
-                    string selectedText = await wv2.CoreWebView2.ExecuteScriptAsync("window.getSelection().toString();");
+                    string json = await wv2.CoreWebView2.ExecuteScriptAsync(
+                        "window.getSelection() ? window.getSelection().toString() : ''");
+                    string selectedText = "";
+                    try { selectedText = System.Text.Json.JsonDocument.Parse(json).RootElement.GetString() ?? ""; }
+                    catch { }
                     if (!string.IsNullOrEmpty(selectedText))
                     {
                         var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();

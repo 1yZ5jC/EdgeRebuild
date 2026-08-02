@@ -1,0 +1,318 @@
+/* 仿旧版 Edge PDF 查看器：浅色工具栏 + 缩略图侧栏 + 浅灰页面区 */
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-size: 13px;
+  color: #333;
+}
+
+#toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: #f2f2f2;
+  border-bottom: 1px solid #d6d6d6;
+  display: flex;
+  align-items: center;
+  z-index: 10;
+  user-select: none;
+}
+
+.tool-btn {
+  width: 28px;
+  height: 28px;
+  margin: 0 2px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: "Segoe MDL2 Assets", "Segoe UI Symbol";
+  font-size: 15px;
+  color: #333;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 26px;
+  text-align: center;
+}
+
+.tool-btn:hover {
+  background: #e5f1fb;
+  border-color: #b8d6fb;
+}
+
+.tool-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tool-btn:active {
+  background: #cce4f7;
+}
+
+.tool-btn.active {
+  background: #cce4f7;
+  border-color: #0078d7;
+  color: #0078d7;
+}
+
+.tgroup.annotate {
+  margin-right: 10px;
+  padding-right: 10px;
+  border-right: 1px solid #d6d6d6;
+}
+
+.tool-btn.mini { font-size: 11px; width: 24px; height: 24px; }
+
+#sidebarToggle {
+  margin-left: 4px;
+  font-size: 14px;
+  color: #555;
+}
+
+.tgroup { display: flex; align-items: center; }
+.tgroup.left { margin-left: 8px; }
+.tgroup.center { margin: 0 auto; }
+.tgroup.right { margin-left: auto; margin-right: 8px; display: flex; align-items: center; }
+
+.nav-btn { font-size: 11px; }
+
+#pageNum {
+  width: 34px;
+  height: 24px;
+  border: 1px solid #ccc;
+  text-align: center;
+  font-size: 13px;
+  background: #fff;
+  margin: 0 6px;
+  outline: none;
+}
+
+#pageNum:focus { border-color: #0078d7; }
+
+#numPages { color: #666; }
+
+#zoomLabel {
+  min-width: 44px;
+  text-align: center;
+  color: #333;
+}
+
+#searchBox { display: flex; align-items: center; margin-right: 6px; }
+
+#searchInput {
+  width: 130px;
+  height: 24px;
+  border: 1px solid #ccc;
+  padding: 0 6px;
+  font-size: 13px;
+  outline: none;
+  background: #fff;
+}
+
+#searchInput:focus { border-color: #0078d7; }
+
+#searchCount { margin: 0 6px; color: #666; min-width: 40px; text-align: center; }
+
+#sidebar {
+  position: fixed;
+  top: 40px;
+  left: 0;
+  bottom: 24px;
+  width: 200px;
+  background: #f7f7f7;
+  border-right: 1px solid #d6d6d6;
+  overflow-y: auto;
+  z-index: 5;
+}
+
+#outlineHeader {
+  padding: 8px 12px 4px;
+  font-weight: 600;
+  color: #333;
+}
+
+#outline { padding: 0 4px 8px; }
+#outline ul { list-style: none; margin: 0; padding-left: 14px; }
+#outline li { padding: 3px 8px; cursor: pointer; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#outline li:hover { background: #e5f1fb; }
+#outline li.lvl1 { padding-left: 4px; }
+#outline li.lvl2 { padding-left: 20px; }
+#outline li.lvl3 { padding-left: 36px; }
+
+#thumbnails { padding: 8px; }
+.thumbnail {
+  border: 1px solid #ccc;
+  background: #fff;
+  margin-bottom: 8px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,.15);
+}
+.thumbnail.selected { border-color: #0078d7; box-shadow: 0 0 0 1px #0078d7; }
+.thumbnail .page {
+  width: 100%;
+  height: 140px;
+  position: relative;
+  overflow: hidden;
+}
+.thumbnail .page canvas { position: absolute; top: 0; left: 0; }
+.thumbnail .tnum { padding: 2px 0; text-align: center; color: #666; font-size: 11px; }
+
+#mainContainer {
+  position: fixed;
+  top: 40px;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  overflow: auto;
+  background: #e6e6e6;
+}
+
+#sidebar:not(.hidden) ~ #mainContainer { left: 200px; }
+
+.pdfViewer {
+  padding: 12px 0;
+}
+
+.pdfViewer .page {
+  margin: 0 auto 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  position: relative;
+  min-width: 40px;
+}
+
+#debugPanel {
+  position: fixed;
+  left: 8px;
+  bottom: 30px;
+  width: 480px;
+  max-height: 50%;
+  overflow: auto;
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid #c0c0c0;
+  box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  padding: 6px 8px;
+  font-size: 11px;
+  font-family: Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  z-index: 9999;
+}
+
+#debugPanel.hidden { display: none; }
+
+#debugCopyBtn {
+  margin-top: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid #0078d7;
+  background: #0078d7;
+  color: #fff;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#debugCopyBtn:hover { background: #106ebe; }
+
+#statusBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24px;
+  background: #f2f2f2;
+  border-top: 1px solid #d6d6d6;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #333;
+  z-index: 100;
+  user-select: none;
+  cursor: default;
+}
+
+#statusBar:hover {
+  background: #e8e8e8;
+}
+
+#colorBar {
+  position: fixed;
+  top: 46px;
+  right: 8px;
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid #d6d6d6;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
+  padding: 8px 10px;
+  z-index: 100;
+  user-select: none;
+}
+
+#colorBarRow, #thickRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#thickRow { margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
+
+.colorBar-label {
+  font-size: 12px;
+  color: #555;
+  margin-right: 2px;
+  min-width: 28px;
+}
+
+.color-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, .25);
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+}
+
+.color-dot:hover { transform: scale(1.15); }
+
+.color-dot.selected {
+  box-shadow: 0 0 0 2px #0078d7;
+  border: 2px solid #fff;
+  transform: scale(1.15);
+}
+
+.thick-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.thick-dot i {
+  display: block;
+  border-radius: 50%;
+  background: #333;
+}
+
+.thick-dot[data-thick="1"] i { width: 3px; height: 3px; }
+.thick-dot[data-thick="2"] i { width: 6px; height: 6px; }
+.thick-dot[data-thick="4"] i { width: 10px; height: 10px; }
+.thick-dot[data-thick="8"] i { width: 14px; height: 14px; }
+
+.thick-dot:hover { background: #f0f0f0; }
+
+.thick-dot.selected {
+  background: #e5f1fb;
+  border-color: #0078d7;
+}
+
+.hidden { display: none !important; }

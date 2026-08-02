@@ -53,6 +53,8 @@
     <Content Include="Themes\Spartan.xaml" />
     <Content Include="Assets\MarkScript.js" />
     <Content Include="Assets\Readability.js" />
+    <Content Include="Assets\PdfViewer\**" />
+    <Content Include="Assets\EpubReader\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />

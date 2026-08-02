@@ -1186,9 +1186,10 @@ namespace EdgeRebuild
 
         private async void OnEdgeHtmlDownloadRequested(string url)
         {
-            // PDF 链接：EdgeHTML 引擎无内置查看器，转开 WebView2 标签由内置查看器渲染；
-            // 若服务器返回 attachment 则该 WebView2 标签内仍会走下载流程。
-            if (url?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true)
+            // PDF / EPUB 链接：EdgeHTML 引擎无内置查看器/阅读器，转开 WebView2 标签
+            // 由本地 pdf.js 查看器 / epubjs 阅读器渲染（attachment 时该标签内仍会走下载流程）。
+            if (url?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true
+                || url?.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) == true)
             {
                 await Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
                     async () => await _tabManager.CreateTabAsync(EngineType.WebView2, url));
