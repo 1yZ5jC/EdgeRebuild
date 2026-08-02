@@ -149,6 +149,19 @@ if (pdfjsViewer === "timeout") {
   var currentScale = 1.0;
   var findController = null;
 
+  // AnnotationEditorUIManager 实例通过 eventBus 事件获取（PDFViewer 无公开 getter）
+  var uiManager = null;
+  eventBus.on("annotationeditoruimanager", function (evt) {
+    uiManager = evt.uiManager;
+    dbg("uiManager 就绪");
+  });
+  function getUiManager() {
+    if (uiManager) return uiManager;
+    try {
+      return (pdfViewer && pdfViewer._layerProperties && pdfViewer._layerProperties.annotationEditorUIManager) || null;
+    } catch (e) { return null; }
+  }
+
   // ---- 事件 ----
   eventBus.on("pagesinit", function () {
     dbg("pagesinit: 页面结构就绪");
@@ -284,14 +297,17 @@ if (pdfjsViewer === "timeout") {
     cursor: document.getElementById("cursorBtn"),
     highlight: document.getElementById("highlightBtn"),
     freetext: document.getElementById("freetextBtn"),
-    ink: document.getElementById("inkBtn")
+    ink: document.getElementById("inkBtn"),
+    eraser: document.getElementById("eraserBtn")
   };
   for (var k in annotBtns) annotBtns[k].disabled = true;
+  var eraserMode = false;
 
-  // ---- 画笔颜色/粗细选择（经 switchannotationeditorparams 事件） ----
+  // ---- 画笔颜色/粗细选择（经 switchannotationeditorparams 事件，UWP InkToolbar 风格） ----
   var colorBar = document.getElementById("colorBar");
   var colorDots = document.querySelectorAll(".color-dot");
-  var thickDots = document.querySelectorAll(".thick-dot");
+  var thickSlider = document.getElementById("thickSlider");
+  var thickPreview = document.getElementById("thickPreview");
   var currentInkColor = null;
   var currentInkThickness = null;
   function dispatchInkParam(type, value) {
@@ -304,13 +320,19 @@ if (pdfjsViewer === "timeout") {
     for (var i = 0; i < colorDots.length; i++) {
       colorDots[i].classList.toggle("selected", colorDots[i].getAttribute("data-color") === color);
     }
+    if (thickPreview) thickPreview.style.background = color;
     dispatchInkParam(pdfjsLib.AnnotationEditorParamsType.INK_COLOR, color);
   }
   function selectInkThickness(t) {
+    t = parseInt(t, 10);
+    if (isNaN(t)) t = 2;
     currentInkThickness = t;
-    for (var i = 0; i < thickDots.length; i++) {
-      thickDots[i].classList.toggle("selected", parseInt(thickDots[i].getAttribute("data-thick"), 10) === t);
-    }
+    thickSlider.value = t;
+    thickSlider.style.setProperty("--fill", ((t - 1) / 9 * 100) + "%");
+    var d = Math.max(4, t * 1.6);
+    thickPreview.style.width = d + "px";
+    thickPreview.style.height = d + "px";
+    thickPreview.style.background = currentInkColor || "#333";
     dispatchInkParam(pdfjsLib.AnnotationEditorParamsType.INK_THICKNESS, t);
   }
   for (var i = 0; i < colorDots.length; i++) {
@@ -319,15 +341,12 @@ if (pdfjsViewer === "timeout") {
       dot.addEventListener("click", function () { selectInkColor(dot.getAttribute("data-color")); });
     })(colorDots[i]);
   }
-  for (var i = 0; i < thickDots.length; i++) {
-    (function (dot) {
-      dot.addEventListener("click", function () { selectInkThickness(parseInt(dot.getAttribute("data-thick"), 10)); });
-    })(thickDots[i]);
-  }
+  thickSlider.addEventListener("input", function () { selectInkThickness(thickSlider.value); });
 
   function setAnnotateTool(mode, activeBtn) {
     if (!pdfDocument) return;
     try {
+      if (eraserMode) { eraserMode = false; annotBtns.eraser.classList.remove("active"); }
       pdfViewer.annotationEditorMode = { mode: mode };
       dbg("模式切换成功: mode=" + mode);
       for (var k in annotBtns) annotBtns[k].classList.remove("active");
@@ -345,6 +364,83 @@ if (pdfjsViewer === "timeout") {
       statusText.textContent = errMsg;
     }
   }
+
+  // ---- 橡皮擦：点击批注即删除（pdf.js 4.x 无内置擦除工具） ----
+  function setEraserMode(on) {
+    if (!pdfDocument) return;
+    if (on) {
+      try { pdfViewer.annotationEditorMode = { mode: pdfjsLib.AnnotationEditorType.NONE }; } catch (e) { }
+      for (var k in annotBtns) annotBtns[k].classList.remove("active");
+      annotBtns.eraser.classList.add("active");
+      colorBar.classList.add("hidden");
+      statusText.textContent = "橡皮擦：点击批注将其删除";
+    } else {
+      annotBtns.eraser.classList.remove("active");
+      statusText.textContent = "";
+    }
+    eraserMode = on;
+    container.classList.toggle("eraser", on);
+    dbg("[ERASE] 橡皮擦模式=" + on + " | ui=" + (getUiManager() ? "存在" : "NULL"));
+  }
+  annotBtns.eraser.addEventListener("click", function () {
+    dbg("[ERASE] 橡皮擦按钮点击，当前 eraserMode=" + eraserMode);
+    setEraserMode(!eraserMode);
+  });
+
+  // 捕获阶段处理：pointerdown 早于 pdf.js 的任何批注监听，点击即删。
+  // 定位顺序：div.id -> getEditor(id)  |  包含匹配  |  坐标包围盒兜底
+  container.addEventListener("pointerdown", function (e) {
+    if (!eraserMode) return;
+    var tgt = e.target;
+    var cls = tgt && (typeof tgt.className === "string" ? tgt.className : (tgt.className && tgt.className.baseVal) || "");
+    dbg("[ERASE] pointerdown target=" + (tgt ? tgt.tagName : "null") + "." + cls + " @(" + Math.round(e.clientX) + "," + Math.round(e.clientY) + ")");
+    var ui = getUiManager();
+    if (!ui) {
+      dbg("[ERASE] FAIL: annotationEditorUIManager 为 NULL");
+      return;
+    }
+    var el = tgt && tgt.closest ? tgt.closest(".inkEditor, .freeTextEditor, .highlightEditor, .stampEditor") : null;
+    var editor = null;
+    if (el && el.id) {
+      editor = ui.getEditor(el.id);
+      dbg("[ERASE] closest=" + (el ? el.tagName + "." + (typeof el.className === "string" ? el.className : el.className && el.className.baseVal) + " id=" + el.id : "null") + " -> getEditor=" + (editor ? "hit" : "miss"));
+    }
+    if (!editor && el) {
+      var pageEl = el.closest(".page");
+      var pageIndex = pageEl ? parseInt(pageEl.getAttribute("data-page-number") || "0", 10) - 1 : -1;
+      dbg("[ERASE] contains 匹配 pageIndex=" + pageIndex + " (pagesCount=" + pdfViewer.pagesCount + ")");
+      if (pageIndex >= 0) {
+        var eds = ui.getEditors(pageIndex);
+        dbg("[ERASE] 该页 editors=" + eds.length);
+        for (var i = 0; i < eds.length; i++) {
+          if (eds[i].div === el || eds[i].div.contains(el)) { editor = eds[i]; dbg("[ERASE] contains 命中 id=" + eds[i].div.id); break; }
+        }
+      }
+    }
+    if (!editor) {
+      // 坐标兜底：批注可能被 annotationLayer 只读元素盖住，按包围盒命中
+      for (var p = 0; p < pdfViewer.pagesCount; p++) {
+        var list = ui.getEditors(p);
+        for (var j = 0; j < list.length; j++) {
+          var r = list[j].div.getBoundingClientRect();
+          var inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+          dbg("[ERASE] coord p" + p + " #" + j + " id=" + list[j].div.id + " rect=(" + Math.round(r.left) + "," + Math.round(r.top) + ")-(" + Math.round(r.right) + "," + Math.round(r.bottom) + ") inside=" + inside);
+          if (inside) editor = list[j];
+        }
+      }
+      dbg("[ERASE] 坐标命中=" + (editor ? "YES " + editor.div.id : "NO"));
+    }
+    if (editor) {
+      try {
+        editor.remove();
+        dbg("[ERASE] 已删除批注 id=" + editor.div.id);
+      } catch (err2) {
+        dbg("[ERASE] 删除抛异常: " + (err2 && err2.stack ? err2.stack : err2));
+      }
+      return;
+    }
+    dbg("[ERASE] 未命中任何批注");
+  }, true);
 
   annotBtns.cursor.addEventListener("click", function () { setAnnotateTool(pdfjsLib.AnnotationEditorType.NONE, annotBtns.cursor); });
   annotBtns.highlight.addEventListener("click", function () { setAnnotateTool(pdfjsLib.AnnotationEditorType.HIGHLIGHT, annotBtns.highlight); });

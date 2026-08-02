@@ -25,6 +25,7 @@
         <button id="highlightBtn" class="tool-btn" title="高亮（批注）">&#xE7E6;</button>
         <button id="freetextBtn" class="tool-btn" title="添加文本">&#xE97C;</button>
         <button id="inkBtn" class="tool-btn" title="画笔">&#xE76D;</button>
+        <button id="eraserBtn" class="tool-btn" title="橡皮擦（点击批注删除）" disabled>&#xE75C;</button>
       </div>
       <div id="searchBox" class="hidden">
         <input id="searchInput" type="text" placeholder="在页面中查找" title="查找">
@@ -56,10 +57,8 @@
     </div>
     <div id="thickRow">
       <span class="colorBar-label">粗细</span>
-      <button class="thick-dot" data-thick="1" title="细"><i></i></button>
-      <button class="thick-dot" data-thick="2" title="中"><i></i></button>
-      <button class="thick-dot" data-thick="4" title="粗"><i></i></button>
-      <button class="thick-dot" data-thick="8" title="特粗"><i></i></button>
+      <input type="range" id="thickSlider" min="1" max="10" step="1" value="2">
+      <span id="thickPreview" title="当前粗细"></span>
     </div>
   </div>
 

@@ -1,4 +1,4 @@
-/* 仿旧版 Edge PDF 查看器：浅色工具栏 + 缩略图侧栏 + 浅灰页面区 */
+/* 仿旧版 Edge PDF 查看器：顶部通栏工具栏（Acrylic 质感）+ 浅灰页面区 */
 html, body {
   margin: 0;
   height: 100%;
@@ -14,12 +14,25 @@ html, body {
   left: 0;
   right: 0;
   height: 40px;
-  background: #f2f2f2;
-  border-bottom: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .66), rgba(242, 242, 242, .5));
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  border-bottom: 1px solid rgba(180, 180, 180, .6);
   display: flex;
   align-items: center;
-  z-index: 10;
+  z-index: 1000;
   user-select: none;
+}
+
+/* Acrylic 噪点纹理层（模拟系统亚克力颗粒感） */
+#toolbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, .22) 0.5px, transparent 0.5px);
+  background-size: 3px 3px;
+  opacity: .5;
 }
 
 .tool-btn {
@@ -167,6 +180,7 @@ html, body {
   bottom: 24px;
   overflow: auto;
   background: #e6e6e6;
+  z-index: 0;
 }
 
 #sidebar:not(.hidden) ~ #mainContainer { left: 200px; }
@@ -222,8 +236,10 @@ html, body {
   right: 0;
   bottom: 0;
   height: 24px;
-  background: #f2f2f2;
-  border-top: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .82), rgba(242, 242, 242, .68));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-top: 1px solid rgba(180, 180, 180, .6);
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -235,20 +251,42 @@ html, body {
 }
 
 #statusBar:hover {
-  background: #e8e8e8;
+  background: linear-gradient(rgba(255, 255, 255, .9), rgba(238, 238, 238, .75));
 }
 
+/* ---- 画笔面板（UWP InkToolbar 风格） ---- */
 #colorBar {
   position: fixed;
   top: 46px;
   right: 8px;
-  background: rgba(255, 255, 255, .97);
-  border: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .88), rgba(247, 247, 247, .72));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border: 1px solid rgba(180, 180, 180, .6);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, .18);
   padding: 8px 10px;
   z-index: 100;
   user-select: none;
+}
+
+/* 橡皮擦模式：批注 hover 高亮 */
+#mainContainer.eraser .freeTextEditor,
+#mainContainer.eraser .inkEditor,
+#mainContainer.eraser .highlightEditor,
+#mainContainer.eraser .stampEditor {
+  cursor: not-allowed;
+}
+#mainContainer.eraser .freeTextEditor:hover,
+#mainContainer.eraser .inkEditor:hover,
+#mainContainer.eraser .highlightEditor:hover,
+#mainContainer.eraser .stampEditor:hover {
+  outline: 2px solid rgba(232, 17, 35, .85);
+  outline-offset: -2px;
+}
+/* PDF 自带的只读批注（annotationLayer 渲染）也在擦除范围内 */
+#mainContainer.eraser .annotationLayer :is(.annotationContent, svg, canvas):hover {
+  outline: 2px solid rgba(232, 17, 35, .85);
 }
 
 #colorBarRow, #thickRow {
@@ -257,7 +295,7 @@ html, body {
   gap: 6px;
 }
 
-#thickRow { margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
+#thickRow { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0, 0, 0, .08); }
 
 .colorBar-label {
   font-size: 12px;
@@ -274,45 +312,70 @@ html, body {
   cursor: pointer;
   padding: 0;
   position: relative;
+  transition: transform .08s ease;
 }
 
 .color-dot:hover { transform: scale(1.15); }
 
 .color-dot.selected {
-  box-shadow: 0 0 0 2px #0078d7;
+  box-shadow: 0 0 0 2px #0078d7, 0 0 0 1px #fff inset;
   border: 2px solid #fff;
   transform: scale(1.15);
 }
 
-.thick-dot {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1px solid transparent;
+/* UWP 风格滑块：细轨道 + 圆形滑块头 + 当前粗细预览 */
+#thickSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 120px;
+  height: 24px;
   background: transparent;
+  outline: none;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
 }
 
-.thick-dot i {
-  display: block;
+#thickSlider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #0078d7 var(--fill, 10%), #d0d0d0 var(--fill, 10%));
+}
+
+#thickSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #0078d7;
+  margin-top: -6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+
+#thickSlider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: #d0d0d0;
+}
+
+#thickSlider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #0078d7;
+}
+
+#thickPreview {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  min-width: 4px;
+  min-height: 4px;
   border-radius: 50%;
   background: #333;
-}
-
-.thick-dot[data-thick="1"] i { width: 3px; height: 3px; }
-.thick-dot[data-thick="2"] i { width: 6px; height: 6px; }
-.thick-dot[data-thick="4"] i { width: 10px; height: 10px; }
-.thick-dot[data-thick="8"] i { width: 14px; height: 14px; }
-
-.thick-dot:hover { background: #f0f0f0; }
-
-.thick-dot.selected {
-  background: #e5f1fb;
-  border-color: #0078d7;
+  border: 1px solid rgba(0, 0, 0, .3);
+  margin-left: 4px;
+  transition: all .08s ease;
 }
 
 .hidden { display: none !important; }

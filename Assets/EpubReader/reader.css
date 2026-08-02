@@ -14,13 +14,26 @@ html, body {
   left: 0;
   right: 0;
   height: 40px;
-  background: #f2f2f2;
-  border-bottom: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .66), rgba(242, 242, 242, .5));
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  border-bottom: 1px solid rgba(180, 180, 180, .6);
   display: flex;
   align-items: center;
   padding: 0 6px;
   z-index: 20;
   user-select: none;
+}
+
+/* Acrylic 噪点纹理层 */
+#topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, .22) 0.5px, transparent 0.5px);
+  background-size: 3px 3px;
+  opacity: .5;
 }
 
 .tool-btn {
@@ -59,8 +72,10 @@ html, body {
   left: 0;
   bottom: 50px;
   width: 260px;
-  background: #f7f7f7;
-  border-right: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .88), rgba(247, 247, 247, .72));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-right: 1px solid rgba(180, 180, 180, .6);
   overflow-y: auto;
   z-index: 15;
   box-shadow: 2px 0 8px rgba(0, 0, 0, .08);
@@ -161,37 +176,52 @@ html, body {
   right: 0;
   bottom: 50px;
   background: #e6e6e6;
+  overflow: hidden;
+  z-index: 0;
 }
 
 .panel:not(.hidden) ~ #viewer { left: 260px; }
 
 #viewer .epub-view iframe { box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
 
-/* ---- 底部进度条 ---- */
+/* ---- 底部进度条（UWP 风格：细轨道 + 圆形滑块头，独立于圆点行） ---- */
 #progressBar {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 46px;
-  height: 4px;
-  background: #d0d0d0;
+  left: 8px;
+  right: 8px;
+  bottom: 60px;
+  height: 8px;
+  background: rgba(208, 208, 208, .8);
   cursor: pointer;
   z-index: 20;
+}
+/* 扩大拖动命中区（轨道只有 8px 高） */
+#progressBar::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  bottom: -8px;
+  left: 0;
+  right: 0;
 }
 #progressFill {
   height: 100%;
   width: 0;
   background: #0078d7;
+  position: relative;
 }
-#percentLabel {
+#progressFill::after {
+  content: "";
   position: absolute;
-  right: 6px;
-  top: -16px;
-  font-size: 11px;
-  color: #666;
-  background: rgba(255, 255, 255, .85);
-  border-radius: 3px;
-  padding: 0 4px;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #0078d7;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
 }
 
 /* ---- 章节圆点 ---- */
@@ -199,10 +229,12 @@ html, body {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 24px;
+  bottom: 28px;
   height: 22px;
-  background: #f2f2f2;
-  border-top: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .82), rgba(242, 242, 242, .68));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-top: 1px solid rgba(180, 180, 180, .6);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,8 +261,10 @@ html, body {
   right: 0;
   bottom: 0;
   height: 24px;
-  background: #f2f2f2;
-  border-top: 1px solid #d6d6d6;
+  background: linear-gradient(rgba(255, 255, 255, .82), rgba(242, 242, 242, .68));
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-top: 1px solid rgba(180, 180, 180, .6);
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -238,5 +272,25 @@ html, body {
   color: #666;
   z-index: 25;
 }
+
+#percentText {
+  margin-left: auto;
+  color: #0078d7;
+  font-weight: 600;
+}
+
+/* ---- 点击页边翻页（旧版 Edge gutter 交互） ---- */
+.gutter {
+  position: fixed;
+  top: 40px;
+  bottom: 50px;
+  width: 8%;
+  min-width: 40px;
+  z-index: 12;
+  cursor: pointer;
+}
+#gutterLeft { left: 0; }
+#gutterRight { right: 0; }
+.gutter:hover { background: rgba(0, 120, 215, .06); }
 
 .hidden { display: none !important; }

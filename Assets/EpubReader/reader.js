@@ -18,6 +18,7 @@
   var currentCfi = null;
   var currentHref = null;
   var spineItems = [];   // [{href, index}]（采样后的章节圆点）
+  var fullSpine = [];    // 全部章节 href（locations 未就绪时拖动进度条的兜底）
   var hrefIndex = {};    // href -> spine 索引
   var tocItems = [];
   var locationsReady = false;
@@ -125,6 +126,7 @@
       dotsEl.innerHTML = "";
       var step = n > 24 ? Math.ceil(n / 24) : 1;
       spineItems = [];
+      fullSpine = [];
       for (var k = 0; k < n; k += step) {
         (function (idx) {
           var sec = spine.get(idx);
@@ -154,6 +156,12 @@
           dotsEl.appendChild(dot);
         }
       }
+      try {
+        for (var fi = 0; fi < n; fi++) {
+          var fsec = spine.get(fi);
+          if (fsec && fsec.href) fullSpine.push(fsec.href);
+        }
+      } catch (e) { }
       chaptersLoaded = true;
     }).catch(function () { });
   }
@@ -174,12 +182,12 @@
   // ---- 进度 ----
   var progressBar = document.getElementById("progressBar");
   var progressFill = document.getElementById("progressFill");
-  var percentLabel = document.getElementById("percentLabel");
+  var percentText = document.getElementById("percentText");
 
   function updateProgress(pct) {
     pct = Math.max(0, Math.min(100, Math.round(pct)));
     progressFill.style.width = pct + "%";
-    percentLabel.textContent = pct + "%";
+    if (percentText) percentText.textContent = pct + "%";
   }
 
   function buildLocations() {
@@ -420,17 +428,24 @@
   }
   highlightSettings();
 
-  // 进度条拖动
+  // 进度条拖动（locations 未就绪时降级为章节级跳转，保证拖动始终可用）
   var dragging = false;
   function setProgressByEvent(e) {
-    if (!locationsReady) return;
     var rect = progressBar.getBoundingClientRect();
     var x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
     var pct = x / rect.width;
-    try {
-      var cfi = book.locations.cfiFromPercentage(pct);
-      if (cfi) rendition.display(cfi);
-    } catch (err) { }
+    if (locationsReady) {
+      try {
+        var cfi = book.locations.cfiFromPercentage(pct);
+        if (cfi) rendition.display(cfi);
+      } catch (err) { }
+      return;
+    }
+    if (fullSpine.length) {
+      var idx = Math.max(0, Math.min(fullSpine.length - 1, Math.floor(pct * fullSpine.length)));
+      rendition.display(fullSpine[idx]);
+      updateProgress(pct * 100);
+    }
   }
   progressBar.addEventListener("pointerdown", function (e) {
     dragging = true;
@@ -448,6 +463,10 @@
     if (e.key === "ArrowLeft") { rendition.prev(); e.preventDefault(); }
     else if (e.key === "ArrowRight") { rendition.next(); e.preventDefault(); }
   });
+
+  // 点击页边翻页（旧版 Edge gutter 交互）
+  document.getElementById("gutterLeft").addEventListener("click", function () { rendition.prev(); });
+  document.getElementById("gutterRight").addEventListener("click", function () { rendition.next(); });
 
   // ---- 初始化 ----
   book = ePub(fileParam);
