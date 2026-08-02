@@ -238,9 +238,12 @@ namespace EdgeRebuild.Core
                 response.EnsureSuccessStatusCode();
                 var buffer = await response.Content.ReadAsBufferAsync();
                 byte[] bytes = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(buffer);
-                string ext = kind == "pdf" ? ".pdf" : ".epub";
-                var filePath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache",
-                    $"doc_{DateTime.Now:yyyyMMdd_HHmmss_fff}{ext}");
+                // EPUB 用固定文件名：阅读器按文件名持久化阅读进度/书签（localStorage 键），
+                // 时间戳命名会导致每次重开文件都生成新键。
+                string fileName = kind == "pdf"
+                    ? $"doc_{DateTime.Now:yyyyMMdd_HHmmss_fff}.pdf"
+                    : "doc_reader.epub";
+                var filePath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", fileName);
                 await File.WriteAllBytesAsync(filePath, bytes);
                 string page = kind == "pdf" ? "viewer.html" : "reader.html";
                 string viewerHost = kind == "pdf" ? "pdfviewer.local" : "epubreader.local";

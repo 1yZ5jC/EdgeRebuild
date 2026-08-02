@@ -10,22 +10,76 @@
   <div id="topbar">
     <button id="tocBtn" class="tool-btn" title="目录">&#xE8FD;</button>
     <span id="bookTitle">EPUB 阅读器</span>
+    <button id="bookmarkBtn" class="tool-btn" title="书签">&#xE8A4;</button>
+    <button id="searchBtn" class="tool-btn" title="搜索">&#xE721;</button>
+    <button id="settingsBtn" class="tool-btn" title="设置">&#xE713;</button>
     <div id="navGroup">
       <button id="prevBtn" class="tool-btn" title="上一页">&#xE76B;</button>
       <button id="nextBtn" class="tool-btn" title="下一页">&#xE76C;</button>
     </div>
   </div>
 
-  <div id="tocPanel" class="hidden">
+  <div id="tocPanel" class="panel hidden">
     <div id="tocList"></div>
   </div>
 
+  <div id="searchPanel" class="panel hidden">
+    <input id="searchInput" placeholder="搜索全书…" autocomplete="off">
+    <div id="searchResults"></div>
+  </div>
+
+  <div id="bookmarksPanel" class="panel hidden">
+    <div id="bookmarksList"></div>
+  </div>
+
+  <div id="settingsPanel" class="panel hidden">
+    <div class="set-row">
+      <span class="set-label">字号</span>
+      <div class="set-opts" id="sizeOpts">
+        <button data-size="85%">小</button>
+        <button data-size="100%">中</button>
+        <button data-size="125%">大</button>
+        <button data-size="150%">特大</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <span class="set-label">字体</span>
+      <div class="set-opts" id="fontOpts">
+        <button data-font="serif">衬线</button>
+        <button data-font="sans">无衬线</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <span class="set-label">行距</span>
+      <div class="set-opts" id="lhOpts">
+        <button data-lh="1.4">紧凑</button>
+        <button data-lh="1.6">标准</button>
+        <button data-lh="1.9">宽松</button>
+      </div>
+    </div>
+    <div class="set-row">
+      <span class="set-label">主题</span>
+      <div class="set-opts" id="themeOpts">
+        <button data-theme="light" class="theme-swatch swatch-light" title="亮色"></button>
+        <button data-theme="sepia" class="theme-swatch swatch-sepia" title="棕褐"></button>
+        <button data-theme="dark" class="theme-swatch swatch-dark" title="深色"></button>
+      </div>
+    </div>
+  </div>
+
   <div id="viewer"></div>
+
+  <div id="progressBar" title="拖动跳转">
+    <div id="progressFill"></div>
+    <span id="percentLabel">0%</span>
+  </div>
+  <div id="dotsRow"></div>
 
   <div id="statusBar">
     <span id="statusText">正在打开电子书…</span>
   </div>
 
+  <script src="jszip.min.js"></script>
   <script src="epub.min.js"></script>
   <script src="reader.js"></script>
 </body>

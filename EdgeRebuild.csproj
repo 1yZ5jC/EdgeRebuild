@@ -54,6 +54,7 @@
     <Content Include="Assets\MarkScript.js" />
     <Content Include="Assets\Readability.js" />
     <Content Include="Assets\PdfViewer\**" />
+    <Content Include="Assets\EpubReader\jszip.min.js" />
     <Content Include="Assets\EpubReader\**" />
   </ItemGroup>
   <ItemGroup>
