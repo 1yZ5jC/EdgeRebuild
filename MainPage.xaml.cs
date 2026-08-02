@@ -6,11 +6,18 @@ using Microsoft.Web.WebView2.Core;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
+using Windows.Graphics.Imaging;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using Windows.Storage.Streams;
 using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
@@ -19,6 +26,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 using Windows.System;
 
@@ -57,7 +65,7 @@ namespace EdgeRebuild
         private Action _shortcutNewTab, _shortcutCloseTab, _shortcutReopenTab, _shortcutFocusAddressBar,
             _shortcutRefresh, _shortcutAddFavorite, _shortcutShowHistory, _shortcutShowDownloads,
             _shortcutFind, _shortcutFindNext, _shortcutFindPrevious, _shortcutCloseFind,
-            _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab;
+            _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab, _shortcutHighlightMark, _shortcutWebCapture;
         private Action<int> _shortcutSwitchToTab;
         private Action<PageShortcutKey> _shortcutPageKey;
 
@@ -121,7 +129,13 @@ namespace EdgeRebuild
             ShortcutManager.OnNextTab -= _shortcutNextTab;
             ShortcutManager.OnPreviousTab -= _shortcutPreviousTab;
             ShortcutManager.OnSwitchToTab -= _shortcutSwitchToTab;
-            if (_tabManager != null) _tabManager.PageKeyPressed -= _shortcutPageKey;
+            if (_tabManager != null)
+            {
+                _tabManager.PageKeyPressed -= _shortcutPageKey;
+                _tabManager.PageMarkActionRequested -= OnPageMarkActionRequested;
+            }
+            ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
+            ShortcutManager.OnWebCapture -= _shortcutWebCapture;
             _pageKeyTimer?.Stop();
             _pageKeyTimer = null;
         }
@@ -177,7 +191,8 @@ namespace EdgeRebuild
                     () => _tabManager.CurrentTab?.Engine ?? _defaultEngine,
                     PrintCurrentPageAsync,
                     ViewSourceAsync,
-                    (viewItem) => _ = _tabManager.TogglePinTabAsync(viewItem)
+                    (viewItem) => _ = _tabManager.TogglePinTabAsync(viewItem),
+                    WebCaptureCurrentAsync
                 );
 
                 // ---- 下载协调器 ----
@@ -191,6 +206,7 @@ namespace EdgeRebuild
                     () => _tabManager.CurrentTab?.Engine ?? _defaultEngine,
                     PrintCurrentPageAsync,
                     ViewSourceAsync,
+                    WebCaptureCurrentAsync,
                     () => { HubSplitView.IsPaneOpen = true; hubPane.ShowHistory(); },
                     () => SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen,
                     ClearBrowsingDataAsync,
@@ -382,6 +398,16 @@ namespace EdgeRebuild
                     if (!IsFocusedWindow()) return;
                     _ = PrintCurrentPageAsync();
                 };
+                _shortcutHighlightMark = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    _ = MarkSelectionDefaultAsync();
+                };
+                _shortcutWebCapture = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    _ = WebCaptureCurrentAsync();
+                };
                 _shortcutNextTab = () =>
                 {
                     if (!IsFocusedWindow()) return;
@@ -414,6 +440,8 @@ namespace EdgeRebuild
                 ShortcutManager.OnFindPrevious += _shortcutFindPrevious;
                 ShortcutManager.OnCloseFind += _shortcutCloseFind;
                 ShortcutManager.OnPrint += _shortcutPrint;
+                ShortcutManager.OnHighlightMark += _shortcutHighlightMark;
+                ShortcutManager.OnWebCapture += _shortcutWebCapture;
                 ShortcutManager.OnNextTab += _shortcutNextTab;
                 ShortcutManager.OnPreviousTab += _shortcutPreviousTab;
                 ShortcutManager.OnSwitchToTab += _shortcutSwitchToTab;
@@ -426,6 +454,7 @@ namespace EdgeRebuild
                     HandlePageKey(key);
                 };
                 _tabManager.PageKeyPressed += _shortcutPageKey;
+                _tabManager.PageMarkActionRequested += OnPageMarkActionRequested;
 
                 // ---- EdgeHTML 页面内快捷键：marker 轮询（见 EdgeHtmlTab.PageKeyBridgeJs 注释）----
                 _pageKeyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
@@ -471,6 +500,12 @@ namespace EdgeRebuild
                     if (FindBar.Visibility == Visibility.Visible)
                         CloseFindBar();
                     break;
+                case PageShortcutKey.HighlightMark:
+                    _ = MarkSelectionDefaultAsync();
+                    break;
+                case PageShortcutKey.WebCapture:
+                    _ = WebCaptureCurrentAsync();
+                    break;
             }
         }
 
@@ -494,11 +529,162 @@ namespace EdgeRebuild
                     case "sf3":
                     case "scg": HandlePageKey(PageShortcutKey.FindPrevious); break;
                     case "esc": HandlePageKey(PageShortcutKey.CloseFind); break;
+                    case "hm": HandlePageKey(PageShortcutKey.HighlightMark); break;
+                    case "cs": HandlePageKey(PageShortcutKey.WebCapture); break;
+                    default:
+                        if (key.StartsWith("mark:remove:", StringComparison.Ordinal)
+                            && int.TryParse(key.Substring("mark:remove:".Length), out int markId))
+                            _ = HandleMarkRemovedAsync(markId);
+                        break;
                 }
             }
             catch { }
             finally { _pageKeyPolling = false; }
         }
+
+        // ---- 网页文本标记（高亮） ----
+        private static async Task RestoreMarksDelayedAsync(IBrowserTab tab)
+        {
+            await Task.Delay(800);   // 等待页面加载完成
+            await PageMarkManager.RestoreAsync(tab);
+        }
+
+        private async Task MarkSelectionDefaultAsync()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            var mark = await PageMarkManager.MarkSelectionAsync(tab, PageMarkManager.DefaultColor);
+            if (mark == null)
+                NotificationService.ShowToast("标记高亮", "请先选中网页中的文字");
+            else
+                NotificationService.ShowToast("已标记", "点击高亮文字可移除");
+        }
+
+        private async void OnPageMarkActionRequested(string payload)
+        {
+            if (payload?.StartsWith("remove:", StringComparison.Ordinal) == true
+                && int.TryParse(payload.Substring("remove:".Length), out int id))
+                await HandleMarkRemovedAsync(id);
+        }
+
+        private async Task HandleMarkRemovedAsync(int id)
+        {
+            await PageMarkManager.RemoveMarkAsync(id);
+            NotificationService.ShowToast("已移除标记", "");
+        }
+
+        // ---- 网页捕获（截图 + 画笔批注） ----
+        private async Task WebCaptureCurrentAsync()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            byte[] png = await WebCaptureService.CapturePagePngAsync(tab);
+            if (png == null || png.Length == 0)
+            {
+                NotificationService.ShowToast("网页捕获", "截图失败");
+                return;
+            }
+            var bmp = new BitmapImage();
+            using (var ms = new MemoryStream(png))
+            {
+                await bmp.SetSourceAsync(ms.AsRandomAccessStream());
+            }
+            ShowCaptureOverlay(bmp);
+        }
+
+        private void ShowCaptureOverlay(BitmapImage bmp)
+        {
+            CaptureInkToolbar.TargetInkCanvas = CaptureInk;
+            CaptureBorder.Background = ThemeManager.GetToolbarBackground();
+            CaptureTitle.Foreground = ThemeManager.GetForegroundBrush();
+            double dispW = 900, dispH = 560;
+            if (bmp.PixelWidth > 0 && bmp.PixelHeight > 0)
+            {
+                double scale = Math.Min(dispW / bmp.PixelWidth, dispH / bmp.PixelHeight);
+                if (scale > 1) scale = 1;   // 小图不放大
+                dispW = bmp.PixelWidth * scale;
+                dispH = bmp.PixelHeight * scale;
+            }
+            CaptureImage.Source = bmp;
+            CaptureImageGrid.Width = dispW;
+            CaptureImageGrid.Height = dispH;
+            CaptureInk.InkPresenter.StrokeContainer.Clear();
+            CaptureInk.InkPresenter.InputDeviceTypes =
+                CoreInputDeviceTypes.Mouse | CoreInputDeviceTypes.Pen | CoreInputDeviceTypes.Touch;
+            CaptureOverlay.Visibility = Visibility.Visible;
+        }
+
+        private void CloseCapture() => CaptureOverlay.Visibility = Visibility.Collapsed;
+
+        private void CaptureOverlay_Tapped(object sender, TappedRoutedEventArgs e)
+        {
+            if (e.OriginalSource == CaptureOverlay) CloseCapture();
+        }
+
+        private async Task<byte[]> RenderCaptureCompositeAsync()
+        {
+            var rtb = new RenderTargetBitmap();
+            await rtb.RenderAsync(CaptureImageGrid);
+            var pixels = await rtb.GetPixelsAsync();
+            var ras = new InMemoryRandomAccessStream();
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, ras);
+            encoder.SetPixelData(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Straight,
+                (uint)rtb.PixelWidth,
+                (uint)rtb.PixelHeight,
+                96, 96,
+                pixels.ToArray());
+            await encoder.FlushAsync();
+            using var ms = new MemoryStream();
+            await ras.AsStreamForRead().CopyToAsync(ms);
+            return ms.ToArray();
+        }
+
+        private async void CaptureSaveBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                byte[] bytes = await RenderCaptureCompositeAsync();
+                var picker = new FileSavePicker
+                {
+                    SuggestedStartLocation = PickerLocationId.Downloads,
+                    SuggestedFileName = $"网页捕获 {DateTime.Now:yyyyMMdd-HHmmss}"
+                };
+                picker.FileTypeChoices.Add("PNG 图片", new List<string> { ".png" });
+                var file = await picker.PickSaveFileAsync();
+                if (file == null) return;   // 用户取消：保留批注继续编辑
+                await FileIO.WriteBytesAsync(file, bytes);
+                NotificationService.ShowToast("已保存", $"已保存到：{file.Path}");
+            }
+            catch (Exception ex)
+            {
+                NotificationService.ShowToast("保存失败", ex.Message);
+            }
+            CloseCapture();
+        }
+
+        private async void CaptureCopyBtn_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                byte[] bytes = await RenderCaptureCompositeAsync();
+                var ras = new InMemoryRandomAccessStream();
+                await ras.WriteAsync(bytes.AsBuffer());
+                ras.Seek(0);
+                var dp = new DataPackage();
+                dp.SetBitmap(RandomAccessStreamReference.CreateFromStream(ras));
+                Clipboard.SetContent(dp);
+                NotificationService.ShowToast("已复制", "图片已复制到剪贴板");
+            }
+            catch (Exception ex)
+            {
+                NotificationService.ShowToast("复制失败", ex.Message);
+            }
+            CloseCapture();
+        }
+
+        private void CaptureCloseBtn_Click(object sender, RoutedEventArgs e) => CloseCapture();
 
         // ---- TabManager 事件处理 ----
         private void OnTabOrderChanged() => SyncTabPanelOrder();
@@ -549,6 +735,9 @@ namespace EdgeRebuild
 
         private void OnTabManagerTabUrlChanged(IBrowserTab tab, string url)
         {
+            // 导航完成后恢复该页面的文本标记（后台标签页也恢复）
+            _ = RestoreMarksDelayedAsync(tab);
+
             if (_tabManager.CurrentTab == tab)
             {
                 if (FindBar.Visibility == Visibility.Visible)
@@ -882,6 +1071,12 @@ namespace EdgeRebuild
             if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
         }
 
+        private async void ToolbarControl_CaptureClicked()
+        {
+            if (!IsFocusedWindow()) return;
+            await WebCaptureCurrentAsync();
+        }
+
         private void ToolbarControl_HubClicked()
         {
             HubSplitView.IsPaneOpen = !HubSplitView.IsPaneOpen;
@@ -991,6 +1186,14 @@ namespace EdgeRebuild
 
         private async void OnEdgeHtmlDownloadRequested(string url)
         {
+            // PDF 链接：EdgeHTML 引擎无内置查看器，转开 WebView2 标签由内置查看器渲染；
+            // 若服务器返回 attachment 则该 WebView2 标签内仍会走下载流程。
+            if (url?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
+                    async () => await _tabManager.CreateTabAsync(EngineType.WebView2, url));
+                return;
+            }
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url));
         }
 

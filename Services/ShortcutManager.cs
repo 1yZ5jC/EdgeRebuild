@@ -35,6 +35,8 @@ namespace EdgeRebuild.Services
             Register(VirtualKeyModifiers.Control, VirtualKey.J, () => OnShowDownloads?.Invoke());
             Register(VirtualKeyModifiers.Control, VirtualKey.F, () => OnFind?.Invoke());
             Register(VirtualKeyModifiers.Control, VirtualKey.P, () => OnPrint?.Invoke());
+            Register(VirtualKeyModifiers.ControlShift, VirtualKey.M, () => OnHighlightMark?.Invoke());
+            Register(VirtualKeyModifiers.ControlShift, VirtualKey.S, () => OnWebCapture?.Invoke());
             Register(VirtualKeyModifiers.Control, VirtualKey.Tab, () => OnNextTab?.Invoke());
             Register(VirtualKeyModifiers.ControlShift, VirtualKey.Tab, () => OnPreviousTab?.Invoke());
             Register(VirtualKeyModifiers.Control, VirtualKey.Number1, () => OnSwitchToTab?.Invoke(0));
@@ -66,6 +68,8 @@ namespace EdgeRebuild.Services
         public static event Action OnFindPrevious;
         public static event Action OnCloseFind;
         public static event Action OnPrint;
+        public static event Action OnHighlightMark;
+        public static event Action OnWebCapture;
         public static event Action OnNextTab;
         public static event Action OnPreviousTab;
         public static event Action<int> OnSwitchToTab;

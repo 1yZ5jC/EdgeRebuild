@@ -246,6 +246,7 @@
                                  ForwardRequested="ToolbarControl_ForwardRequested"
                                  RefreshRequested="ToolbarControl_RefreshRequested"
                                  AddFavoriteClicked="ToolbarControl_AddFavoriteClicked"
+                                 CaptureClicked="ToolbarControl_CaptureClicked"
                                  HubClicked="ToolbarControl_HubClicked"
                                  MenuClicked="ToolbarControl_MenuClicked"
                                  EngineSwitched="ToolbarControl_EngineSwitched"/>
@@ -302,6 +303,30 @@
                             Style="{StaticResource RevealButtonStyle}"
                             ToolTipService.ToolTip="关闭（Esc）"
                             Click="FindCloseBtn_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 网页捕获覆盖层：截图 + 画笔批注（保留在可视树中以便 RenderTargetBitmap 合成） -->
+        <!-- 网页捕获覆盖层：只覆盖网页区域（Row 2），地址栏/标签栏保持可见，如同旧版 Edge 批注模式 -->
+        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="2" Canvas.ZIndex="90"
+              Background="#A0000000" Tapped="CaptureOverlay_Tapped">
+            <Border x:Name="CaptureBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    BorderBrush="Gray" BorderThickness="1" Padding="12">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="CaptureTitle" Text="网页捕获 - 在图上批注，然后保存或复制" FontSize="13"/>
+                    <InkToolbar x:Name="CaptureInkToolbar" HorizontalAlignment="Left">
+                        <InkToolbarHighlighterButton/>
+                    </InkToolbar>
+                    <Grid x:Name="CaptureImageGrid" Background="White">
+                        <Image x:Name="CaptureImage" Stretch="Uniform"/>
+                        <InkCanvas x:Name="CaptureInk"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button x:Name="CaptureSaveBtn" Content="保存" Click="CaptureSaveBtn_Click"/>
+                        <Button x:Name="CaptureCopyBtn" Content="复制" Click="CaptureCopyBtn_Click"/>
+                        <Button x:Name="CaptureCloseBtn" Content="取消" Click="CaptureCloseBtn_Click"/>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>

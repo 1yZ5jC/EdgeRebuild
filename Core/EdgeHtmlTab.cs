@@ -38,6 +38,7 @@ namespace EdgeRebuild.Core
         public event Action<string> NewWindowRequested;
         public event Action<bool> LoadingChanged;
         public event Action<PageShortcutKey> PageShortcutKeyPressed;
+        public event Action<string> PageMarkActionRequested;
 
         // 页面内快捷键桥（EdgeHTML 版）：外部网站的 window.external.notify 会被
         // ApplicationContentUriRules 白名单拦截（且不允许域通配），AddWebAllowedObject
@@ -54,6 +55,8 @@ namespace EdgeRebuild.Core
             + " if (!c && s && k===114) { mark('sf3'); e.preventDefault(); return; }"
             + " if (!c && !s && k===114) { mark('f3'); e.preventDefault(); return; }"
             + " if (!c && !s && k===27) { mark('esc'); return; }"
+            + " if (c && s && k===77) { mark('hm'); e.preventDefault(); return; }"
+            + " if (c && s && k===83) { mark('cs'); e.preventDefault(); return; }"
             + " }, false); })();";
 
         private void InjectPageKeyBridge()

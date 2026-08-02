@@ -51,6 +51,8 @@
   <ItemGroup>
     <Content Include="Themes\ModernIE.xaml" />
     <Content Include="Themes\Spartan.xaml" />
+    <Content Include="Assets\MarkScript.js" />
+    <Content Include="Assets\Readability.js" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />

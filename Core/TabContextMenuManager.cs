@@ -18,6 +18,7 @@ namespace EdgeRebuild.Core
         private readonly Func<Task> _onPrintRequested;
         private readonly Func<Task> _onViewSourceRequested;
         private readonly Action<TabViewItem> _onTogglePin;
+        private readonly Func<Task> _onWebCapture;
 
         public TabContextMenuManager(
             TabManager tabManager,
@@ -25,7 +26,8 @@ namespace EdgeRebuild.Core
             Func<EngineType> getCurrentEngine,
             Func<Task> onPrintRequested,
             Func<Task> onViewSourceRequested,
-            Action<TabViewItem> onTogglePin = null)
+            Action<TabViewItem> onTogglePin = null,
+            Func<Task> onWebCapture = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -33,6 +35,7 @@ namespace EdgeRebuild.Core
             _onPrintRequested = onPrintRequested;
             _onViewSourceRequested = onViewSourceRequested;
             _onTogglePin = onTogglePin;
+            _onWebCapture = onWebCapture;
         }
 
         public void ShowTabRightClickMenu(Border tabBorder, TabViewItem viewItem)
@@ -123,6 +126,37 @@ namespace EdgeRebuild.Core
                     await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');");
             };
             flyout.Items.Add(selectAllItem);
+
+            flyout.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 标记高亮（选中文本时） ----
+            if (args.HasSelection)
+            {
+                var markSubMenu = new MenuFlyoutSubItem { Text = "标记高亮" };
+                foreach (var (name, color) in PageMarkManager.MarkColors)
+                {
+                    string c = color;
+                    var colorItem = new MenuFlyoutItem { Text = name };
+                    colorItem.Click += async (_, _) =>
+                    {
+                        var mark = await PageMarkManager.MarkSelectionAsync(_tabManager.CurrentTab, c);
+                        if (mark == null)
+                            NotificationService.ShowToast("标记高亮", "请先选中网页中的文字");
+                    };
+                    markSubMenu.Items.Add(colorItem);
+                }
+                flyout.Items.Add(markSubMenu);
+            }
+
+            // ---- 清除本页标记 ----
+            var clearMarksItem = new MenuFlyoutItem { Text = "清除本页标记" };
+            clearMarksItem.Click += async (_, _) => await PageMarkManager.ClearPageAsync(_tabManager.CurrentTab);
+            flyout.Items.Add(clearMarksItem);
+
+            // ---- 网页捕获（截图批注） ----
+            var captureItem = new MenuFlyoutItem { Text = "网页捕获" };
+            captureItem.Click += async (_, _) => { if (_onWebCapture != null) await _onWebCapture(); };
+            flyout.Items.Add(captureItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 

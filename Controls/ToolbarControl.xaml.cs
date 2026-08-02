@@ -23,6 +23,7 @@ namespace EdgeRebuild.Controls
         public event Action ForwardRequested;
         public event Action RefreshRequested;
         public event Action AddFavoriteClicked;
+        public event Action CaptureClicked;
         public event Action HubClicked;
         public event Action MenuClicked;
         public event Action<EngineType> EngineSwitched;
@@ -272,6 +273,7 @@ namespace EdgeRebuild.Controls
         private void ForwardBtn_Click(object sender, RoutedEventArgs e) => ForwardRequested?.Invoke();
         private void RefreshBtn_Click(object sender, RoutedEventArgs e) => RefreshRequested?.Invoke();
         private void AddFavBtn_Click(object sender, RoutedEventArgs e) => AddFavoriteClicked?.Invoke();
+        private void CaptureBtn_Click(object sender, RoutedEventArgs e) => CaptureClicked?.Invoke();
         private void HubBtn_Click(object sender, RoutedEventArgs e) => HubClicked?.Invoke();
         private void MenuBtn_Click(object sender, RoutedEventArgs e) => MenuClicked?.Invoke();
 

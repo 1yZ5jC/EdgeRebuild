@@ -39,6 +39,7 @@ namespace EdgeRebuild.Core
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action TabOrderChanged;
         public event Action<PageShortcutKey> PageKeyPressed;
+        public event Action<string> PageMarkActionRequested;
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         public IBrowserTab CurrentTab => _currentTab;
@@ -286,6 +287,8 @@ namespace EdgeRebuild.Core
             tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
 
             tab.PageShortcutKeyPressed += (key) => PageKeyPressed?.Invoke(key);
+
+            tab.PageMarkActionRequested += (payload) => PageMarkActionRequested?.Invoke(payload);
 
             tab.ContextMenuRequested += (args) => ContextMenuRequested?.Invoke(args);
 

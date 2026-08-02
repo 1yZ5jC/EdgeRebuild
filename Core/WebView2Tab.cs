@@ -45,6 +45,7 @@ namespace EdgeRebuild.Core
         public event Action<string, StorageFolder, string> DownloadRequested;
         public event Action<bool> LoadingChanged;
         public event Action<PageShortcutKey> PageShortcutKeyPressed;
+        public event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
 
         // 页面内快捷键桥：焦点在网页内容内时键击被引擎吞掉、宿主收不到，
         // 注入监听脚本经 window.chrome.webview.postMessage 回传（ES5，双引擎通用）。
@@ -59,6 +60,8 @@ namespace EdgeRebuild.Core
             + " if (!c && s && k===114) { send('sf3'); e.preventDefault(); return; }"
             + " if (!c && !s && k===114) { send('f3'); e.preventDefault(); return; }"
             + " if (!c && !s && k===27) { send('esc'); return; }"
+            + " if (c && s && k===77) { send('hm'); e.preventDefault(); return; }"
+            + " if (c && s && k===83) { send('cs'); e.preventDefault(); return; }"
             + " }, false); })();";
 
         private static PageShortcutKey? ParsePageKey(string msg)
@@ -121,6 +124,11 @@ namespace EdgeRebuild.Core
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string msg = e.TryGetWebMessageAsString() ?? "";
+            if (msg.StartsWith("edgmark:", StringComparison.Ordinal))
+            {
+                PageMarkActionRequested?.Invoke(msg.Substring("edgmark:".Length));
+                return;
+            }
             var key = ParsePageKey(msg);
             if (key.HasValue)
                 PageShortcutKeyPressed?.Invoke(key.Value);
@@ -158,8 +166,32 @@ namespace EdgeRebuild.Core
             }
         }
 
+        private static bool IsPdfLike(CoreWebView2DownloadOperation op)
+        {
+            return (op.MimeType?.Equals("application/pdf", StringComparison.OrdinalIgnoreCase) == true)
+                || (op.Uri?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        /// <summary>
+        /// Content-Disposition 判断：无头/inline 视为"在浏览器内查看"，attachment 视为"必须下载"。
+        /// </summary>
+        private static bool IsAttachmentDisposition(string disposition)
+        {
+            if (string.IsNullOrWhiteSpace(disposition)) return false;
+            return disposition.IndexOf("inline", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
         private async void OnDownloadStarting(object sender, CoreWebView2DownloadStartingEventArgs e)
         {
+            // PDF：Content-Disposition 为 inline（或无头）时，取消下载并放行导航，
+            // 由 WebView2 内置 PDF 查看器渲染；attachment 的 PDF 仍走下载流程。
+            if (IsPdfLike(e.DownloadOperation) && !IsAttachmentDisposition(e.DownloadOperation.ContentDisposition))
+            {
+                e.Cancel = true;
+                try { _webView.CoreWebView2?.Navigate(e.DownloadOperation.Uri); } catch { }
+                return;
+            }
+
             var deferral = e.GetDeferral();
             try
             {

@@ -6,7 +6,7 @@ namespace EdgeRebuild.Core
 {
     // 焦点在网页内容内时键击被引擎吞掉、宿主收不到，
     // 由页面内注入的监听脚本经消息通道回传的快捷键。
-    public enum PageShortcutKey { Find, FindNext, FindPrevious, CloseFind }
+    public enum PageShortcutKey { Find, FindNext, FindPrevious, CloseFind, HighlightMark, WebCapture }
 
     public interface IBrowserTab
     {
@@ -42,5 +42,6 @@ namespace EdgeRebuild.Core
         event Action<string> NewWindowRequested;
         event Action<bool> LoadingChanged;   // 新增：加载状态 true=开始，false=结束
         event Action<PageShortcutKey> PageShortcutKeyPressed;   // 页面内快捷键回传
+        event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
     }
 }

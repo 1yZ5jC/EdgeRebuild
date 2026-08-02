@@ -15,6 +15,7 @@ namespace EdgeRebuild.Core
         private readonly Func<EngineType> _getCurrentEngine;
         private readonly Func<Task> _onPrint;
         private readonly Func<Task> _onViewSource;
+        private readonly Func<Task> _onWebCapture;
         private readonly Action _onShowHistory;
         private readonly Action _onShowSettings;
         private readonly Func<Task> _onClearData;
@@ -40,6 +41,7 @@ namespace EdgeRebuild.Core
             Func<EngineType> getCurrentEngine,
             Func<Task> onPrint,
             Func<Task> onViewSource,
+            Func<Task> onWebCapture,
             Action onShowHistory,
             Action onShowSettings,
             Func<Task> onClearData,
@@ -64,6 +66,7 @@ namespace EdgeRebuild.Core
             _getCurrentEngine = getCurrentEngine;
             _onPrint = onPrint;
             _onViewSource = onViewSource;
+            _onWebCapture = onWebCapture;
             _onShowHistory = onShowHistory;
             _onShowSettings = onShowSettings;
             _onClearData = onClearData;
@@ -135,6 +138,10 @@ namespace EdgeRebuild.Core
             var sourceItem = new MenuFlyoutItem { Text = "查看源代码" };
             sourceItem.Click += async (_, _) => await _onViewSource?.Invoke();
             menu.Items.Add(sourceItem);
+
+            var captureItem = new MenuFlyoutItem { Text = "网页捕获（截图批注）" };
+            captureItem.Click += async (_, _) => { if (_onWebCapture != null) await _onWebCapture(); };
+            menu.Items.Add(captureItem);
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
