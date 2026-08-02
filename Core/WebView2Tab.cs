@@ -247,8 +247,9 @@ namespace EdgeRebuild.Core
                 await File.WriteAllBytesAsync(filePath, bytes);
                 string page = kind == "pdf" ? "viewer.html" : "reader.html";
                 string viewerHost = kind == "pdf" ? "pdfviewer.local" : "epubreader.local";
+                // src 参数保留来源网址：地址栏据此显示原始来源（阅读器内部地址进诊断日志）
                 _webView.CoreWebView2?.Navigate(
-                    $"https://{viewerHost}/{page}?file=https://contentcache.local/{Path.GetFileName(filePath)}");
+                    $"https://{viewerHost}/{page}?file=https://contentcache.local/{Path.GetFileName(filePath)}&src={Uri.EscapeDataString(url)}");
             }
             catch (Exception ex)
             {

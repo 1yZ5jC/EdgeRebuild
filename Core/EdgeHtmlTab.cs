@@ -99,7 +99,7 @@ namespace EdgeRebuild.Core
         {
             LoadingChanged?.Invoke(true);
 
-            string[] exts = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
+            string[] exts = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".epub", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
             string url = args.Uri?.ToString() ?? "";
             if (exts.Any(ext => url.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
             {

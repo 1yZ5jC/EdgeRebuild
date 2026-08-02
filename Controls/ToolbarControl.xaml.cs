@@ -161,8 +161,53 @@ namespace EdgeRebuild.Controls
             }
             else
             {
-                UrlBox.Text = DecodeUrl(currentUrl);
+                UrlBox.Text = DecodeUrl(GetReaderDisplayUrl(currentUrl));
             }
+        }
+
+        /// <summary>
+        /// 本地阅读器地址弱化：地址栏显示 src 参数里的来源网址（PDF/EPUB 原始地址），
+        /// 完整阅读器内部地址写入诊断日志 crash.log。
+        /// </summary>
+        public static string GetReaderDisplayUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return url;
+            bool isReaderUrl = false;
+            try
+            {
+                var u = new Uri(url);
+                var host = u.Host ?? "";
+                isReaderUrl = host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
+                    || host.EndsWith("epubreader.local", StringComparison.OrdinalIgnoreCase)
+                    || (u.Scheme == "ms-appx-web" && (url.Contains("viewer.html") || url.Contains("reader.html")));
+                if (isReaderUrl)
+                {
+                    Services.Diagnostics.Log($"[阅读器] 内部地址: {url}");
+                    string src = ExtractQueryParam(url, "src");
+                    if (!string.IsNullOrEmpty(src))
+                        return src;
+                    return url.Contains("viewer.html") ? "PDF 阅读器" : "EPUB 阅读器";
+                }
+            }
+            catch { }
+            return url;
+        }
+
+        private static string ExtractQueryParam(string url, string name)
+        {
+            try
+            {
+                var query = new Uri(url).Query;
+                if (string.IsNullOrEmpty(query)) return null;
+                foreach (var part in query.TrimStart('?').Split('&'))
+                {
+                    var kv = part.Split('=');
+                    if (kv.Length == 2 && kv[0] == name)
+                        return Uri.UnescapeDataString(kv[1]);
+                }
+            }
+            catch { }
+            return null;
         }
 
         public void SetEngine(EngineType engine)

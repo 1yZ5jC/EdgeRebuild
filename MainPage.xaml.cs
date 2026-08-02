@@ -709,7 +709,7 @@ namespace EdgeRebuild
                 CloseFindBar();
 
             bool isSecure = tab.CurrentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-            string host = GetHostName(tab.CurrentUrl);
+            string host = GetHostName(GetSiteUrl(tab.CurrentUrl));
             toolbarControl.UpdateSiteInfo(isSecure, host);
 
             if (_appWindow != null)
@@ -746,10 +746,37 @@ namespace EdgeRebuild
                 toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, url);
                 UpdateStarButton();
 
+                // 阅读器场景下站点信息显示来源网站（src 参数），非阅读器场景用当前地址
                 bool isSecure = url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-                string host = GetHostName(url);
+                string host = GetHostName(GetSiteUrl(url));
                 toolbarControl.UpdateSiteInfo(isSecure, host);
             }
+        }
+
+        /// <summary>
+        /// 本地阅读器 URL 返回其 src 参数（来源网址），否则原样返回。
+        /// </summary>
+        private static string GetSiteUrl(string url)
+        {
+            string src = ExtractQueryParam(url, "src");
+            return !string.IsNullOrEmpty(src) ? src : url;
+        }
+
+        private static string ExtractQueryParam(string url, string name)
+        {
+            try
+            {
+                var query = new Uri(url).Query;
+                if (string.IsNullOrEmpty(query)) return null;
+                foreach (var part in query.TrimStart('?').Split('&'))
+                {
+                    var kv = part.Split('=');
+                    if (kv.Length == 2 && kv[0] == name)
+                        return Uri.UnescapeDataString(kv[1]);
+                }
+            }
+            catch { }
+            return null;
         }
 
         private void OnTabManagerCanGoBackChanged(IBrowserTab tab, bool canGoBack)
@@ -1186,16 +1213,59 @@ namespace EdgeRebuild
 
         private async void OnEdgeHtmlDownloadRequested(string url)
         {
-            // PDF / EPUB 链接：EdgeHTML 引擎无内置查看器/阅读器，转开 WebView2 标签
-            // 由本地 pdf.js 查看器 / epubjs 阅读器渲染（attachment 时该标签内仍会走下载流程）。
-            if (url?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true
-                || url?.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) == true)
+            // PDF：EdgeHTML 引擎无法运行 pdf.js 4.x（现代 JS 语法），转开 WebView2 标签由本地查看器渲染。
+            // EPUB：epub.min.js/reader.js 均为 ES5，EdgeHTML 可直接内嵌阅读器（ms-appx-web + ms-appdata）。
+            if (url?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true)
             {
                 await Dispatcher.RunAsync(CoreDispatcherPriority.Normal,
                     async () => await _tabManager.CreateTabAsync(EngineType.WebView2, url));
                 return;
             }
+            if (url?.EndsWith(".epub", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
+                {
+                    if (!(_tabManager?.CurrentTab is EdgeHtmlTab edgeTab)) return;
+                    string fileParam = await DownloadDocToCacheAsync("epub", url);
+                    if (string.IsNullOrEmpty(fileParam)) return;
+                    var pageUrl = new Uri(
+                        "ms-appx-web:///Assets/EpubReader/reader.html?file=" + Uri.EscapeDataString(fileParam)
+                        + "&src=" + Uri.EscapeDataString(url));
+                    Services.Diagnostics.Log($"[EPUB 阅读器] EdgeHTML 实际地址: {pageUrl}");
+                    await edgeTab.NavigateAsync(pageUrl.ToString());
+                });
+                return;
+            }
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url));
+        }
+
+        /// <summary>
+        /// 下载 PDF/EPUB 到 contentcache，返回可供阅读器加载的本地 URL。
+        /// </summary>
+        private async Task<string> DownloadDocToCacheAsync(string kind, string url)
+        {
+            try
+            {
+                using var client = new Windows.Web.Http.HttpClient();
+                var response = await client.GetAsync(new Uri(url));
+                response.EnsureSuccessStatusCode();
+                var buffer = await response.Content.ReadAsBufferAsync();
+                byte[] bytes = WindowsRuntimeBufferExtensions.ToArray(buffer);
+                string fileName = kind == "pdf"
+                    ? $"doc_{DateTime.Now:yyyyMMdd_HHmmss_fff}.pdf"
+                    : "doc_reader.epub";
+                var cacheDir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache");
+                Directory.CreateDirectory(cacheDir);
+                var filePath = Path.Combine(cacheDir, fileName);
+                await File.WriteAllBytesAsync(filePath, bytes);
+                Services.Diagnostics.Log($"[阅读器] {kind} 已缓存: {filePath} ({bytes.Length} 字节)");
+                return "ms-appdata:///local/contentcache/" + fileName;
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[阅读器] 缓存 {kind} 失败: {ex.Message}");
+                return null;
+            }
         }
 
         // ---- 其他功能方法 ----
