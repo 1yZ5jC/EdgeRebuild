@@ -1,4 +1,4 @@
-/* EPUB 阅读器：基于 epubjs 的轻量 UI（浅色顶栏 + 目录抽屉） */
+/* EPUB 阅读器：epubjs 渲染 + 目录/书签/搜索/设置/进度条/章节圆点 */
 html, body {
   margin: 0;
   height: 100%;
@@ -19,7 +19,7 @@ html, body {
   display: flex;
   align-items: center;
   padding: 0 6px;
-  z-index: 10;
+  z-index: 20;
   user-select: none;
 }
 
@@ -39,6 +39,7 @@ html, body {
 
 .tool-btn:hover { background: #e5f1fb; border-color: #b8d6fb; }
 .tool-btn:active { background: #cce4f7; }
+.tool-btn.active { background: #cce4f7; border-color: #0078d7; }
 
 #bookTitle {
   font-weight: 600;
@@ -51,37 +52,177 @@ html, body {
 
 #navGroup { display: flex; align-items: center; }
 
-#tocPanel {
+/* ---- 左侧面板（目录/搜索/书签/设置共用） ---- */
+.panel {
   position: fixed;
   top: 40px;
   left: 0;
-  bottom: 24px;
-  width: 240px;
+  bottom: 50px;
+  width: 260px;
   background: #f7f7f7;
   border-right: 1px solid #d6d6d6;
   overflow-y: auto;
-  z-index: 5;
+  z-index: 15;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, .08);
 }
 
-#tocList { padding: 6px; }
-#tocList ul { list-style: none; margin: 0; padding-left: 14px; }
-#tocList li { padding: 4px 6px; cursor: pointer; color: #333; }
+#tocList, #bookmarksList, #searchResults { padding: 6px; }
+#tocList ul { list-style: none; margin: 0; padding-left: 0; }
+#tocList li { padding: 5px 6px; cursor: pointer; color: #333; border-radius: 3px; }
 #tocList li:hover { background: #e5f1fb; }
 #tocList li.active { color: #0078d7; }
 
+/* ---- 搜索面板 ---- */
+#searchInput {
+  width: calc(100% - 16px);
+  margin: 8px;
+  padding: 6px 8px;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+#searchInput:focus { border-color: #0078d7; }
+
+.search-result { padding: 6px 8px; cursor: pointer; border-radius: 3px; }
+.search-result:hover { background: #e5f1fb; }
+.search-label { font-weight: 600; font-size: 12px; color: #0078d7; }
+.search-snippet { font-size: 12px; color: #555; margin-top: 2px; line-height: 1.4; }
+
+.empty-tip { padding: 12px 8px; color: #888; font-size: 12px; text-align: center; }
+
+/* ---- 书签面板 ---- */
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.bookmark-row:hover { background: #e5f1fb; }
+.bookmark-label { font-size: 13px; color: #333; }
+.bookmark-sub { font-size: 11px; color: #888; margin-top: 2px; }
+.bookmark-del {
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  color: #666;
+  font-size: 11px;
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.bookmark-del:hover { border-color: #e81123; color: #e81123; }
+
+/* ---- 设置面板 ---- */
+.set-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #eee;
+}
+.set-label { width: 40px; color: #555; font-size: 13px; }
+.set-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+.set-opts button {
+  padding: 4px 10px;
+  border: 1px solid #c8c8c8;
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.set-opts button:hover { border-color: #0078d7; color: #0078d7; }
+.set-opts button.sel { background: #0078d7; border-color: #0078d7; color: #fff; }
+
+.theme-swatch {
+  width: 26px !important;
+  height: 26px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(0, 0, 0, .25) !important;
+  background-image: none !important;
+}
+/* 选中：蓝色外圈 + 内部保持主题色（不被 .set-opts button.sel 的蓝底覆盖） */
+.theme-swatch.sel {
+  box-shadow: 0 0 0 2px #0078d7, 0 0 0 1px #fff;
+  transform: scale(1.2);
+}
+.swatch-light, .swatch-light.sel { background: #ffffff !important; }
+.swatch-sepia, .swatch-sepia.sel { background: #f4ecd8 !important; }
+.swatch-dark, .swatch-dark.sel { background: #1e1e1e !important; }
+
+/* ---- 阅读区 ---- */
 #viewer {
   position: fixed;
   top: 40px;
   left: 0;
   right: 0;
-  bottom: 24px;
+  bottom: 50px;
   background: #e6e6e6;
 }
 
-#tocPanel:not(.hidden) ~ #viewer { left: 240px; }
+.panel:not(.hidden) ~ #viewer { left: 260px; }
 
-#viewer .epub-view iframe { box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+#viewer .epub-view iframe { box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
 
+/* ---- 底部进度条 ---- */
+#progressBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 46px;
+  height: 4px;
+  background: #d0d0d0;
+  cursor: pointer;
+  z-index: 20;
+}
+#progressFill {
+  height: 100%;
+  width: 0;
+  background: #0078d7;
+}
+#percentLabel {
+  position: absolute;
+  right: 6px;
+  top: -16px;
+  font-size: 11px;
+  color: #666;
+  background: rgba(255, 255, 255, .85);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+/* ---- 章节圆点 ---- */
+#dotsRow {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 24px;
+  height: 22px;
+  background: #f2f2f2;
+  border-top: 1px solid #d6d6d6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  z-index: 20;
+}
+.chapter-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid #999;
+  background: #ddd;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.chapter-dot:hover { background: #b8d6fb; }
+.chapter-dot.active { background: #0078d7; border-color: #0078d7; }
+
+/* ---- 状态栏 ---- */
 #statusBar {
   position: fixed;
   left: 0;
@@ -95,7 +236,7 @@ html, body {
   padding: 0 10px;
   font-size: 12px;
   color: #666;
-  z-index: 10;
+  z-index: 25;
 }
 
 .hidden { display: none !important; }

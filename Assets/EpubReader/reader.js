@@ -17,8 +17,9 @@
   var book, rendition;
   var currentCfi = null;
   var currentHref = null;
-  var spineItems = [];   // [{href, label}]
-  var tocItems = [];     // nav.toc
+  var spineItems = [];   // [{href, index}]（采样后的章节圆点）
+  var hrefIndex = {};    // href -> spine 索引
+  var tocItems = [];
   var locationsReady = false;
   var chaptersLoaded = false;
 
@@ -28,7 +29,7 @@
   var bookmarksPanel = document.getElementById("bookmarksPanel");
   var settingsPanel = document.getElementById("settingsPanel");
 
-  // ---- 持久化 ----
+  // ---- 持久化（localStorage，按文件名区分） ----
   function store(key, value) {
     try { localStorage.setItem(key + "_" + fileName, JSON.stringify(value)); } catch (e) { }
   }
@@ -46,9 +47,9 @@
 
   // ---- 主题 ----
   var THEMES = {
-    light: { color: "#333333", bg: "#ffffff" },
-    sepia: { color: "#5b4636", bg: "#f4ecd8" },
-    dark: { color: "#d6d6d6", bg: "#1e1e1e" }
+    light: { color: "#333333", bg: "#ffffff", viewerBg: "#e6e6e6" },
+    sepia: { color: "#5b4636", bg: "#f4ecd8", viewerBg: "#e2d6bf" },
+    dark: { color: "#d6d6d6", bg: "#1e1e1e", viewerBg: "#111111" }
   };
   var SERIF_FONT = "Georgia, 'Times New Roman', 'Songti SC', serif";
   var SANS_FONT = "'Segoe UI', 'Microsoft YaHei', sans-serif";
@@ -61,7 +62,7 @@
     rendition.themes.override("line-height", settings.lineHeight);
     rendition.themes.override("color", th.color);
     rendition.themes.override("background-color", th.bg);
-    document.body.style.background = th.themeBg || "";
+    document.getElementById("viewer").style.background = th.viewerBg;
   }
 
   function saveSettings() {
@@ -113,33 +114,45 @@
   // ---- 章节圆点 ----
   function loadSpineDots() {
     book.loaded.spine.then(function (spine) {
-      spineItems = [];
+      var n = typeof spine.length === "number" ? spine.length : 0;
+      if (!n && typeof spine.get === "function") {
+        // spine.get(0) 探测长度
+        var i = 0;
+        try { while (spine.get(i)) { i++; if (i > 5000) break; } } catch (e) { }
+        n = i;
+      }
       var dotsEl = document.getElementById("dotsRow");
       dotsEl.innerHTML = "";
-      var max = spine.length;
-      var step = max > 24 ? Math.ceil(max / 24) : 1;
-      for (var i = 0; i < max; i += step) {
+      var step = n > 24 ? Math.ceil(n / 24) : 1;
+      spineItems = [];
+      for (var k = 0; k < n; k += step) {
         (function (idx) {
-          var href = spine.get(idx).href;
-          spineItems.push({ href: href, index: idx });
+          var sec = spine.get(idx);
+          if (!sec) return;
+          hrefIndex[sec.href] = idx;
+          spineItems.push({ href: sec.href, index: idx });
           var dot = document.createElement("button");
           dot.className = "chapter-dot";
           dot.title = "第 " + (idx + 1) + " 章";
           dot.addEventListener("click", function () {
-            rendition.display(spine.get(idx).href);
+            rendition.display(sec.href);
           });
           dotsEl.appendChild(dot);
-        })(i);
+        })(k);
       }
-      if (max <= step) {
-        // 只有 1 章时补一个当前章节圆点
-        var dot = document.createElement("button");
-        dot.className = "chapter-dot";
-        dot.title = "第 1 章";
-        dot.addEventListener("click", function () {
-          rendition.display(spine.get(0).href);
-        });
-        dotsEl.appendChild(dot);
+      if (n === 1) {
+        var sec0 = spine.get(0);
+        if (sec0) {
+          hrefIndex[sec0.href] = 0;
+          spineItems.push({ href: sec0.href, index: 0 });
+          var dot = document.createElement("button");
+          dot.className = "chapter-dot";
+          dot.title = "第 1 章";
+          dot.addEventListener("click", function () {
+            rendition.display(sec0.href);
+          });
+          dotsEl.appendChild(dot);
+        }
       }
       chaptersLoaded = true;
     }).catch(function () { });
@@ -147,13 +160,15 @@
 
   function updateDots(href) {
     var dots = document.querySelectorAll("#dotsRow .chapter-dot");
-    var best = -1;
-    for (var i = 0; i < spineItems.length; i++) {
-      if (spineItems[i].href === href) { best = i; break; }
+    for (var j = 0; j < dots.length; j++) dots[j].classList.remove("active");
+    if (!chaptersLoaded || href == null) return;
+    var idx = hrefIndex[href];
+    if (idx == null) return;
+    var best = 0;
+    for (var k = 0; k < spineItems.length; k++) {
+      if (spineItems[k].index <= idx) best = k; else break;
     }
-    for (var j = 0; j < dots.length; j++) {
-      dots[j].classList.toggle("active", j === best);
-    }
+    if (dots[best]) dots[best].classList.add("active");
   }
 
   // ---- 进度 ----
@@ -246,32 +261,45 @@
   }
 
   // ---- 搜索 ----
-  var searchTimer = null;
+  function resolveChapterText(href) {
+    try {
+      var absolute = book.resolver(href);
+      if (book.archive && typeof book.archive.getText === "function") {
+        var p = book.archive.getText(absolute);
+        if (p) return p;
+      }
+    } catch (e) { }
+    try {
+      return book.request(href, "text");
+    } catch (e) {
+      return Promise.resolve("");
+    }
+  }
+
   function searchBook(query) {
     query = query.trim().toLowerCase();
     var resultsEl = document.getElementById("searchResults");
     resultsEl.innerHTML = "";
     if (!query) return;
     statusText.textContent = "搜索中…";
-    var spineReady = book.loaded.spine.then(function (spine) {
-      return spine;
-    });
-    spineReady.then(function (spine) {
+    book.loaded.spine.then(function (spine) {
       var n = spine.length;
       var found = 0;
       var tasks = [];
       for (var i = 0; i < n; i++) {
         (function (idx) {
-          tasks.push(spine.get(idx).load().then(function (html) {
-            var text = html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&")
-              .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
-            var q = query;
-            var pos = text.toLowerCase().indexOf(q);
+          var sec = spine.get(idx);
+          tasks.push(resolveChapterText(sec.href).then(function (html) {
+            var text = String(html || "")
+              .replace(/<[^>]+>/g, " ")
+              .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+              .replace(/&nbsp;/g, " ").replace(/\s+/g, " ").toLowerCase();
+            var pos = text.indexOf(query);
             if (pos >= 0) {
               var start = Math.max(0, pos - 40);
               var snippet = (start > 0 ? "…" : "") + text.substr(start, 90) + "…";
               found++;
-              resultsEl.appendChild(makeSearchResult(idx, spine.get(idx).href, snippet));
+              resultsEl.appendChild(makeSearchResult(idx, sec.href, snippet));
             }
           }).catch(function () { }));
         })(i);
@@ -314,68 +342,79 @@
     togglePanel(searchPanel);
     if (!searchPanel.classList.contains("hidden")) document.getElementById("searchInput").focus();
   });
-  document.getElementById("bookmarkBtn").addEventListener("click", function () {
-    if (bookmarksPanel.classList.contains("hidden") === false) {
-      // 已打开面板时点击按钮 → 在当前页加/删书签
-      var existing = bookmarks.findIndex(function (b) { return b.cfi === currentCfi; });
-      if (existing >= 0) {
-        bookmarks.splice(existing, 1);
-        statusText.textContent = "已删除书签";
-      } else {
-        var bm = {
-          cfi: currentCfi,
-          href: currentHref,
-          label: chapterLabelFor(currentHref),
-          chapter: chapterLabelFor(currentHref),
-          created: Date.now()
-        };
-        if (locationsReady) bm.percent = book.locations.percentageFromCfi(currentCfi);
-        bookmarks.unshift(bm);
-        statusText.textContent = "已添加书签";
-      }
-      store("er_bookmarks", bookmarks);
-      updateBookmarkBtn();
-      renderBookmarks();
-    } else {
-      togglePanel(bookmarksPanel);
-      renderBookmarks();
+
+  var searchInput = document.getElementById("searchInput");
+  var searchTimer = null;
+  searchInput.addEventListener("input", function () {
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { searchBook(searchInput.value); }, 300);
+  });
+  searchInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchBook(searchInput.value);
     }
   });
   document.getElementById("settingsBtn").addEventListener("click", function () { togglePanel(settingsPanel); });
-
   document.getElementById("prevBtn").addEventListener("click", function () { rendition.prev(); });
   document.getElementById("nextBtn").addEventListener("click", function () { rendition.next(); });
 
+  document.getElementById("bookmarkBtn").addEventListener("click", function () {
+    if (!bookmarksPanel.classList.contains("hidden")) {
+      // 面板已打开：在面板上点击 → 关闭面板
+      bookmarksPanel.classList.add("hidden");
+      return;
+    }
+    if (!currentCfi) return;
+    var existing = -1;
+    for (var i = 0; i < bookmarks.length; i++) {
+      if (bookmarks[i].cfi === currentCfi) { existing = i; break; }
+    }
+    if (existing >= 0) {
+      bookmarks.splice(existing, 1);
+      statusText.textContent = "已删除书签";
+    } else {
+      var label = chapterLabelFor(currentHref);
+      var bm = {
+        cfi: currentCfi,
+        href: currentHref,
+        label: label,
+        chapter: label,
+        created: Date.now()
+      };
+      if (locationsReady) bm.percent = book.locations.percentageFromCfi(currentCfi);
+      bookmarks.unshift(bm);
+      statusText.textContent = "已添加书签";
+    }
+    store("er_bookmarks", bookmarks);
+    updateBookmarkBtn();
+    renderBookmarks();
+  });
+
   // 设置面板
-  function bindOpts(id, key, cb) {
-    var opts = document.getElementById(id);
-    opts.querySelectorAll("button").forEach(function (btn) {
+  function bindOpts(id, dataKey, apply) {
+    document.getElementById(id).querySelectorAll("button").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        var v = btn.getAttribute("data-" + key);
-        settings[key] = v;
+        apply(btn.getAttribute("data-" + dataKey));
         saveSettings();
-        cb(v);
       });
     });
   }
   bindOpts("sizeOpts", "size", function (v) { settings.fontSize = v; applySettings(); });
-  bindOpts("fontOpts", "font", function () { applySettings(); });
-  bindOpts("lhOpts", "lh", function () { applySettings(); });
-  bindOpts("themeOpts", "theme", function () { applySettings(); });
+  bindOpts("fontOpts", "font", function (v) { settings.font = v; applySettings(); });
+  bindOpts("lhOpts", "lh", function (v) { settings.lineHeight = v; applySettings(); });
+  bindOpts("themeOpts", "theme", function (v) { settings.theme = v; applySettings(); });
 
   function highlightSettings() {
-    var map = {
-      sizeOpts: settings.fontSize,
-      fontOpts: settings.font,
-      lhOpts: settings.lineHeight,
-      themeOpts: settings.theme
-    };
-    Object.keys(map).forEach(function (id) {
-      var opts = document.getElementById(id);
-      opts.querySelectorAll("button").forEach(function (btn) {
-        var attr = btn.getAttribute("data-" + id.replace("Opts", ""));
-        var keys = { sizeOpts: "size", fontOpts: "font", lhOpts: "lh", themeOpts: "theme" };
-        btn.classList.toggle("sel", btn.getAttribute("data-" + keys[id]) === map[id]);
+    var map = [
+      ["sizeOpts", "size", settings.fontSize],
+      ["fontOpts", "font", settings.font],
+      ["lhOpts", "lh", settings.lineHeight],
+      ["themeOpts", "theme", settings.theme]
+    ];
+    map.forEach(function (m) {
+      document.getElementById(m[0]).querySelectorAll("button").forEach(function (btn) {
+        btn.classList.toggle("sel", btn.getAttribute("data-" + m[1]) === m[2]);
       });
     });
   }
@@ -384,15 +423,14 @@
   // 进度条拖动
   var dragging = false;
   function setProgressByEvent(e) {
+    if (!locationsReady) return;
     var rect = progressBar.getBoundingClientRect();
     var x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
     var pct = x / rect.width;
-    if (locationsReady) {
-      try {
-        var cfi = book.locations.cfiFromPercentage(pct);
-        if (cfi) rendition.display(cfi);
-      } catch (err) { }
-    }
+    try {
+      var cfi = book.locations.cfiFromPercentage(pct);
+      if (cfi) rendition.display(cfi);
+    } catch (err) { }
   }
   progressBar.addEventListener("pointerdown", function (e) {
     dragging = true;
