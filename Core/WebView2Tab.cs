@@ -582,9 +582,22 @@ namespace EdgeRebuild.Core
                 }
                 else
                 {
-                    bool showNtp = true;
-                    try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
-                    if (showNtp)
+                    // 主页类型（设置→常规→新标签页主页类型）：Classic 经典主页 /
+                    // Metro 磁贴主页 / Blank 空白页；旧键 NewTabShowNtp 作兼容回退
+                    string ntpType = "Classic";
+                    try
+                    {
+                        string v = await Services.SettingsManager.GetAsync("NewTabPageType");
+                        if (!string.IsNullOrEmpty(v)) ntpType = v;
+                        else if ((await Services.SettingsManager.GetAsync("NewTabShowNtp")) == "False") ntpType = "Blank";
+                    }
+                    catch { }
+                    if (ntpType == "Metro")
+                    {
+                        EnsureNtpMetroLocalFile();
+                        url = "https://contentcache.local/ntpmetro/index.html?theme=dark";
+                    }
+                    else if (ntpType != "Blank")
                     {
                         // 页面经 contentcache.local（LocalFolder）托管：InstalledLocation 的
                         // ntp.local 映射在部分环境中不生效（导航会 ERR_ACCESS_DENIED），

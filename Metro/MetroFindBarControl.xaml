@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="EdgeRebuild.Metro.MetroFindBarControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 页内查找栏（Metro 风格底部浮层）：关闭 | 输入框 | n/N 计数 | 上一个 | 下一个 -->
+    <Border Background="#FF2D2D30" BorderBrush="#FF3C3C3C" BorderThickness="0,1,0,0" Height="48">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="CloseBtn" Grid.Column="0" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                    FontSize="14" Background="Transparent" Foreground="#FF8E8E8E" BorderThickness="0"
+                    Width="44" Height="48" Click="CloseBtn_Click"/>
+
+            <TextBox x:Name="FindBox" Grid.Column="1" PlaceholderText="在页面中查找"
+                     VerticalAlignment="Center" Height="32" FontSize="14"
+                     Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
+                     Margin="0,0,8,0" TextChanged="FindBox_TextChanged" KeyDown="FindBox_KeyDown"/>
+
+            <TextBlock x:Name="CountText" Grid.Column="2" Text="0/0" FontSize="14"
+                       Foreground="#FF8E8E8E" VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+            <Button Grid.Column="3" Content="&#xE70E;" FontFamily="Segoe MDL2 Assets"
+                    FontSize="16" Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
+                    Width="44" Height="48" Click="PrevBtn_Click" ToolTipService.ToolTip="上一个"/>
+
+            <Button Grid.Column="4" Content="&#xE70D;" FontFamily="Segoe MDL2 Assets"
+                    FontSize="16" Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
+                    Width="44" Height="48" Margin="0,0,4,0" Click="NextBtn_Click" ToolTipService.ToolTip="下一个"/>
+        </Grid>
+    </Border>
+</UserControl>

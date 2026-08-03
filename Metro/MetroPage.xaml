@@ -53,7 +53,14 @@
             TabsClicked="CommandBar_TabsClicked"
             RefreshClicked="CommandBar_RefreshClicked"
             FullscreenClicked="CommandBar_FullscreenClicked"
-            SettingsClicked="CommandBar_SettingsClicked"/>
+            SettingsClicked="CommandBar_SettingsClicked"
+            MoreClicked="CommandBar_MoreClicked"/>
+
+        <!-- 页内查找栏覆盖层（Ctrl+F 唤出；位于标签条+地址栏之上） -->
+        <metro:MetroFindBarControl x:Name="FindBar" Grid.RowSpan="4"
+            VerticalAlignment="Bottom" Margin="0,0,0,88" Visibility="Collapsed"
+            FindRequested="FindBar_FindRequested"
+            CloseRequested="FindBar_CloseRequested"/>
 
         <!-- 设置面板覆盖层（Windows 8 形态：从右侧滑入，346px 全高） -->
         <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="4"

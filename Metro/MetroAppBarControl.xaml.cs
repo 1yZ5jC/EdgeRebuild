@@ -14,6 +14,7 @@ namespace EdgeRebuild.Metro
         public event Action RefreshClicked;
         public event Action FullscreenClicked;
         public event Action SettingsClicked;
+        public event Action MoreClicked;
 
         public MetroAppBarControl()
         {
@@ -29,5 +30,6 @@ namespace EdgeRebuild.Metro
         private void RefreshBtn_Click(object sender, RoutedEventArgs e) => RefreshClicked?.Invoke();
         private void FullscreenBtn_Click(object sender, RoutedEventArgs e) => FullscreenClicked?.Invoke();
         private void SettingsBtn_Click(object sender, RoutedEventArgs e) => SettingsClicked?.Invoke();
+        private void MoreBtn_Click(object sender, RoutedEventArgs e) => MoreClicked?.Invoke();
     }
 }

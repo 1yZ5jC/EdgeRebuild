@@ -295,9 +295,21 @@ namespace EdgeRebuild.Core
                 }
                 else
                 {
-                    bool showNtp = true;
-                    try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
-                    if (showNtp)
+                    // 主页类型（设置→常规→新标签页主页类型）：Classic 经典主页 /
+                    // Metro 磁贴主页 / Blank 空白页；旧键 NewTabShowNtp 作兼容回退
+                    string ntpType = "Classic";
+                    try
+                    {
+                        string v = await Services.SettingsManager.GetAsync("NewTabPageType");
+                        if (!string.IsNullOrEmpty(v)) ntpType = v;
+                        else if ((await Services.SettingsManager.GetAsync("NewTabShowNtp")) == "False") ntpType = "Blank";
+                    }
+                    catch { }
+                    if (ntpType == "Metro")
+                    {
+                        url = "ms-appx-web:///Assets/NtpMetro/index.html?theme=dark";
+                    }
+                    else if (ntpType != "Blank")
                     {
                         string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
                         url = $"ms-appx-web:///Assets/Ntp/index.html?theme={theme}";

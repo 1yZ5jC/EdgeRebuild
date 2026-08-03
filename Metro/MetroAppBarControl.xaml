@@ -55,6 +55,7 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
         <Button Grid.Column="0" Click="NewTabBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
@@ -90,6 +91,13 @@
             <StackPanel Orientation="Horizontal">
                 <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
                 <TextBlock Text="设置" Margin="8,0,0,0"/>
+            </StackPanel>
+        </Button>
+
+        <Button Grid.Column="5" Click="MoreBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <StackPanel Orientation="Horizontal">
+                <FontIcon Glyph="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
+                <TextBlock Text="更多" Margin="8,0,0,0"/>
             </StackPanel>
         </Button>
     </Grid>

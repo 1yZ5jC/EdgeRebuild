@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
+using Microsoft.Web.WebView2.Core;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.System;
@@ -30,7 +32,9 @@ namespace EdgeRebuild.Metro
         private bool _commandBarOpen;
         private bool _settingsOpen;
         private bool _isFullscreen;
+        private bool _isReadingAloud;
         private double _zoomFactor = 1.0;
+        private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
         // EdgeHTML 页面右键 marker 轮询（与 MainPage 同机制：UWP WebView 无控件级右键事件，
@@ -76,6 +80,7 @@ namespace EdgeRebuild.Metro
             _tabManager = new TabManager(() => MetroColorPalette.GetSkinColors());
             _tabManager.Initialize(null, ContentPanel);
             _tabManager.TabCreated += AttachStripRefresh;
+            _tabManager.TabClosed += viewItem => _readerModeUrls.Remove(viewItem.Tab);
             _tabManager.TabCountChanged += count =>
             {
                 RefreshStripSoon();
@@ -302,6 +307,194 @@ namespace EdgeRebuild.Metro
         {
             CloseCommandBar();
             OpenSettingsPanel();
+        }
+
+        // ---- 「更多」菜单：主界面功能补全（阅读模式/朗读/打印/收藏/复制网址） ----
+        private void CommandBar_MoreClicked()
+        {
+            CloseCommandBar();
+            var menu = new MenuFlyout();
+            var tab = _tabManager?.CurrentTab;
+
+            var readerItem = new MenuFlyoutItem
+            {
+                Text = (tab != null && _readerModeUrls.ContainsKey(tab)) ? "退出阅读模式" : "阅读模式",
+                Icon = new FontIcon { Glyph = "\xE8A5", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            readerItem.Click += (s, a) => ToggleReaderMode();
+            menu.Items.Add(readerItem);
+
+            var ttsItem = new MenuFlyoutItem
+            {
+                Text = _isReadingAloud ? "停止朗读" : "朗读此页",
+                Icon = new FontIcon { Glyph = "\xE744", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            ttsItem.Click += (s, a) => ToggleReadAloud();
+            menu.Items.Add(ttsItem);
+
+            var printItem = new MenuFlyoutItem
+            {
+                Text = "打印",
+                Icon = new FontIcon { Glyph = "\xE749", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            printItem.Click += (s, a) => _ = PrintCurrentTabAsync();
+            menu.Items.Add(printItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            var favItem = new MenuFlyoutItem
+            {
+                Text = "添加到收藏夹",
+                Icon = new FontIcon { Glyph = "\xE734", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            favItem.Click += (s, a) => AddCurrentToFavorites();
+            menu.Items.Add(favItem);
+
+            var copyItem = new MenuFlyoutItem
+            {
+                Text = "复制网址",
+                Icon = new FontIcon { Glyph = "\xE8C8", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            copyItem.Click += (s, a) => CopyCurrentUrl();
+            menu.Items.Add(copyItem);
+
+            menu.ShowAt(this, new Point(ActualWidth / 2, ActualHeight - 40));
+        }
+
+        // ---- 阅读模式（与主窗口同机制：ReaderService 注入阅读视图，可再点退出） ----
+        private async void ToggleReaderMode()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+
+            if (_readerModeUrls.TryGetValue(tab, out string originalUrl))
+            {
+                _readerModeUrls.Remove(tab);
+                await tab.NavigateAsync(originalUrl);
+                return;
+            }
+
+            string currentUrl = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(currentUrl) || currentUrl == "about:blank")
+            {
+                NotificationService.ShowToast("无法使用阅读模式", "当前页面没有可阅读的内容");
+                return;
+            }
+
+            bool entered = await ReaderService.EnterReaderModeAsync(tab);
+            if (entered)
+                _readerModeUrls[tab] = currentUrl;
+            else
+                NotificationService.ShowToast("无法使用阅读模式", "此页面没有可提取的正文内容");
+        }
+
+        // ---- 朗读（与主窗口同机制：ReaderService 提取 + ReadAloudService 播放） ----
+        private void ToggleReadAloud()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            if (_isReadingAloud)
+            {
+                ReadAloudService.Stop();
+                _isReadingAloud = false;
+                return;
+            }
+            _ = StartReadAloudAsync(tab);
+        }
+
+        private async Task StartReadAloudAsync(IBrowserTab tab)
+        {
+            string text = null;
+            string title = null;
+            try
+            {
+                var article = await ReaderService.ExtractTextForTtsAsync(tab);
+                if (article != null)
+                {
+                    text = article.Text;
+                    if (!string.IsNullOrWhiteSpace(article.Title)) title = article.Title;
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[朗读] 提取异常: {ex}");
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                NotificationService.ShowToast("无法朗读", "未提取到可朗读的正文内容");
+                return;
+            }
+            _isReadingAloud = true;
+            ReadAloudService.Start(text, title);
+        }
+
+        // ---- 打印（双引擎：WebView2 系统打印 UI / EdgeHTML window.print） ----
+        private async Task PrintCurrentTabAsync()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                wv2.CoreWebView2.ShowPrintUI(CoreWebView2PrintDialogKind.Browser);
+            else if (tab is EdgeHtmlTab edgeTab)
+                await edgeTab.ExecuteScriptAsync("window.print();");
+        }
+
+        // ---- 收藏 / 复制网址 ----
+        private async void AddCurrentToFavorites()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            string url = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                NotificationService.ShowToast("添加到收藏夹", "当前页面不可收藏");
+                return;
+            }
+            if (FavoritesManager.Instance.ContainsUrl(url))
+            {
+                NotificationService.ShowToast("添加到收藏夹", "该网址已在收藏夹中");
+                return;
+            }
+            await FavoritesManager.Instance.AddAsync(tab.Title ?? url, url);
+            NotificationService.ShowToast("已添加到收藏夹", tab.Title ?? url);
+        }
+
+        private void CopyCurrentUrl()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            string url = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank") return;
+            var dp = new DataPackage();
+            dp.SetText(url);
+            Clipboard.SetContent(dp);
+            NotificationService.ShowToast("已复制", "网址已复制到剪贴板");
+        }
+
+        // ---- 页内查找（Ctrl+F，双引擎经 FindService 注入；Esc 关闭） ----
+        private void FindBar_CloseRequested()
+        {
+            _ = RunFindAsync("", "new");   // 清空页面高亮
+            FindBar.Visibility = Visibility.Collapsed;
+        }
+
+        private void FindBar_FindRequested(string query, string mode) => _ = RunFindAsync(query ?? "", mode);
+
+        private async Task RunFindAsync(string query, string mode)
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            try
+            {
+                string result = await tab.ExecuteScriptAsync(FindService.BuildFindScript(query ?? "", mode));
+                var info = FindService.ParseFindResult(result);
+                if (info != null)
+                    FindBar.SetCount(info.Index, info.Count);
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[查找] 异常: {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         // ---- 右键：Chrome 区（标题栏/标签条/地址栏/空白）→ 设置面板开着则收起，否则切换命令栏 ----
@@ -548,6 +741,10 @@ namespace EdgeRebuild.Metro
                         e.Handled = true;
                         _ = _tabManager.CurrentTab?.RefreshAsync();
                         break;
+                    case VirtualKey.F:
+                        e.Handled = true;
+                        FindBar.Show();
+                        break;
                 }
             }
             else if (e.Key == VirtualKey.F11)
@@ -557,8 +754,13 @@ namespace EdgeRebuild.Metro
             }
             else if (e.Key == VirtualKey.Escape)
             {
-                // Esc 逐层收起：设置面板 → 命令栏 → 缩略图网格 → 全屏
-                if (_settingsOpen)
+                // Esc 逐层收起：查找栏 → 设置面板 → 命令栏 → 缩略图网格 → 全屏
+                if (FindBar.Visibility == Visibility.Visible)
+                {
+                    e.Handled = true;
+                    FindBar_CloseRequested();
+                }
+                else if (_settingsOpen)
                 {
                     e.Handled = true;
                     CloseSettingsPanel();
