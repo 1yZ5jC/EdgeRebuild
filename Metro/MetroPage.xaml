@@ -4,12 +4,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:metro="using:EdgeRebuild.Metro"
     Background="#FF2D2D30"
+    RequestedTheme="Dark"
     KeyDown="Page_KeyDown" KeyUp="Page_KeyUp">
 
-    <!-- 布局（Metro IE 真实形态：底部只有标签条 + 地址栏，其余功能收进右键菜单，
-         Windows 8.1 形式）：Row0 标题栏 / Row1 内容区 / Row2 底部标签条 / Row3 底部地址栏
-         原“底部 AppBar”方案保留在 MetroAppBarControl 与 git 历史中作储备。 -->
-    <Grid RightTapped="Root_RightTapped">
+    <!-- 布局（Metro IE 真实形态）：Row0 标题栏 / Row1 内容区 / Row2 底部标签条 / Row3 底部地址栏。
+         其余功能（新建标签/标签视图/刷新/全屏/设置）收进底部命令栏（Windows 8.1 AppBar 形态：
+         平时隐藏，右键或命令唤出，图标+文字平铺）。
+         网页空白处右键 = 唤出命令栏；链接/图片/选区右键 = 就近小菜单（MetroPage 代码隐藏）。 -->
+    <Grid RightTapped="Root_RightTapped" PointerPressed="Root_PointerPressed">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -43,6 +45,15 @@
             HomeRequested="AddressBar_HomeRequested"
             FullscreenRequested="AddressBar_FullscreenRequested"
             UrlSubmitted="AddressBar_UrlSubmitted"/>
+
+        <!-- 底部命令栏覆盖层（滑入/滑出动画见代码隐藏） -->
+        <metro:MetroAppBarControl x:Name="CommandBar" Grid.RowSpan="4"
+            VerticalAlignment="Bottom" Visibility="Collapsed"
+            NewTabClicked="CommandBar_NewTabClicked"
+            TabsClicked="CommandBar_TabsClicked"
+            RefreshClicked="CommandBar_RefreshClicked"
+            FullscreenClicked="CommandBar_FullscreenClicked"
+            SettingsClicked="CommandBar_SettingsClicked"/>
 
         <!-- 全屏缩略图网格覆盖层 -->
         <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="4"

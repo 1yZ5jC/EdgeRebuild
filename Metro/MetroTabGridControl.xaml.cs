@@ -9,13 +9,13 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
-using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace EdgeRebuild.Metro
 {
     /// <summary>
     /// Metro IE 风格的全屏标签缩略图网格：卡片 = 缩略图 + 标题 + favicon + 关闭。
-    /// 打开时按标签逐个异步捕获缩略图，失败降级为 favicon 卡片。
+    /// 打开时按标签逐个异步捕获缩略图（并行 + 超时），失败/挂起/空白页降级为 favicon 卡片。
+    /// 非活动标签的容器是 Collapsed（WebView2 捕获会失败），捕获前临时置为可见再还原。
     /// </summary>
     public sealed partial class MetroTabGridControl : UserControl
     {
@@ -26,6 +26,7 @@ namespace EdgeRebuild.Metro
 
         private readonly Dictionary<TabViewItem, Border> _cards = new Dictionary<TabViewItem, Border>();
         private readonly Dictionary<TabViewItem, bool> _thumbReady = new Dictionary<TabViewItem, bool>();
+        private const int CaptureTimeoutMs = 3500;
 
         public MetroTabGridControl()
         {
@@ -39,7 +40,7 @@ namespace EdgeRebuild.Metro
             _thumbReady.Clear();
             foreach (var item in tabs)
                 GridHost.Children.Add(BuildCard(item, item == current));
-            _ = CaptureAllAsync(tabs);
+            _ = CaptureAllAsync(tabs, current);
         }
 
         private Border BuildCard(TabViewItem item, bool isCurrent)
@@ -58,7 +59,7 @@ namespace EdgeRebuild.Metro
 
             var thumb = new Grid { Background = new SolidColorBrush(MetroColorPalette.PanelColor) };
             var img = new Image { Stretch = Stretch.Uniform, IsHitTestVisible = false };
-            var ring = new ProgressRing { IsActive = true, Width = 32, Height = 32, Visibility = Visibility.Collapsed };
+            var ring = new ProgressRing { IsActive = true, Width = 32, Height = 32, Visibility = Visibility.Visible };
             thumb.Children.Add(img);
             thumb.Children.Add(ring);
 
@@ -149,23 +150,55 @@ namespace EdgeRebuild.Metro
             catch { }
         }
 
-        private async Task CaptureAllAsync(IReadOnlyList<TabViewItem> tabs)
+        // ---- 缩略图捕获：并行 + 每标签超时，避免单个标签卡死整张网格 ----
+        private async Task CaptureAllAsync(IReadOnlyList<TabViewItem> tabs, TabViewItem current)
         {
+            var tasks = new List<Task>();
             foreach (var item in tabs)
-            {
-                if (_thumbReady.TryGetValue(item, out bool ready) && ready) continue;
-                await CaptureOneAsync(item);
-            }
+                tasks.Add(CaptureOneWithTimeoutAsync(item, item == current));
+            await Task.WhenAll(tasks);
         }
 
-        private async Task CaptureOneAsync(TabViewItem item)
+        private async Task CaptureOneWithTimeoutAsync(TabViewItem item, bool isCurrent)
         {
+            var capture = CaptureOneAsync(item, isCurrent);
+            var done = await Task.WhenAny(capture, Task.Delay(CaptureTimeoutMs));
+            if (done != capture)
+                _thumbReady[item] = true;   // 超时 → 放弃，保留 favicon 卡片
+        }
+
+        private async Task CaptureOneAsync(TabViewItem item, bool isCurrent)
+        {
+            if (item.Tab.IsSuspended) return;   // 已挂起标签无法捕获，保留 favicon 卡片
+            string url = item.Tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank") return;
+
             if (!_cards.TryGetValue(item, out var card)) return;
             var img = FindThumbImage(card);
             if (img == null) return;
+            var ring = FindThumbRing(card);
+            if (ring != null) ring.Visibility = Visibility.Visible;
 
-            byte[] png = await WebCaptureService.CapturePagePngAsync(item.Tab);
+            // 非活动标签容器 Collapsed → 捕获必失败；临时置可见（覆盖层不透明，用户无感知）
+            var container = item.ContentContainer;
+            bool restoreVisibility = false;
+            if (container != null && container.Visibility != Visibility.Visible)
+            {
+                container.Visibility = Visibility.Visible;
+                restoreVisibility = true;
+            }
+
+            byte[] png = null;
+            try { png = await WebCaptureService.CapturePagePngAsync(item.Tab); }
+            catch { }
+            finally
+            {
+                if (restoreVisibility && container != null && !isCurrent)
+                    container.Visibility = Visibility.Collapsed;
+            }
+
             _thumbReady[item] = true;
+            if (ring != null) ring.Visibility = Visibility.Collapsed;
             if (png == null || png.Length == 0) return;
 
             try
@@ -190,6 +223,13 @@ namespace EdgeRebuild.Metro
             var grid = card.Child as Grid;
             if (grid?.Children.Count < 1) return null;
             return (grid.Children[0] as Grid)?.Children[0] as Image;
+        }
+
+        private static ProgressRing FindThumbRing(Border card)
+        {
+            var grid = card.Child as Grid;
+            if (grid?.Children.Count < 1) return null;
+            return (grid.Children[0] as Grid)?.Children[1] as ProgressRing;
         }
 
         private void NewTabTile_Click(object sender, RoutedEventArgs e) => NewTabRequested?.Invoke();

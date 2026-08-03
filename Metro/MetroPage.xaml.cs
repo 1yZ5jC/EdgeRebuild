@@ -2,6 +2,8 @@
 using System.Threading.Tasks;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
+using Windows.ApplicationModel.DataTransfer;
+using Windows.Foundation;
 using Windows.System;
 using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
@@ -14,9 +16,9 @@ using Windows.UI.Xaml.Navigation;
 namespace EdgeRebuild.Metro
 {
     /// <summary>
-    /// Metro IE 风格窗口：底部只有标签条 + 地址栏，其余功能收进右键菜单（Windows 8.1 形式）；
-    /// 全屏缩略图标签网格、磁贴风格新标签主页。色板固定（MetroColorPalette），
-    /// 与主窗口皮肤完全隔离；键盘快捷键自处理，不经过全局 ShortcutManager。
+    /// Metro IE 风格窗口：底部只有标签条 + 地址栏，其余功能收进底部命令栏（Windows 8.1 AppBar
+    /// 形态，平时隐藏、右键唤出）；网页空白处右键同样唤出命令栏，链接/图片/选区右键弹就近
+    /// 小菜单。色板固定（MetroColorPalette），与主窗口皮肤完全隔离；快捷键自处理。
     /// </summary>
     public sealed partial class MetroPage : Page
     {
@@ -24,8 +26,13 @@ namespace EdgeRebuild.Metro
         private EngineType _defaultEngine;
         private TabManager _tabManager;
         private bool _gridOpen;
+        private bool _commandBarOpen;
         private bool _isFullscreen;
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+
+        // EdgeHTML 页面右键 marker 轮询（与 MainPage 同机制：UWP WebView 无控件级右键事件，
+        // 页面脚本写入 window.__edgCtxMarker，宿主定时读取；WebView2 走 ContextMenuRequested）
+        private readonly DispatcherTimer _ctxPollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
 
         public MetroPage()
         {
@@ -35,6 +42,8 @@ namespace EdgeRebuild.Metro
                 _stripRefreshTimer.Stop();
                 TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             };
+            _ctxPollTimer.Tick += CtxPollTimer_Tick;
+            _ctxPollTimer.Start();
         }
 
         // 标签条内容变化（标题/图标/URL/加载态）防抖刷新，避免高频事件刷屏重建
@@ -67,6 +76,7 @@ namespace EdgeRebuild.Metro
             _tabManager.TabCountChanged += count =>
             {
                 RefreshStripSoon();
+                if (_commandBarOpen) CommandBar.UpdateTabCount(count);
                 // Metro IE 不允许无标签窗口：最后一个标签关闭后自动新建
                 if (count == 0)
                     _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
@@ -77,6 +87,7 @@ namespace EdgeRebuild.Metro
                 if (tab == _tabManager.CurrentTab)
                     AddressBar.SetUrl(tabUrl);
             };
+            _tabManager.ContextMenuRequested += OnTabContextMenuRequested;
 
             if (_appWindow != null)
             {
@@ -133,12 +144,55 @@ namespace EdgeRebuild.Metro
                 }
                 _isFullscreen = !_isFullscreen;
                 TopBar.Visibility = _isFullscreen ? Visibility.Collapsed : Visibility.Visible;
+                if (_commandBarOpen) CommandBar.SetFullscreenText(_isFullscreen);
             }
             catch (Exception ex)
             {
                 Services.Diagnostics.Log($"[Metro] 全屏切换失败: {ex.Message}");
                 NotificationService.ShowToast("Metro IE", "全屏切换失败");
             }
+        }
+
+        // ---- 底部命令栏（Windows 8.1 AppBar：平时隐藏，右键/命令唤出，滑入动画） ----
+        private void OpenCommandBar()
+        {
+            if (_commandBarOpen) return;
+            _commandBarOpen = true;
+            CommandBar.UpdateTabCount(_tabManager.Tabs.Count);
+            CommandBar.SetFullscreenText(_isFullscreen);
+            CommandBar.Visibility = Visibility.Visible;
+            CommandBar.RenderTransform = new TranslateTransform { Y = 48 };
+            var sb = new Storyboard();
+            var slide = new DoubleAnimation
+            {
+                From = 48,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(160),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(slide, CommandBar);
+            Storyboard.SetTargetProperty(slide, "(UIElement.RenderTransform).(TranslateTransform.Y)");
+            sb.Children.Add(slide);
+            sb.Begin();
+        }
+
+        private void CloseCommandBar()
+        {
+            if (!_commandBarOpen) return;
+            _commandBarOpen = false;
+            var sb = new Storyboard();
+            var slide = new DoubleAnimation { From = 0, To = 48, Duration = TimeSpan.FromMilliseconds(120) };
+            Storyboard.SetTarget(slide, CommandBar);
+            Storyboard.SetTargetProperty(slide, "(UIElement.RenderTransform).(TranslateTransform.Y)");
+            sb.Children.Add(slide);
+            sb.Completed += (s, e) => { if (!_commandBarOpen) CommandBar.Visibility = Visibility.Collapsed; };
+            sb.Begin();
+        }
+
+        private void ToggleCommandBar()
+        {
+            if (_commandBarOpen) CloseCommandBar();
+            else OpenCommandBar();
         }
 
         // ---- 地址栏 ----
@@ -161,63 +215,161 @@ namespace EdgeRebuild.Metro
         private void TabStrip_TabCloseRequested(TabViewItem viewItem) => _ = _tabManager.CloseTabAsync(viewItem);
         private void TabStrip_NewTabRequested() => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
 
-        // ---- 右键菜单（Windows 8.1 形式：其余功能收进右键菜单，底部只留地址栏+标签栏） ----
+        // ---- 命令栏按钮 ----
+        private void CommandBar_NewTabClicked()
+        {
+            CloseCommandBar();
+            _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+        }
+        private void CommandBar_TabsClicked()
+        {
+            CloseCommandBar();
+            ToggleGrid();
+        }
+        private void CommandBar_RefreshClicked()
+        {
+            CloseCommandBar();
+            _ = _tabManager.CurrentTab?.RefreshAsync();
+        }
+        private void CommandBar_FullscreenClicked()
+        {
+            CloseCommandBar();
+            ToggleFullscreen();
+        }
+        private void CommandBar_SettingsClicked()
+        {
+            CloseCommandBar();
+            NotificationService.ShowToast("Metro IE", "设置面板（开发中）");
+        }
+
+        // ---- 右键：Chrome 区（标题栏/标签条/地址栏/空白）→ 切换命令栏 ----
         private void Root_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
+            ToggleCommandBar();
+            e.Handled = true;
+        }
+
+        // 鼠标左键在命令栏外点击 → 收起（WebView2 内容区为独立 HWND，点击不进 XAML，
+        // 仅 EdgeHTML 内容与 Chrome 区可触发；与真实 Metro IE 行为一致：点空白收起）
+        private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_commandBarOpen) return;
+            if (e.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse) return;
+            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+            if (IsWithinElement(e.OriginalSource as DependencyObject, CommandBar)) return;
+            CloseCommandBar();
+        }
+
+        private static bool IsWithinElement(DependencyObject src, DependencyObject target)
+        {
+            DependencyObject cur = src;
+            while (cur != null)
+            {
+                if (cur == target) return true;
+                cur = VisualTreeHelper.GetParent(cur);
+            }
+            return false;
+        }
+
+        // ---- 网页右键：空白 → 命令栏；链接/图片/选区 → 就近小菜单 ----
+        private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
+        {
+            double dy = (TopBar.Visibility == Visibility.Visible) ? TopBar.ActualHeight : 0;
+            ShowMetroContextMenu(args.MenuType, args.LinkUrl, args.ImageUrl, args.SelectionText,
+                new Point(args.Location.X, args.Location.Y + dy));
+        }
+
+        private async void CtxPollTimer_Tick(object sender, object e)
+        {
+            if (_tabManager?.CurrentTab is EdgeHtmlTab edge)
+            {
+                string raw = await edge.PollContextMenuAsync();
+                if (!string.IsNullOrEmpty(raw))
+                    ShowEdgeHtmlContextMenu(raw);
+            }
+        }
+
+        private void ShowEdgeHtmlContextMenu(string raw)
+        {
+            // marker 格式：kind|x|y|encodeURIComponent(值)
+            var parts = raw.Split('|');
+            if (parts.Length < 3) return;
+            string kind = parts[0];
+            if (!double.TryParse(parts[1], out double x) || !double.TryParse(parts[2], out double y)) return;
+            string val = parts.Length > 3 ? Uri.UnescapeDataString(parts[3]) : "";
+            double dy = (TopBar.Visibility == Visibility.Visible) ? TopBar.ActualHeight : 0;
+            switch (kind)
+            {
+                case "link":
+                    ShowMetroContextMenu(ContextMenuType.Link, val, null, "", new Point(x, y + dy));
+                    break;
+                case "image":
+                    ShowMetroContextMenu(ContextMenuType.Image, null, val, "", new Point(x, y + dy));
+                    break;
+                case "selection":
+                    ShowMetroContextMenu(ContextMenuType.Selection, null, null, val, new Point(x, y + dy));
+                    break;
+                default:
+                    OpenCommandBar();
+                    break;
+            }
+        }
+
+        private void ShowMetroContextMenu(ContextMenuType type, string linkUrl, string imageUrl, string selection, Point pt)
+        {
+            var tabManager = _tabManager;
+            if (tabManager == null) return;
+
+            // 空白处右键 → 唤出底部命令栏（Windows 8.1：内容区右键 = AppBar）
+            if (type == ContextMenuType.Page)
+            {
+                OpenCommandBar();
+                return;
+            }
+
+            EngineType engine = tabManager.CurrentTab?.Engine ?? _defaultEngine;
             var menu = new MenuFlyout();
 
-            var newTabItem = new MenuFlyoutItem
+            if (type == ContextMenuType.Link && !string.IsNullOrEmpty(linkUrl))
             {
-                Text = "新建标签",
-                Icon = new FontIcon { Glyph = "\xE710", FontFamily = new FontFamily("Segoe MDL2 Assets") }
-            };
-            newTabItem.Click += (s, a) => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
-            menu.Items.Add(newTabItem);
+                var openItem = new MenuFlyoutItem { Text = "在新标签打开" };
+                openItem.Click += (s, a) => _ = tabManager.CreateTabAsync(engine, linkUrl, false, true);
+                menu.Items.Add(openItem);
 
-            var closeItem = new MenuFlyoutItem
+                var copyItem = new MenuFlyoutItem { Text = "复制链接" };
+                copyItem.Click += (s, a) => CopyText(linkUrl);
+                menu.Items.Add(copyItem);
+            }
+            else if (type == ContextMenuType.Image && !string.IsNullOrEmpty(imageUrl))
             {
-                Text = "关闭当前标签",
-                Icon = new FontIcon { Glyph = "\xE711", FontFamily = new FontFamily("Segoe MDL2 Assets") }
-            };
-            closeItem.Click += (s, a) => _ = _tabManager.CloseTabAsync(FindViewItem(_tabManager.CurrentTab));
-            menu.Items.Add(closeItem);
+                var openItem = new MenuFlyoutItem { Text = "在新标签打开图片" };
+                openItem.Click += (s, a) => _ = tabManager.CreateTabAsync(engine, imageUrl, false, true);
+                menu.Items.Add(openItem);
 
-            var gridItem = new MenuFlyoutItem
+                var copyItem = new MenuFlyoutItem { Text = "复制图片地址" };
+                copyItem.Click += (s, a) => CopyText(imageUrl);
+                menu.Items.Add(copyItem);
+            }
+            else if (type == ContextMenuType.Selection && !string.IsNullOrEmpty(selection))
             {
-                Text = _gridOpen ? "收起标签视图" : "标签缩略图",
-                Icon = new FontIcon { Glyph = "\xE78C", FontFamily = new FontFamily("Segoe MDL2 Assets") }
-            };
-            gridItem.Click += (s, a) => ToggleGrid();
-            menu.Items.Add(gridItem);
+                var copyItem = new MenuFlyoutItem { Text = "复制" };
+                copyItem.Click += (s, a) => CopyText(selection);
+                menu.Items.Add(copyItem);
+            }
 
-            menu.Items.Add(new MenuFlyoutSeparator());
+            if (menu.Items.Count > 0)
+                menu.ShowAt(this, pt);
+        }
 
-            var refreshItem = new MenuFlyoutItem
+        private static void CopyText(string text)
+        {
+            try
             {
-                Text = "刷新",
-                Icon = new FontIcon { Glyph = "\xE72C", FontFamily = new FontFamily("Segoe MDL2 Assets") }
-            };
-            refreshItem.Click += (s, a) => _ = _tabManager.CurrentTab?.RefreshAsync();
-            menu.Items.Add(refreshItem);
-
-            var fsItem = new MenuFlyoutItem
-            {
-                Text = _isFullscreen ? "退出全屏" : "全屏",
-                Icon = new FontIcon { Glyph = "\xE740", FontFamily = new FontFamily("Segoe MDL2 Assets") }
-            };
-            fsItem.Click += (s, a) => ToggleFullscreen();
-            menu.Items.Add(fsItem);
-
-            var settingsItem = new MenuFlyoutItem
-            {
-                Text = "设置",
-                Icon = new FontIcon { Glyph = "\xE713", FontFamily = new FontFamily("Segoe MDL2 Assets") }
-            };
-            settingsItem.Click += (s, a) => NotificationService.ShowToast("Metro IE", "设置面板（开发中）");
-            menu.Items.Add(settingsItem);
-
-            menu.ShowAt(this, e.GetPosition(this));
-            e.Handled = true;
+                var dp = new DataPackage();
+                dp.SetText(text);
+                Clipboard.SetContent(dp);
+            }
+            catch { }
         }
 
         // ---- 缩略图网格（淡入动画） ----
@@ -304,8 +456,6 @@ namespace EdgeRebuild.Metro
             var ctrl = Windows.UI.Core.CoreWindow.GetForCurrentThread()?.GetKeyState(VirtualKey.Control)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down) ?? false;
 
-            if (_gridOpen && e.Key == VirtualKey.Escape) { CloseGrid(); e.Handled = true; return; }
-
             if (ctrl)
             {
                 if (TryHandleCtrlNumber(e.Key)) { e.Handled = true; return; }
@@ -340,8 +490,22 @@ namespace EdgeRebuild.Metro
             }
             else if (e.Key == VirtualKey.Escape)
             {
-                e.Handled = true;
-                if (_isFullscreen) ToggleFullscreen();
+                // Esc 逐层收起：命令栏 → 缩略图网格 → 全屏
+                if (_commandBarOpen)
+                {
+                    e.Handled = true;
+                    CloseCommandBar();
+                }
+                else if (_gridOpen)
+                {
+                    e.Handled = true;
+                    CloseGrid();
+                }
+                else if (_isFullscreen)
+                {
+                    e.Handled = true;
+                    ToggleFullscreen();
+                }
             }
         }
 
