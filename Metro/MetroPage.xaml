@@ -55,6 +55,15 @@
             FullscreenClicked="CommandBar_FullscreenClicked"
             SettingsClicked="CommandBar_SettingsClicked"/>
 
+        <!-- 设置面板覆盖层（Windows 8 形态：从右侧滑入，346px 全高） -->
+        <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="4"
+            HorizontalAlignment="Right" VerticalAlignment="Stretch" Visibility="Collapsed"
+            CloseRequested="SettingsPanel_CloseRequested"
+            ZoomInRequested="SettingsPanel_ZoomInRequested"
+            ZoomOutRequested="SettingsPanel_ZoomOutRequested"
+            ZoomResetRequested="SettingsPanel_ZoomResetRequested"
+            ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"/>
+
         <!-- 全屏缩略图网格覆盖层 -->
         <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="4"
             Visibility="Collapsed"

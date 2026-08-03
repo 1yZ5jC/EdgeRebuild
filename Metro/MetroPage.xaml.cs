@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Threading.Tasks;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
@@ -27,7 +28,9 @@ namespace EdgeRebuild.Metro
         private TabManager _tabManager;
         private bool _gridOpen;
         private bool _commandBarOpen;
+        private bool _settingsOpen;
         private bool _isFullscreen;
+        private double _zoomFactor = 1.0;
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
         // EdgeHTML 页面右键 marker 轮询（与 MainPage 同机制：UWP WebView 无控件级右键事件，
@@ -195,6 +198,65 @@ namespace EdgeRebuild.Metro
             else OpenCommandBar();
         }
 
+        // ---- 设置面板（Windows 8 形态：从右侧滑入，点外部/Esc/关闭按钮收起） ----
+        private void OpenSettingsPanel()
+        {
+            if (_settingsOpen) return;
+            _settingsOpen = true;
+            SettingsPanel.UpdateZoomPercent((int)Math.Round(_zoomFactor * 100));
+            SettingsPanel.Visibility = Visibility.Visible;
+            SettingsPanel.RenderTransform = new TranslateTransform { X = 346 };
+            var sb = new Storyboard();
+            var slide = new DoubleAnimation
+            {
+                From = 346,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(160),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(slide, SettingsPanel);
+            Storyboard.SetTargetProperty(slide, "(UIElement.RenderTransform).(TranslateTransform.X)");
+            sb.Children.Add(slide);
+            sb.Begin();
+        }
+
+        private void CloseSettingsPanel()
+        {
+            if (!_settingsOpen) return;
+            _settingsOpen = false;
+            var sb = new Storyboard();
+            var slide = new DoubleAnimation { From = 0, To = 346, Duration = TimeSpan.FromMilliseconds(120) };
+            Storyboard.SetTarget(slide, SettingsPanel);
+            Storyboard.SetTargetProperty(slide, "(UIElement.RenderTransform).(TranslateTransform.X)");
+            sb.Children.Add(slide);
+            sb.Completed += (s, e) => { if (!_settingsOpen) SettingsPanel.Visibility = Visibility.Collapsed; };
+            sb.Begin();
+        }
+
+        // 缩放（与主窗口同机制：双引擎 document.body.style.zoom 注入；Culture 无关格式防 JS 解析失败）
+        private void ApplyZoom(double factor)
+        {
+            _zoomFactor = Math.Max(0.25, Math.Min(5.0, factor));
+            var tab = _tabManager?.CurrentTab;
+            if (tab is EdgeHtmlTab edgeTab)
+                _ = edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor.ToString(CultureInfo.InvariantCulture)}';");
+            else if (tab is WebView2Tab wv2)
+                _ = wv2.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor.ToString(CultureInfo.InvariantCulture)}';");
+            if (_settingsOpen) SettingsPanel.UpdateZoomPercent((int)Math.Round(_zoomFactor * 100));
+        }
+
+        private void SettingsPanel_CloseRequested() => CloseSettingsPanel();
+        private void SettingsPanel_ZoomInRequested() => ApplyZoom(_zoomFactor + 0.25);
+        private void SettingsPanel_ZoomOutRequested() => ApplyZoom(_zoomFactor - 0.25);
+        private void SettingsPanel_ZoomResetRequested() => ApplyZoom(1.0);
+
+        private async void SettingsPanel_ClearHistoryRequested()
+        {
+            await HistoryManager.ClearAsync();
+            _tabManager.ClearClosedTabs();
+            NotificationService.ShowToast("设置", "已清除浏览历史与关闭的标签页");
+        }
+
         // ---- 地址栏 ----
         private void AddressBar_BackRequested() => _ = _tabManager.CurrentTab?.GoBackAsync();
         private void AddressBar_ForwardRequested() => _ = _tabManager.CurrentTab?.GoForwardAsync();
@@ -239,25 +301,30 @@ namespace EdgeRebuild.Metro
         private void CommandBar_SettingsClicked()
         {
             CloseCommandBar();
-            NotificationService.ShowToast("Metro IE", "设置面板（开发中）");
+            OpenSettingsPanel();
         }
 
-        // ---- 右键：Chrome 区（标题栏/标签条/地址栏/空白）→ 切换命令栏 ----
+        // ---- 右键：Chrome 区（标题栏/标签条/地址栏/空白）→ 设置面板开着则收起，否则切换命令栏 ----
         private void Root_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
-            ToggleCommandBar();
+            if (_settingsOpen) CloseSettingsPanel();
+            else ToggleCommandBar();
             e.Handled = true;
         }
 
-        // 鼠标左键在命令栏外点击 → 收起（WebView2 内容区为独立 HWND，点击不进 XAML，
-        // 仅 EdgeHTML 内容与 Chrome 区可触发；与真实 Metro IE 行为一致：点空白收起）
+        // 鼠标左键在面板外点击 → 逐层收起（设置面板 → 命令栏；WebView2 内容区为独立
+        // HWND 不进 XAML，仅 EdgeHTML 内容与 Chrome 区可触发，与真实 Metro 行为一致）
         private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            if (!_commandBarOpen) return;
             if (e.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse) return;
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
-            if (IsWithinElement(e.OriginalSource as DependencyObject, CommandBar)) return;
-            CloseCommandBar();
+            if (_settingsOpen && !IsWithinElement(e.OriginalSource as DependencyObject, SettingsPanel))
+            {
+                CloseSettingsPanel();
+                return;
+            }
+            if (_commandBarOpen && !IsWithinElement(e.OriginalSource as DependencyObject, CommandBar))
+                CloseCommandBar();
         }
 
         private static bool IsWithinElement(DependencyObject src, DependencyObject target)
@@ -490,8 +557,13 @@ namespace EdgeRebuild.Metro
             }
             else if (e.Key == VirtualKey.Escape)
             {
-                // Esc 逐层收起：命令栏 → 缩略图网格 → 全屏
-                if (_commandBarOpen)
+                // Esc 逐层收起：设置面板 → 命令栏 → 缩略图网格 → 全屏
+                if (_settingsOpen)
+                {
+                    e.Handled = true;
+                    CloseSettingsPanel();
+                }
+                else if (_commandBarOpen)
                 {
                     e.Handled = true;
                     CloseCommandBar();
