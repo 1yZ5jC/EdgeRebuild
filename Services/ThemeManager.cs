@@ -110,8 +110,8 @@ namespace EdgeRebuild.Services
         public static Brush GetToolbarBackground() => Colors.ToolbarBackground;
         public static SolidColorBrush GetForegroundBrush() => Colors.ForegroundBrush;
         public static SolidColorBrush GetMutedForegroundBrush() => Colors.MutedForegroundBrush;
-        public static SolidColorBrush GetTabActiveBackground() => Colors.TabActiveBackground;
-        public static SolidColorBrush GetTabInactiveBackground() => Colors.TabInactiveBackground;
+        public static Brush GetTabActiveBackground() => Colors.TabActiveBackground;
+        public static Brush GetTabInactiveBackground() => Colors.TabInactiveBackground;
         public static SolidColorBrush GetTabHoverBackground() => Colors.TabHoverBackground;
         public static SolidColorBrush GetSeparatorBrush() => Colors.SeparatorBrush;
         public static SolidColorBrush GetAddressBarBackground() => Colors.AddressBarBackground;

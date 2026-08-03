@@ -229,7 +229,21 @@ namespace EdgeRebuild.Core
             Grid.SetColumn(closeBtn, 1);
             tabPanel.Children.Add(closeBtn);
 
-            tabBorder.Child = tabPanel;
+            // 选中标签顶部强调条（Edge/Fluent 风格，高对比标识当前标签）
+            var accentBar = new Border
+            {
+                Height = 2,
+                VerticalAlignment = VerticalAlignment.Top,
+                Background = colors.AccentBrush ?? new SolidColorBrush(Colors.DodgerBlue),
+                Visibility = Visibility.Collapsed,
+                IsHitTestVisible = false
+            };
+
+            var tabRoot = new Grid();
+            tabRoot.Children.Add(tabPanel);
+            tabRoot.Children.Add(accentBar);
+            tabBorder.Child = tabRoot;
+
             _tabBarPanel.Children.Add(tabBorder);
 
             viewItem.Container = tabBorder;
@@ -240,6 +254,7 @@ namespace EdgeRebuild.Core
             viewItem.EngineMark = engineMark;
             viewItem.SuspendedIndicator = suspendedIndicator;
             viewItem.LoadingRing = loadingRing;
+            viewItem.TabAccentBar = accentBar;
 
             var contentBorder = new Border
             {
@@ -383,6 +398,8 @@ namespace EdgeRebuild.Core
             {
                 if (item.Container != null)
                     item.Container.Background = (item == viewItem) ? colors.TabActiveBackground : colors.TabInactiveBackground;
+                if (item.TabAccentBar != null)
+                    item.TabAccentBar.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
                 if (item.ContentContainer != null)
                     item.ContentContainer.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -513,6 +530,12 @@ namespace EdgeRebuild.Core
                     item.Container.Background = (item.Tab == _currentTab)
                         ? colors.TabActiveBackground
                         : colors.TabInactiveBackground;
+                }
+                if (item.TabAccentBar != null)
+                {
+                    item.TabAccentBar.Visibility = (item.Tab == _currentTab) ? Visibility.Visible : Visibility.Collapsed;
+                    if (colors.AccentBrush != null)
+                        item.TabAccentBar.Background = colors.AccentBrush;
                 }
                 if (item.TitleText != null)
                     item.TitleText.Foreground = colors.ForegroundBrush;

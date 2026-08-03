@@ -21,5 +21,8 @@ namespace EdgeRebuild.Core
         // 固定标签支持
         public bool IsPinned { get; set; }
         public string OriginalTitle { get; set; }
+
+        // 选中标签顶部强调条（与背景/边框一起随选中状态切换）
+        public Border TabAccentBar { get; set; }
     }
 }

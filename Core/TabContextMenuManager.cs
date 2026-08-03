@@ -90,31 +90,57 @@ namespace EdgeRebuild.Core
         public void ShowWebContextMenu(TabContextMenuEventArgs args)
         {
             var tab = _tabManager.CurrentTab;
-            if (tab is EdgeHtmlTab) return;
 
             var flyout = new MenuFlyout();
             ApplyThemeToFlyout(flyout);
 
             // ---- 复制 ----
-            // PDF 查看器等场景下 WebView2 的 HasSelection 不可靠（常为 false），
-            // 因此菜单始终可用，点击时再取当前选区
-            var copyItem = new MenuFlyoutItem { Text = "复制", IsEnabled = true };
+            // 启用规则：链接右键场景用"复制链接"（此处分组禁用）；图片/选区/页面场景
+            // 均可复制。PDF 查看器等场景下 HasSelection 不可靠（常为 false），
+            // 因此点击时实时取选区，取不到时给出提示。
+            var copyItem = new MenuFlyoutItem
+            {
+                Text = args.MenuType == ContextMenuType.Image ? "复制图片" : "复制",
+                IsEnabled = args.MenuType != ContextMenuType.Link
+            };
             copyItem.Click += async (_, _) =>
             {
-                if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                // 图片右键：复制图片本身到剪贴板
+                if (args.MenuType == ContextMenuType.Image && !string.IsNullOrEmpty(args.ImageUrl))
                 {
-                    string json = await wv2.CoreWebView2.ExecuteScriptAsync(
-                        "window.getSelection() ? window.getSelection().toString() : ''");
-                    string selectedText = "";
-                    try { selectedText = System.Text.Json.JsonDocument.Parse(json).RootElement.GetString() ?? ""; }
-                    catch { }
-                    if (!string.IsNullOrEmpty(selectedText))
+                    if (await CopyImageToClipboardAsync(args.ImageUrl))
+                        NotificationService.ShowToast("已复制", "图片已复制到剪贴板");
+                    else
+                        NotificationService.ShowToast("复制失败", "无法获取图片");
+                    return;
+                }
+
+                string selectedText = args.HasSelection ? (args.SelectionText ?? "") : "";
+                if (string.IsNullOrEmpty(selectedText))
+                {
+                    if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                     {
-                        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
-                        dp.SetText(selectedText);
-                        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+                        string json = await wv2.CoreWebView2.ExecuteScriptAsync(
+                            "window.getSelection() ? window.getSelection().toString() : ''");
+                        try { selectedText = System.Text.Json.JsonDocument.Parse(json).RootElement.GetString() ?? ""; }
+                        catch { }
+                    }
+                    else if (_tabManager.CurrentTab is EdgeHtmlTab edge)
+                    {
+                        string json = await edge.ExecuteScriptAsync(
+                            "window.getSelection() ? window.getSelection().toString() : ''");
+                        try { selectedText = System.Text.Json.JsonDocument.Parse(json).RootElement.GetString() ?? ""; }
+                        catch { }
                     }
                 }
+                if (string.IsNullOrEmpty(selectedText))
+                {
+                    NotificationService.ShowToast("无法复制", "页面没有可复制的文本");
+                    return;
+                }
+                var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                dp.SetText(selectedText);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
             };
             flyout.Items.Add(copyItem);
 
@@ -130,6 +156,8 @@ namespace EdgeRebuild.Core
             {
                 if (_tabManager.CurrentTab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                     await wv2.CoreWebView2.ExecuteScriptAsync("document.execCommand('selectAll');");
+                else if (_tabManager.CurrentTab is EdgeHtmlTab edge)
+                    await edge.ExecuteScriptAsync("document.execCommand('selectAll');");
             };
             flyout.Items.Add(selectAllItem);
 
@@ -217,9 +245,13 @@ namespace EdgeRebuild.Core
             flyout.Items.Add(new MenuFlyoutSeparator());
 
             // ---- 打印 ----
-            var printItem = new MenuFlyoutItem { Text = "打印" };
-            printItem.Click += async (_, _) => await _onPrintRequested?.Invoke();
-            flyout.Items.Add(printItem);
+            // ---- 打印（EdgeHTML 无打印 API，仅 WebView2 提供） ----
+            if (_tabManager.CurrentTab is WebView2Tab)
+            {
+                var printItem = new MenuFlyoutItem { Text = "打印" };
+                printItem.Click += async (_, _) => await _onPrintRequested?.Invoke();
+                flyout.Items.Add(printItem);
+            }
 
             // ---- 查看源代码 ----
             var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
@@ -248,6 +280,29 @@ namespace EdgeRebuild.Core
         {
             foreach (var item in _tabManager.Tabs.Where(t => t != keepItem).ToList())
                 _ = _tabManager.CloseTabAsync(item);
+        }
+
+        /// <summary>
+        /// 下载图片字节并写入剪贴板（WebView2/EdgeHTML 均无直接的"复制图片"API，
+        /// 统一走下载 + SetBitmap）。
+        /// </summary>
+        private static async Task<bool> CopyImageToClipboardAsync(string url)
+        {
+            try
+            {
+                using var client = new Windows.Web.Http.HttpClient();
+                var response = await client.GetAsync(new Uri(url));
+                if (!response.IsSuccessStatusCode) return false;
+                var stream = await response.Content.ReadAsInputStreamAsync();
+                var ms = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                await Windows.Storage.Streams.RandomAccessStream.CopyAsync(stream, ms);
+                ms.Seek(0);
+                var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                dp.SetBitmap(Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(ms));
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
+                return true;
+            }
+            catch { return false; }
         }
 
         private void CloseTabsToRight(TabViewItem startItem)

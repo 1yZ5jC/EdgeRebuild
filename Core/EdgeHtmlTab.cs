@@ -67,6 +67,45 @@ namespace EdgeRebuild.Core
         }
 
         /// <summary>
+        /// 页面右键桥（EdgeHTML 版）：UWP WebView 无控件级右键菜单事件，
+        /// 且外部站点的 window.external.notify 受白名单限制，故沿用 marker 方案——
+        /// 页面监听 contextmenu 阻止默认菜单，把位置/类型写入 window.__edgCtxMarker
+        /// （纯文本管道分隔：kind|x|y|encodeURIComponent(值)，与 TTS marker 同机制），
+        /// 宿主定时轮询后弹出自定义菜单（与 WebView2 菜单一致）。
+        /// </summary>
+        private const string CtxBridgeJs =
+            "(function(){ if (window.__edgCtxBridge) return; window.__edgCtxBridge = true;"
+            + " window.addEventListener('contextmenu', function(e){"
+            + " var el = e.target;"
+            + " var img = el.closest ? el.closest('img') : null;"
+            + " var a = el.closest ? el.closest('a[href]') : null;"
+            + " var kind = 'page', val = '';"
+            + " if (img) { kind = 'image'; val = img.currentSrc || img.src || ''; }"
+            + " else if (a) { kind = 'link'; val = a.href || ''; }"
+            + " else if (window.getSelection && window.getSelection().toString()) { kind = 'selection'; val = window.getSelection().toString(); }"
+            + " window.__edgCtxMarker = kind + '|' + Math.round(e.clientX) + '|' + Math.round(e.clientY) + '|' + encodeURIComponent(val);"
+            + " e.preventDefault();"
+            + " }, true); })();";
+
+        private void InjectContextMenuBridge()
+        {
+            _ = ExecuteScriptAsync(CtxBridgeJs);
+        }
+
+        /// <summary>
+        /// 读取并清空页面右键 marker（由 MainPage 定时轮询，仅对当前活动 EdgeHTML 标签）。
+        /// 返回 "kind|x|y|encodeURIComponent(值)" 纯文本。
+        /// </summary>
+        public async Task<string> PollContextMenuAsync()
+        {
+            if (_disposed) return "";
+            var raw = await ExecuteScriptAsync("(window.__edgCtxMarker)||''");
+            if (string.IsNullOrEmpty(raw) || raw == "\"\"") return "";
+            _ = ExecuteScriptAsync("window.__edgCtxMarker='';");
+            return raw.Trim('"');
+        }
+
+        /// <summary>
         /// 读取并清空页面内快捷键 marker（由 MainPage 定时轮询，仅对当前活动 EdgeHTML 标签）。
         /// </summary>
         public async Task<string> PollPageKeyAsync()
@@ -141,6 +180,7 @@ namespace EdgeRebuild.Core
         {
             LoadingChanged?.Invoke(false);
             InjectPageKeyBridge();
+            InjectContextMenuBridge();
 
             if (args.IsSuccess)
             {
@@ -179,6 +219,8 @@ namespace EdgeRebuild.Core
         private void OnDOMContentLoaded(WebView sender, WebViewDOMContentLoadedEventArgs args)
         {
             UpdateTitle();
+            InjectPageKeyBridge();
+            InjectContextMenuBridge();
             // DOM 加载完成时再尝试提取 favicon
             TryExtractFavicon();
         }

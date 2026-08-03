@@ -546,6 +546,13 @@ namespace EdgeRebuild
                     OnNtpSearchRequested(ntp);
                     return;
                 }
+                // 页面右键（EdgeHTML 无控件级右键事件，走 marker 轮询，菜单与 WebView2 一致）
+                string ctx = await edgeTab.PollContextMenuAsync();
+                if (!string.IsNullOrEmpty(ctx) && ctx != "{}")
+                {
+                    ShowEdgeHtmlContextMenu(edgeTab, ctx);
+                    return;
+                }
                 string key = await edgeTab.PollPageKeyAsync();
                 if (string.IsNullOrEmpty(key)) return;
                 switch (key)
@@ -567,6 +574,51 @@ namespace EdgeRebuild
             }
             catch { }
             finally { _pageKeyPolling = false; }
+        }
+
+        /// <summary>
+        /// 把页面右键 marker（"kind|x|y|encodeURIComponent(值)"）转成菜单参数并弹出，
+        /// 与 WebView2 的右键菜单共用 TabContextMenuManager.ShowWebContextMenu。
+        /// </summary>
+        private void ShowEdgeHtmlContextMenu(EdgeHtmlTab edgeTab, string raw)
+        {
+            try
+            {
+                var parts = raw.Split('|');
+                if (parts.Length < 4) return;
+                string kind = parts[0];
+                double x = 0, y = 0;
+                double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out x);
+                double.TryParse(parts[2], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out y);
+                string val = Uri.UnescapeDataString(parts[3]);
+
+                var args = new TabContextMenuEventArgs
+                {
+                    CanGoBack = edgeTab.CanGoBack,
+                    CanGoForward = edgeTab.CanGoForward,
+                    Location = new Point(x, y),
+                    MenuType = kind switch
+                    {
+                        "link" => ContextMenuType.Link,
+                        "image" => ContextMenuType.Image,
+                        "selection" => ContextMenuType.Selection,
+                        _ => ContextMenuType.Page
+                    }
+                };
+                if (args.MenuType == ContextMenuType.Link)
+                    args.LinkUrl = val;
+                else if (args.MenuType == ContextMenuType.Image)
+                    args.ImageUrl = val;
+                else if (args.MenuType == ContextMenuType.Selection)
+                {
+                    args.SelectionText = val;
+                    args.HasSelection = !string.IsNullOrEmpty(val);
+                }
+                _contextMenuManager?.ShowWebContextMenu(args);
+            }
+            catch { }
         }
 
         // ---- 网页文本标记（高亮） ----
@@ -1755,6 +1807,39 @@ namespace EdgeRebuild
                 try
                 {
                     var html = await wv2.CoreWebView2.ExecuteScriptAsync("document.documentElement.outerHTML;");
+                    html = html?.Trim('"').Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t");
+                    await new ContentDialog
+                    {
+                        Title = "页面源代码",
+                        Content = new ScrollViewer
+                        {
+                            Content = new TextBlock
+                            {
+                                Text = html,
+                                FontSize = 10,
+                                IsTextSelectionEnabled = true
+                            }
+                        },
+                        PrimaryButtonText = "关闭",
+                        XamlRoot = this.XamlRoot
+                    }.ShowAsync();
+                }
+                catch (Exception ex)
+                {
+                    await new ContentDialog
+                    {
+                        Title = "错误",
+                        Content = $"获取源代码失败：{ex.Message}",
+                        CloseButtonText = "确定",
+                        XamlRoot = this.XamlRoot
+                    }.ShowAsync();
+                }
+            }
+            else if (_tabManager.CurrentTab is EdgeHtmlTab edge)
+            {
+                try
+                {
+                    var html = await edge.ExecuteScriptAsync("document.documentElement.outerHTML;");
                     html = html?.Trim('"').Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t");
                     await new ContentDialog
                     {
