@@ -268,17 +268,78 @@
     });
   }
 
+  // ---- 大声朗读（TTS）：当前章节文本经消息通道交给原生层朗读 ----
+  document.getElementById("ttsBtn").addEventListener("click", function () {
+    var href = currentHref;
+    if (!href) return;
+    statusText.textContent = "朗读准备中…";
+    window.__ttsAcked = false;
+    var finished = false;
+    var timer = setTimeout(function () {
+      if (finished) return;
+      finished = true;
+      statusText.textContent = "朗读准备超时：无法读取本章内容";
+    }, 4000);
+    resolveChapterText(href).then(function (html) {
+      if (finished) return;
+      var tmp = document.createElement("div");
+      tmp.innerHTML = String(html || "");
+      var text = (tmp.textContent || "").replace(/\s+/g, " ").trim();
+      if (!text) {
+        finished = true;
+        clearTimeout(timer);
+        statusText.textContent = "本章无可朗读内容";
+        return;
+      }
+      finished = true;
+      clearTimeout(timer);
+      text = text.substring(0, 6000);
+      var send = window.chrome && window.chrome.webview && window.chrome.webview.postMessage;
+      if (!send) {
+        // EdgeHTML 引擎：无 postMessage，经全局 marker 由宿主轮询转发
+        try {
+          window.__edgTtsMarker = "tts:" + text;
+          statusText.textContent = "已交给朗读：本章前 6000 字";
+        } catch (e2) {
+          statusText.textContent = "朗读不可用：当前引擎不支持";
+        }
+        return;
+      }
+      window.chrome.webview.postMessage("tts:" + text);
+      statusText.textContent = "已交给朗读：本章前 6000 字";
+      setTimeout(function () {
+        if (!window.__ttsAcked) statusText.textContent = "朗读未响应：请检查系统语音设置";
+      }, 1500);
+    }, function () {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      statusText.textContent = "读取本章内容失败";
+    });
+  });
+
   // ---- 搜索 ----
+  // getText 可能同步返回字符串或返回 promise，统一转成 promise 再使用
   function resolveChapterText(href) {
+    var p = null;
     try {
       var absolute = book.resolver(href);
       if (book.archive && typeof book.archive.getText === "function") {
-        var p = book.archive.getText(absolute);
-        if (p) return p;
+        p = book.archive.getText(absolute);
       }
     } catch (e) { }
+    if (p !== null && p !== undefined) {
+      if (typeof p.then === "function") {
+        return p.then(function (v) { return String(v || ""); }, function () { return ""; });
+      }
+      return Promise.resolve(String(p || ""));
+    }
     try {
-      return book.request(href, "text");
+      var r = book.request(href, "text");
+      if (r && typeof r.then === "function") {
+        return r.then(function (v) { return String(v || ""); }, function () { return ""; });
+      }
+      return Promise.resolve(String(r || ""));
     } catch (e) {
       return Promise.resolve("");
     }

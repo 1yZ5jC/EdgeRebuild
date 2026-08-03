@@ -23,6 +23,7 @@ namespace EdgeRebuild.Core
         private string _suspendedUrl = "";
         private bool _httpsFailed = false;
         private bool _disposed = false;
+        private string _currentDocSource = null;
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
@@ -48,6 +49,8 @@ namespace EdgeRebuild.Core
         public event Action<bool> LoadingChanged;
         public event Action<PageShortcutKey> PageShortcutKeyPressed;
         public event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
+        public event Action<string> TtsTextRequested;   // 大声朗读文本回传（EPUB 章节）
+        public event Action<string> NtpSearchRequested;   // 新标签页搜索词回传
 
         // 页面内快捷键桥：焦点在网页内容内时键击被引擎吞掉、宿主收不到，
         // 注入监听脚本经 window.chrome.webview.postMessage 回传（ES5，双引擎通用）。
@@ -158,9 +161,60 @@ namespace EdgeRebuild.Core
                 PageMarkActionRequested?.Invoke(msg.Substring("edgmark:".Length));
                 return;
             }
+            if (msg.StartsWith("savepdf:", StringComparison.Ordinal))
+            {
+                _ = SaveAnnotatedPdfAsync(msg.Substring("savepdf:".Length));
+                return;
+            }
+            if (msg.StartsWith("tts:", StringComparison.Ordinal))
+            {
+                TtsTextRequested?.Invoke(msg.Substring("tts:".Length));
+                // 回写确认标记，页面据此判断朗读组件是否响应
+                try { _webView.CoreWebView2?.ExecuteScriptAsync("window.__ttsAcked = true;"); } catch { }
+                return;
+            }
+            if (msg.StartsWith("ntp:search:", StringComparison.Ordinal))
+            {
+                NtpSearchRequested?.Invoke(msg.Substring("ntp:search:".Length));
+                return;
+            }
             var key = ParsePageKey(msg);
             if (key.HasValue)
                 PageShortcutKeyPressed?.Invoke(key.Value);
+        }
+
+        /// <summary>
+        /// 查看器点"保存"后回写批注版 PDF 到 contentcache/annot_&lt;sha12(来源)&gt;.pdf，
+        /// 下次打开同一来源时直接加载批注版（批注记忆）。
+        /// </summary>
+        private async Task SaveAnnotatedPdfAsync(string base64)
+        {
+            try
+            {
+                byte[] bytes = Convert.FromBase64String(base64);
+                string src = _currentDocSource;
+                if (string.IsNullOrEmpty(src))
+                {
+                    Diagnostics.Log("[PDF] 批注回写跳过：缺少来源记录");
+                    return;
+                }
+                var dir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache");
+                Directory.CreateDirectory(dir);
+                string fileName = $"annot_{Sha12(src)}.pdf";
+                await File.WriteAllBytesAsync(Path.Combine(dir, fileName), bytes);
+                Diagnostics.Log($"[PDF] 批注已回写缓存: {fileName} ({bytes.Length} 字节)");
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[PDF] 批注回写失败: {ex.Message}");
+            }
+        }
+
+        private static string Sha12(string s)
+        {
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            byte[] hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(s));
+            return Convert.ToHexString(hash).ToLowerInvariant().Substring(0, 12);
         }
 
         public async Task SuspendAsync()
@@ -211,6 +265,10 @@ namespace EdgeRebuild.Core
                     "epubreader.local",
                     Path.Combine(basePath, "Assets", "EpubReader"),
                     CoreWebView2HostResourceAccessKind.Allow);
+                _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "ntp.local",
+                    Path.Combine(basePath, "Assets", "Ntp"),
+                    CoreWebView2HostResourceAccessKind.Allow);
                 var cacheDir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache");
                 Directory.CreateDirectory(cacheDir);
                 _webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
@@ -238,11 +296,27 @@ namespace EdgeRebuild.Core
                 response.EnsureSuccessStatusCode();
                 var buffer = await response.Content.ReadAsBufferAsync();
                 byte[] bytes = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(buffer);
-                // EPUB 用固定文件名：阅读器按文件名持久化阅读进度/书签（localStorage 键），
-                // 时间戳命名会导致每次重开文件都生成新键。
-                string fileName = kind == "pdf"
-                    ? $"doc_{DateTime.Now:yyyyMMdd_HHmmss_fff}.pdf"
-                    : "doc_reader.epub";
+                // PDF 用固定 annot_<sha12(来源)> 缓存名：批注保存时回写同名文件，
+                // 下次打开直接恢复批注；EPUB 用固定文件名（阅读器按文件名持久化进度）。
+                string fileName;
+                if (kind == "pdf")
+                {
+                    _currentDocSource = url;
+                    string sha = Sha12(url);
+                    // 批注版已存在则直接打开，不再下载源（防止覆盖已有批注）
+                    string annotPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", $"annot_{sha}.pdf");
+                    if (File.Exists(annotPath))
+                    {
+                        _webView.CoreWebView2?.Navigate(
+                            $"https://pdfviewer.local/viewer.html?file=https://contentcache.local/annot_{sha}.pdf&src={Uri.EscapeDataString(url)}");
+                        return;
+                    }
+                    fileName = $"annot_{sha}.pdf";
+                }
+                else
+                {
+                    fileName = "doc_reader.epub";
+                }
                 var filePath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", fileName);
                 await File.WriteAllBytesAsync(filePath, bytes);
                 string page = kind == "pdf" ? "viewer.html" : "reader.html";
@@ -494,6 +568,21 @@ namespace EdgeRebuild.Core
         {
             if (_disposed) return;
             if (string.IsNullOrWhiteSpace(url)) url = "about:blank";
+            // 新标签页（about:blank）→ 本地 NTP 页面（设置里可改回真空白页）
+            if (url == "about:blank")
+            {
+                bool showNtp = true;
+                try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
+                if (showNtp)
+                {
+                    // 页面经 contentcache.local（LocalFolder）托管：InstalledLocation 的
+                    // ntp.local 映射在部分环境中不生效（导航会 ERR_ACCESS_DENIED），
+                    // LocalFolder 通道经 PDF/EPUB 缓存长期验证可用。
+                    EnsureNtpLocalFile();
+                    string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
+                    url = $"https://contentcache.local/ntp/index.html?theme={theme}";
+                }
+            }
 
             try
             {
@@ -518,6 +607,31 @@ namespace EdgeRebuild.Core
                 System.Diagnostics.Debug.WriteLine($"WebView2 导航异常: {ex.Message}");
                 LoadingChanged?.Invoke(false);
                 UrlChanged?.Invoke($"error://{url}?error={Uri.EscapeDataString(ex.Message)}");
+            }
+        }
+
+        /// <summary>
+        /// 把包内 NTP 页面复制到 LocalFolder（contentcache.local 映射目录），
+        /// 确保 WebView2 可经已生效的 LocalFolder 虚拟主机通道访问。
+        /// </summary>
+        private static void EnsureNtpLocalFile()
+        {
+            try
+            {
+                var dir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", "ntp");
+                Directory.CreateDirectory(dir);
+                var dest = Path.Combine(dir, "index.html");
+                if (File.Exists(dest))
+                {
+                    var srcLen = new FileInfo(Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "Ntp", "index.html")).Length;
+                    if (new FileInfo(dest).Length == srcLen) return;
+                }
+                byte[] bytes = File.ReadAllBytes(Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "Ntp", "index.html"));
+                File.WriteAllBytes(dest, bytes);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[本地查看器] NTP 页面复制失败: {ex.Message}");
             }
         }
 

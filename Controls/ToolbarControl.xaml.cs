@@ -40,6 +40,7 @@ namespace EdgeRebuild.Controls
         private string _searchEngine = "Google";
 
         private bool _isSecure = false;
+        private bool _isLocalInterface = false;
         private string _currentHost = "";
 
         // ---- 自动补全相关字段 ----
@@ -152,17 +153,35 @@ namespace EdgeRebuild.Controls
         {
             BackBtn.IsEnabled = canGoBack;
             ForwardBtn.IsEnabled = canGoForward;
-            if (currentUrl == "about:blank")
+            if (currentUrl == "about:blank" || IsNtpUrl(currentUrl))
             {
+                // 空白页与新标签页（NTP）：隐藏地址，显示搜索占位提示
                 UrlBox.Text = "";
                 _lastInputText = "";
                 _currentAutoCompleteMatch = "";
                 _currentAutoCompleteDisplay = "";
+                UrlBox.PlaceholderText = "搜索或输入网址";
             }
             else
             {
                 UrlBox.Text = DecodeUrl(GetReaderDisplayUrl(currentUrl));
+                UrlBox.PlaceholderText = "搜索或输入网址";
             }
+        }
+
+        public static bool IsNtpUrl(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return false;
+            try
+            {
+                var u = new Uri(url);
+                if (u.Host?.EndsWith("ntp.local", StringComparison.OrdinalIgnoreCase) == true) return true;
+                if (u.Host?.EndsWith("contentcache.local", StringComparison.OrdinalIgnoreCase) == true
+                    && url.Contains("/ntp/", StringComparison.OrdinalIgnoreCase)) return true;
+                if (u.Scheme == "ms-appx-web" && url.Contains("Assets/Ntp", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }
+            return false;
         }
 
         /// <summary>
@@ -229,23 +248,36 @@ namespace EdgeRebuild.Controls
 
         public void ShowMenu(MenuFlyout menu) => menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
 
-        public void UpdateSiteInfo(bool isSecure, string host)
+        public void UpdateSiteInfo(bool isSecure, string host, bool isLocalInterface = false)
         {
             _isSecure = isSecure;
             _currentHost = host ?? "";
+            _isLocalInterface = isLocalInterface;
             if (!string.IsNullOrEmpty(GetTemporaryEngineFromInput()))
                 return;
 
-            SiteInfoText.Text = isSecure ? "🔒" : "🌐";
-            ToolTipService.SetToolTip(SiteInfoButton, isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
+            if (isLocalInterface)
+            {
+                // 本地界面（NTP 主页等）：不显示连接安全状态
+                SiteInfoText.Text = "\uE80F";   // Home
+                SiteInfoText.FontFamily = new FontFamily("Segoe MDL2 Assets");
+                ToolTipService.SetToolTip(SiteInfoButton, "本地界面");
+            }
+            else
+            {
+                SiteInfoText.Text = isSecure ? "🔒" : "🌐";
+                ToolTipService.SetToolTip(SiteInfoButton, isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
+            }
         }
 
         private void SiteInfoButton_Click(object sender, RoutedEventArgs e)
         {
             var flyout = new MenuFlyout();
-            var text = _isSecure
-                ? $"与 {_currentHost} 的连接是安全的"
-                : $"与 {_currentHost} 的连接未加密";
+            var text = _isLocalInterface
+                ? "你正在查看的是浏览器提供的本地界面"
+                : _isSecure
+                    ? $"与 {_currentHost} 的连接是安全的"
+                    : $"与 {_currentHost} 的连接未加密";
             flyout.Items.Add(new MenuFlyoutItem { Text = text, IsEnabled = false });
             flyout.ShowAt(SiteInfoButton, new Point(0, SiteInfoButton.ActualHeight));
         }
@@ -297,9 +329,19 @@ namespace EdgeRebuild.Controls
             }
             else
             {
-                SiteInfoText.Text = _isSecure ? "🔒" : "🌐";
-                SiteInfoText.FontSize = 14;
-                ToolTipService.SetToolTip(SiteInfoButton, _isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
+                if (_isLocalInterface)
+                {
+                    SiteInfoText.Text = "\uE80F";
+                    SiteInfoText.FontSize = 14;
+                    SiteInfoText.FontFamily = new FontFamily("Segoe MDL2 Assets");
+                    ToolTipService.SetToolTip(SiteInfoButton, "本地界面");
+                }
+                else
+                {
+                    SiteInfoText.Text = _isSecure ? "🔒" : "🌐";
+                    SiteInfoText.FontSize = 14;
+                    ToolTipService.SetToolTip(SiteInfoButton, _isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
+                }
             }
         }
 

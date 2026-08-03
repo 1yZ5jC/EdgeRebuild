@@ -133,6 +133,9 @@ namespace EdgeRebuild
             {
                 _tabManager.PageKeyPressed -= _shortcutPageKey;
                 _tabManager.PageMarkActionRequested -= OnPageMarkActionRequested;
+                _tabManager.TtsTextRequested -= OnTtsTextRequested;
+                _tabManager.NtpSearchRequested -= OnNtpSearchRequested;
+                ReadAloudService.StateChanged -= OnReadAloudStateChanged;
             }
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
@@ -224,7 +227,11 @@ namespace EdgeRebuild
                     () => _tabManager.TryReopenClosedTab(out _, out _, out _),
                     CopyCurrentUrl,
                     () => _tabManager.CurrentTab != null && _readerModeUrls.ContainsKey(_tabManager.CurrentTab),
-                    ToggleReaderMode
+                    ToggleReaderMode,
+                    () => ReadAloudService.IsActive
+                        ? (ReadAloudService.IsPaused ? "继续朗读" : "停止朗读")
+                        : "大声朗读",
+                    ToggleReadAloud
                 );
 
                 // ---- 为所有标签附加拖拽事件 ----
@@ -456,6 +463,12 @@ namespace EdgeRebuild
                 _tabManager.PageKeyPressed += _shortcutPageKey;
                 _tabManager.PageMarkActionRequested += OnPageMarkActionRequested;
 
+                // ---- 大声朗读（TTS）：网页正文提取 + EPUB 章节经消息通道回传 ----
+                ReadAloudService.Initialize(TtsPlayer);
+                ReadAloudService.StateChanged += OnReadAloudStateChanged;
+                _tabManager.TtsTextRequested += OnTtsTextRequested;
+                _tabManager.NtpSearchRequested += OnNtpSearchRequested;
+
                 // ---- EdgeHTML 页面内快捷键：marker 轮询（见 EdgeHtmlTab.PageKeyBridgeJs 注释）----
                 _pageKeyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
                 _pageKeyTimer.Tick += OnPageKeyTimerTick;
@@ -519,6 +532,20 @@ namespace EdgeRebuild
             _pageKeyPolling = true;
             try
             {
+                // EPUB 朗读（EdgeHTML 无 postMessage 通道，走 marker 轮询）
+                string tts = await edgeTab.PollTtsAsync();
+                if (tts.StartsWith("tts:", StringComparison.Ordinal))
+                {
+                    OnTtsTextRequested(tts.Substring("tts:".Length));
+                    return;
+                }
+                // NTP 搜索词（EdgeHTML 无 postMessage 通道，走 marker 轮询，与 WebView2 统一）
+                string ntp = await edgeTab.PollNtpSearchAsync();
+                if (!string.IsNullOrEmpty(ntp))
+                {
+                    OnNtpSearchRequested(ntp);
+                    return;
+                }
                 string key = await edgeTab.PollPageKeyAsync();
                 if (string.IsNullOrEmpty(key)) return;
                 switch (key)
@@ -573,6 +600,111 @@ namespace EdgeRebuild
             NotificationService.ShowToast("已移除标记", "");
         }
 
+        // ---- 大声朗读 ----
+        private void OnTtsTextRequested(string text)
+        {
+            if (!IsFocusedWindow()) return;
+            var tab = _tabManager?.CurrentTab;
+            if (string.IsNullOrWhiteSpace(text)) return;
+            ReadAloudService.Start(text, tab?.Title ?? "电子书");
+        }
+
+        // ---- 朗读控制浮层 ----
+        private void OnReadAloudStateChanged()
+        {
+            if (ReadAloudBar == null) return;
+            if (ReadAloudService.IsActive)
+            {
+                ReadAloudBar.Visibility = Visibility.Visible;
+                ReadAloudLabel.Text = "朗读：" + (ReadAloudService.CurrentLabel ?? "网页");
+                ReadAloudPauseBtn.Content = ReadAloudService.IsPaused ? "\uE768" : "\uE769";
+                ToolTipService.SetToolTip(ReadAloudPauseBtn,
+                    ReadAloudService.IsPaused ? "继续" : "暂停");
+            }
+            else
+            {
+                ReadAloudBar.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private void ReadAloudPauseBtn_Click(object sender, RoutedEventArgs e)
+            => ReadAloudService.TogglePause();
+
+        private void ReadAloudStopBtn_Click(object sender, RoutedEventArgs e)
+            => ReadAloudService.Stop();
+
+        private void ReadAloudCloseBtn_Click(object sender, RoutedEventArgs e)
+        {
+            // 仅隐藏控制面板，朗读继续
+            ReadAloudBar.Visibility = Visibility.Collapsed;
+        }
+
+        // ---- 新标签页搜索（NTP 页面提交搜索词，走当前默认引擎） ----
+        private async void OnNtpSearchRequested(string query)
+        {
+            if (!IsFocusedWindow()) return;
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null || string.IsNullOrWhiteSpace(query)) return;
+            string engine = "Google";
+            try { engine = await SettingsManager.GetAsync("SearchEngine") ?? "Google"; } catch { }
+            string url = engine switch
+            {
+                "Bing" => $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}",
+                "DuckDuckGo" => $"https://duckduckgo.com/?q={Uri.EscapeDataString(query)}",
+                _ => $"https://www.google.com/search?q={Uri.EscapeDataString(query)}"
+            };
+            await tab.NavigateAsync(url);
+        }
+
+        /// <summary>
+        /// 朗读开关：未朗读时提取正文开始朗读；朗读中再点→停止；暂停中点→继续。
+        /// </summary>
+        private async void ToggleReadAloud()
+        {
+            if (!IsFocusedWindow()) return;
+            var tab = _tabManager.CurrentTab;
+            if (tab == null) return;
+
+            if (ReadAloudService.IsActive)
+            {
+                if (ReadAloudService.IsPaused) ReadAloudService.TogglePause();
+                else ReadAloudService.Stop();
+                return;
+            }
+
+            string title = tab.Title ?? "网页";
+            string text = null;
+            try
+            {
+                if (_readerModeUrls.ContainsKey(tab))
+                {
+                    // 阅读模式中：直接读阅读视图正文
+                    text = await tab.ExecuteScriptAsync(
+                        "(function(){var c=document.querySelector('.reader-content');return c?c.innerText:'';})()");
+                }
+                else
+                {
+                    var article = await ReaderService.ExtractTextForTtsAsync(tab);
+                    if (article != null)
+                    {
+                        text = article.Text;
+                        if (!string.IsNullOrWhiteSpace(article.Title)) title = article.Title;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[朗读] 提取异常: {ex}");
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                NotificationService.ShowToast("无法朗读", "未提取到可朗读的正文内容");
+                return;
+            }
+            ReadAloudService.Start(text, title);
+        }
+
         // ---- 网页捕获（截图 + 画笔批注） ----
         private async Task WebCaptureCurrentAsync()
         {
@@ -597,6 +729,10 @@ namespace EdgeRebuild
             CaptureInkToolbar.TargetInkCanvas = CaptureInk;
             CaptureBorder.Background = ThemeManager.GetToolbarBackground();
             CaptureTitle.Foreground = ThemeManager.GetForegroundBrush();
+            _cropMode = false;
+            ClearCrop();
+            CaptureCropBtn.Content = "裁剪";
+            CaptureInk.InkPresenter.IsInputEnabled = true;
             double dispW = 900, dispH = 560;
             if (bmp.PixelWidth > 0 && bmp.PixelHeight > 0)
             {
@@ -621,6 +757,95 @@ namespace EdgeRebuild
             if (e.OriginalSource == CaptureOverlay) CloseCapture();
         }
 
+        // ---- 区域裁剪：裁剪模式下拖动框选，保存/复制仅输出框内合成图 ----
+        private bool _cropMode = false;
+        private bool _hasCrop = false;
+        private Windows.Foundation.Point _cropStart;
+        private Windows.Foundation.Rect _cropRect;
+
+        private void CaptureCropBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_cropMode) return;
+            // 进入裁剪模式（有旧框先清除重画）
+            _cropMode = true;
+            ClearCrop();
+            CaptureInk.InkPresenter.IsInputEnabled = false;
+            CaptureCropBtn.Content = "裁剪中…";
+            CaptureTitle.Text = "拖动框选要保留的区域，松开鼠标即确认";
+        }
+
+        private void ClearCrop()
+        {
+            _hasCrop = false;
+            CaptureCropRect.Visibility = Visibility.Collapsed;
+            CaptureCropSize.Visibility = Visibility.Collapsed;
+        }
+
+        private void CaptureImageGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_cropMode) return;
+            _cropStart = e.GetCurrentPoint(CaptureImageGrid).Position;
+            _hasCrop = false;
+            CaptureCropRect.Visibility = Visibility.Visible;
+            CaptureCropSize.Visibility = Visibility.Visible;
+            CaptureCropRect.Width = 0;
+            CaptureCropRect.Height = 0;
+            Canvas.SetLeft(CaptureCropRect, _cropStart.X);
+            Canvas.SetTop(CaptureCropRect, _cropStart.Y);
+            Canvas.SetLeft(CaptureCropSize, _cropStart.X + 4);
+            Canvas.SetTop(CaptureCropSize, _cropStart.Y + 4);
+            CaptureImageGrid.CapturePointer(e.Pointer);
+        }
+
+        private void CaptureImageGrid_PointerMoved(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_cropMode || CaptureCropRect.Visibility != Visibility.Visible) return;
+            var pos = e.GetCurrentPoint(CaptureImageGrid).Position;
+            double x = Math.Min(_cropStart.X, pos.X);
+            double y = Math.Min(_cropStart.Y, pos.Y);
+            double w = Math.Abs(pos.X - _cropStart.X);
+            double h = Math.Abs(pos.Y - _cropStart.Y);
+            Canvas.SetLeft(CaptureCropRect, x);
+            Canvas.SetTop(CaptureCropRect, y);
+            CaptureCropRect.Width = w;
+            CaptureCropRect.Height = h;
+            Canvas.SetLeft(CaptureCropSize, x + 4);
+            Canvas.SetTop(CaptureCropSize, y + 4);
+            CaptureCropSize.Text = Math.Round(w) + "×" + Math.Round(h);
+        }
+
+        private void CaptureImageGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_cropMode || CaptureCropRect.Visibility != Visibility.Visible) return;
+            var pos = e.GetCurrentPoint(CaptureImageGrid).Position;
+            double x = Math.Min(_cropStart.X, pos.X);
+            double y = Math.Min(_cropStart.Y, pos.Y);
+            double w = Math.Abs(pos.X - _cropStart.X);
+            double h = Math.Abs(pos.Y - _cropStart.Y);
+            CaptureImageGrid.ReleasePointerCapture(e.Pointer);
+            if (w <= 8 || h <= 8)
+            {
+                ClearCrop();
+                ExitCropMode(false);
+                return;
+            }
+            // 松开鼠标即确认选区
+            _cropRect = new Windows.Foundation.Rect(x, y, w, h);
+            _hasCrop = true;
+            ExitCropMode(true);
+        }
+
+        private void ExitCropMode(bool hasCrop)
+        {
+            _cropMode = false;
+            CaptureInk.InkPresenter.IsInputEnabled = true;
+            CaptureCropBtn.Content = hasCrop ? "重新裁剪" : "裁剪";
+            CaptureTitle.Text = hasCrop
+                ? "已框选区域（" + Math.Round(_cropRect.Width) + "×" + Math.Round(_cropRect.Height)
+                    + "），保存/复制将输出所选区域"
+                : "网页捕获 - 在图上批注，然后保存或复制";
+        }
+
         private async Task<byte[]> RenderCaptureCompositeAsync()
         {
             var rtb = new RenderTargetBitmap();
@@ -636,9 +861,43 @@ namespace EdgeRebuild
                 96, 96,
                 pixels.ToArray());
             await encoder.FlushAsync();
-            using var ms = new MemoryStream();
-            await ras.AsStreamForRead().CopyToAsync(ms);
-            return ms.ToArray();
+
+            if (!_hasCrop || CaptureImageGrid.ActualWidth <= 0 || CaptureImageGrid.ActualHeight <= 0)
+            {
+                using (var full = new MemoryStream())
+                {
+                    await ras.AsStreamForRead().CopyToAsync(full);
+                    return full.ToArray();
+                }
+            }
+
+            // 裁剪：显示坐标 → 渲染像素
+            double kx = rtb.PixelWidth / CaptureImageGrid.ActualWidth;
+            double ky = rtb.PixelHeight / CaptureImageGrid.ActualHeight;
+            uint cropX = (uint)Math.Max(0, _cropRect.X * kx);
+            uint cropY = (uint)Math.Max(0, _cropRect.Y * ky);
+            uint cropW = (uint)Math.Max(1, Math.Min(rtb.PixelWidth - cropX, _cropRect.Width * kx));
+            uint cropH = (uint)Math.Max(1, Math.Min(rtb.PixelHeight - cropY, _cropRect.Height * ky));
+            var decoder = await BitmapDecoder.CreateAsync(ras);
+            var transform = new BitmapTransform
+            {
+                Bounds = new BitmapBounds { X = cropX, Y = cropY, Width = cropW, Height = cropH }
+            };
+            var cropped = await decoder.GetSoftwareBitmapAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Straight,
+                transform,
+                ExifOrientationMode.IgnoreExifOrientation,
+                ColorManagementMode.DoNotColorManage);
+            var outRas = new InMemoryRandomAccessStream();
+            var enc2 = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, outRas);
+            enc2.SetSoftwareBitmap(cropped);
+            await enc2.FlushAsync();
+            using (var ms = new MemoryStream())
+            {
+                await outRas.AsStreamForRead().CopyToAsync(ms);
+                return ms.ToArray();
+            }
         }
 
         private async void CaptureSaveBtn_Click(object sender, RoutedEventArgs e)
@@ -649,7 +908,7 @@ namespace EdgeRebuild
                 var picker = new FileSavePicker
                 {
                     SuggestedStartLocation = PickerLocationId.Downloads,
-                    SuggestedFileName = $"网页捕获 {DateTime.Now:yyyyMMdd-HHmmss}"
+                    SuggestedFileName = $"网页捕获{(_hasCrop ? "-裁剪" : "")} {DateTime.Now:yyyyMMdd-HHmmss}"
                 };
                 picker.FileTypeChoices.Add("PNG 图片", new List<string> { ".png" });
                 var file = await picker.PickSaveFileAsync();
@@ -710,7 +969,7 @@ namespace EdgeRebuild
 
             bool isSecure = tab.CurrentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
             string host = GetHostName(GetSiteUrl(tab.CurrentUrl));
-            toolbarControl.UpdateSiteInfo(isSecure, host);
+            toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(tab.CurrentUrl));
 
             if (_appWindow != null)
             {
@@ -749,7 +1008,7 @@ namespace EdgeRebuild
                 // 阅读器场景下站点信息显示来源网站（src 参数），非阅读器场景用当前地址
                 bool isSecure = url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
                 string host = GetHostName(GetSiteUrl(url));
-                toolbarControl.UpdateSiteInfo(isSecure, host);
+                toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(url));
             }
         }
 
@@ -1060,6 +1319,15 @@ namespace EdgeRebuild
             FindNextBtn.Foreground = colors.ForegroundBrush;
             FindCloseBtn.Foreground = colors.ForegroundBrush;
 
+            // 朗读控制浮层：亚克力背景 + 主题配色（与工具栏一致）
+            ReadAloudBar.Background = colors.ToolbarBackground;
+            ReadAloudBar.BorderBrush = colors.MutedForegroundBrush;
+            ReadAloudIcon.Foreground = colors.MutedForegroundBrush;
+            ReadAloudLabel.Foreground = colors.ForegroundBrush;
+            ReadAloudPauseBtn.Foreground = colors.ForegroundBrush;
+            ReadAloudStopBtn.Foreground = colors.ForegroundBrush;
+            ReadAloudCloseBtn.Foreground = colors.ForegroundBrush;
+
             _tabManager?.UpdateTheme(colors);
 
             ThemeManager.UpdateTitleBarColors();
@@ -1133,6 +1401,11 @@ namespace EdgeRebuild
                 if (viewItem == null) return;
 
                 string currentUrl = _tabManager.CurrentTab.CurrentUrl;
+
+                // 新标签页地址是引擎特有的（EdgeHTML 用 ms-appx-web，WebView2 用
+                // contentcache.local）：切换引擎时重置为 about:blank，由新引擎加载自己的主页
+                if (ToolbarControl.IsNtpUrl(currentUrl))
+                    currentUrl = "about:blank";
 
                 _isEngineSwitching = true;
 

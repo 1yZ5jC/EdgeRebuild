@@ -40,6 +40,8 @@ namespace EdgeRebuild.Core
         public event Action TabOrderChanged;
         public event Action<PageShortcutKey> PageKeyPressed;
         public event Action<string> PageMarkActionRequested;
+        public event Action<string> TtsTextRequested;
+        public event Action<string> NtpSearchRequested;
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         public IBrowserTab CurrentTab => _currentTab;
@@ -289,6 +291,10 @@ namespace EdgeRebuild.Core
             tab.PageShortcutKeyPressed += (key) => PageKeyPressed?.Invoke(key);
 
             tab.PageMarkActionRequested += (payload) => PageMarkActionRequested?.Invoke(payload);
+
+            tab.TtsTextRequested += (text) => TtsTextRequested?.Invoke(text);
+
+            tab.NtpSearchRequested += (query) => NtpSearchRequested?.Invoke(query);
 
             tab.ContextMenuRequested += (args) => ContextMenuRequested?.Invoke(args);
 

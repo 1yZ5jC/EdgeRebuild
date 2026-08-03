@@ -55,6 +55,12 @@ namespace EdgeRebuild.Core
             Favorites.Remove(item);
         }
 
+        public async Task RenameAsync(FavoriteItem item, string newTitle)
+        {
+            item.Title = newTitle;
+            await Services.DatabaseService.Database.UpdateAsync(item);
+        }
+
         public static async Task ExportToHtmlAsync(StorageFile file)
         {
             var sb = new StringBuilder();

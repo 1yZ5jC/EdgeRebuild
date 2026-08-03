@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新标签页</title>
+<style>
+  /* Fluent Design 1（Win10）风格：渐变背景 + 毛玻璃感搜索框 + 悬浮卡片磁贴 */
+  :root {
+    --bg1: #f7f9fc; --bg2: #eef2f8; --bg3: #e6ecf6;
+    --card: rgba(255, 255, 255, 0.92); --card-solid: #ffffff;
+    --text: #1a1a1a; --sub: #6b6b6b;
+    --accent: #0067c0; --accent2: #0078d7;
+    --hover: rgba(0, 0, 0, 0.04);
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
+    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.10), 0 16px 40px rgba(0, 0, 0, 0.12);
+    --focus-ring: rgba(0, 120, 215, 0.35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg1: #242733; --bg2: #1e2129; --bg3: #191c23;
+      --card: rgba(43, 46, 56, 0.92); --card-solid: #2b2e38;
+      --text: #e8e8e8; --sub: #9a9a9a;
+      --accent: #4cc2ff; --accent2: #4cc2ff;
+      --hover: rgba(255, 255, 255, 0.06);
+      --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+      --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.55);
+      --focus-ring: rgba(76, 194, 255, 0.4);
+    }
+  }
+  html.dark {
+    --bg1: #242733; --bg2: #1e2129; --bg3: #191c23;
+    --card: rgba(43, 46, 56, 0.92); --card-solid: #2b2e38;
+    --text: #e8e8e8; --sub: #9a9a9a;
+    --accent: #4cc2ff; --accent2: #4cc2ff;
+    --hover: rgba(255, 255, 255, 0.06);
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.55);
+    --focus-ring: rgba(76, 194, 255, 0.4);
+  }
+  html.light {
+    --bg1: #f7f9fc; --bg2: #eef2f8; --bg3: #e6ecf6;
+    --card: rgba(255, 255, 255, 0.92); --card-solid: #ffffff;
+    --text: #1a1a1a; --sub: #6b6b6b;
+    --accent: #0067c0; --accent2: #0078d7;
+    --hover: rgba(0, 0, 0, 0.04);
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
+    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.10), 0 16px 40px rgba(0, 0, 0, 0.12);
+    --focus-ring: rgba(0, 120, 215, 0.35);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    background: linear-gradient(165deg, var(--bg1) 0%, var(--bg2) 45%, var(--bg3) 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100%;
+  }
+  .logo {
+    font-size: 40px; font-weight: 200; letter-spacing: 1px; margin-bottom: 34px;
+    user-select: none; display: flex; align-items: center;
+    animation: fadeUp .45s ease both;
+  }
+  .logo b { font-weight: 600; color: var(--accent2); }
+  .logo .globe { font-size: 34px; margin-right: 10px; }
+
+  #searchBox {
+    width: 620px; width: min(620px, 88vw); display: flex; align-items: center;
+    background: var(--card); border-radius: 26px; box-shadow: var(--shadow);
+    padding: 6px 8px 6px 22px;
+    transition: box-shadow .2s ease;
+    animation: fadeUp .45s ease .06s both;
+  }
+  #searchBox:focus-within {
+    box-shadow: 0 0 0 2px var(--focus-ring), var(--shadow-hover);
+  }
+  #searchBox input {
+    flex: 1; border: none; outline: none; background: transparent; color: var(--text);
+    font-size: 16px; padding: 10px 14px 10px 0; min-width: 0;
+  }
+  #searchBox button {
+    border: none; background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; border-radius: 19px; padding: 0 24px; height: 38px;
+    font-size: 14px; cursor: pointer; flex-shrink: 0;
+    box-shadow: 0 2px 8px var(--focus-ring);
+    transition: filter .15s ease;
+  }
+  #searchBox button:hover { filter: brightness(1.08); }
+
+  #grid {
+    margin-top: 48px; display: grid; grid-template-columns: repeat(4, 104px); grid-gap: 18px;
+    animation: fadeUp .45s ease .12s both;
+  }
+  .tile {
+    text-align: center; cursor: pointer; border-radius: 12px; padding: 18px 6px 12px;
+    text-decoration: none; color: var(--text); position: relative; display: block;
+    background: var(--card); box-shadow: var(--shadow);
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+  }
+  .tile:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-hover);
+    background: var(--card-solid);
+  }
+  .tile .fav {
+    width: 52px; height: 52px; border-radius: 16px; background: var(--card-solid);
+    box-shadow: inset 0 0 0 1px var(--hover);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;
+    font-size: 20px; color: var(--accent2); overflow: hidden; font-weight: 600;
+  }
+  .tile .fav img { width: 100%; height: 100%; object-fit: cover; }
+  .tile .name {
+    font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tile .del {
+    position: absolute; top: 6px; right: 10px; display: none; color: var(--sub);
+    font-size: 14px; line-height: 1; z-index: 2; background: var(--card-solid);
+    border-radius: 50%; width: 18px; height: 18px; text-align: center;
+  }
+  .tile:hover .del { display: block; }
+  .tile.add {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 1px dashed var(--sub); background: transparent; box-shadow: none;
+  }
+  .tile.add:hover { background: var(--hover); transform: none; box-shadow: none; }
+  .tile.add .plus {
+    width: 52px; height: 52px; border-radius: 50%; background: var(--card-solid);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;
+    font-size: 26px; color: var(--sub); box-shadow: var(--shadow);
+  }
+
+  #addForm {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: none;
+    align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.25); z-index: 10;
+  }
+  #addForm .box {
+    background: var(--card-solid); border-radius: 12px; box-shadow: var(--shadow-hover);
+    padding: 20px; width: 380px; width: min(380px, 90vw); display: flex; flex-direction: column;
+  }
+  #addForm input {
+    border: 1px solid var(--hover); border-radius: 8px; padding: 9px 12px;
+    background: var(--bg2); color: var(--text); font-size: 14px; outline: none;
+    margin-bottom: 10px;
+  }
+  #addForm .row { display: flex; justify-content: flex-end; }
+  #addForm .row .ok { margin-left: 8px; }
+  #addForm button {
+    border: none; border-radius: 8px; padding: 8px 18px; font-size: 13px; cursor: pointer;
+  }
+  #addForm .ok { background: var(--accent2); color: #fff; }
+  #addForm .cancel { background: var(--hover); color: var(--text); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="logo"><span class="globe">&#x1F310;</span> Edge <b>Rebuild</b></div>
+
+  <div id="searchBox">
+    <input id="q" placeholder="搜索网页或输入网址" autofocus spellcheck="false">
+    <button id="go">搜索</button>
+  </div>
+
+  <div id="grid"></div>
+
+  <div id="addForm">
+    <div class="box">
+      <input id="addUrl" placeholder="网址（如 https://example.com）" spellcheck="false">
+      <input id="addName" placeholder="名称（留空自动取域名）" spellcheck="false">
+      <div class="row">
+        <button class="cancel" id="addCancel">取消</button>
+        <button class="ok" id="addOk">添加</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+  // 主题：宿主经查询参数显式传入（EdgeHTML 无 prefers-color-scheme），
+  // 无参数时回退媒体查询
+  try {
+    var theme = new URLSearchParams(location.search).get("theme");
+    if (theme === "dark") document.documentElement.classList.add("dark");
+    else if (theme === "light") document.documentElement.classList.add("light");
+  } catch (e) { }
+  var TILE_KEY = "ntp_tiles_v1";
+  var DEFAULT_TILES = [
+    { name: "GitHub", url: "https://github.com" },
+    { name: "YouTube", url: "https://www.youtube.com" },
+    { name: "Bing", url: "https://www.bing.com" },
+    { name: "百度", url: "https://www.baidu.com" }
+  ];
+
+  function loadTiles() {
+    try {
+      var raw = localStorage.getItem(TILE_KEY);
+      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
+    } catch (e) { }
+    return DEFAULT_TILES.slice();
+  }
+
+  function saveTiles(tiles) {
+    try { localStorage.setItem(TILE_KEY, JSON.stringify(tiles)); } catch (e) { }
+  }
+
+  function hostOf(url) {
+    try { return new URL(url).hostname; } catch (e) { return url; }
+  }
+
+  function renderGrid() {
+    var grid = document.getElementById("grid");
+    grid.innerHTML = "";
+    var tiles = loadTiles();
+    tiles.forEach(function (t, i) {
+      var a = document.createElement("a");
+      a.className = "tile";
+      a.href = t.url;
+      var icon = document.createElement("span");
+      icon.className = "fav";
+      var img = document.createElement("img");
+      img.src = "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(hostOf(t.url)) + "&sz=48";
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.referrerPolicy = "no-referrer";
+      img.onerror = function () { icon.textContent = (t.name || "?").charAt(0).toUpperCase(); };
+      icon.appendChild(img);
+      var name = document.createElement("span");
+      name.className = "name";
+      name.textContent = t.name || hostOf(t.url);
+      name.title = t.url;
+      var del = document.createElement("span");
+      del.className = "del";
+      del.textContent = "\u00D7";
+      del.addEventListener("click", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        tiles.splice(i, 1);
+        saveTiles(tiles);
+        renderGrid();
+      });
+      a.appendChild(del);
+      a.appendChild(icon);
+      a.appendChild(name);
+      grid.appendChild(a);
+    });
+
+    var addTile = document.createElement("div");
+    addTile.className = "tile add";
+    var plus = document.createElement("span");
+    plus.className = "plus";
+    plus.textContent = "+";
+    var addName = document.createElement("span");
+    addName.className = "name";
+    addName.textContent = "添加";
+    addTile.appendChild(plus);
+    addTile.appendChild(addName);
+    addTile.addEventListener("click", function () {
+      document.getElementById("addUrl").value = "";
+      document.getElementById("addName").value = "";
+      document.getElementById("addForm").style.display = "flex";
+      document.getElementById("addUrl").focus();
+    });
+    grid.appendChild(addTile);
+  }
+
+  function submitSearch() {
+    var q = document.getElementById("q").value.trim();
+    if (!q) return;
+    if (/^(https?:\/\/|about:|edge:|ms-appx)/i.test(q)) { location.href = q; return; }
+    if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+      window.chrome.webview.postMessage("ntp:search:" + q);
+    } else {
+      // EdgeHTML 无 postMessage：写 marker 由宿主轮询转发（与 WebView2 同走设置里的搜索引擎）
+      window.__edgNtpSearch = q;
+      setTimeout(function () {
+        if (window.__edgNtpSearch === q) location.href = "https://www.bing.com/search?q=" + encodeURIComponent(q);
+      }, 3000);
+    }
+  }
+
+  document.getElementById("go").addEventListener("click", submitSearch);
+  document.getElementById("q").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") submitSearch();
+  });
+
+  document.getElementById("addOk").addEventListener("click", function () {
+    var url = document.getElementById("addUrl").value.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+    var name = document.getElementById("addName").value.trim() || hostOf(url);
+    var tiles = loadTiles();
+    if (!tiles.some(function (t) { return t.url === url; })) {
+      tiles.push({ name: name, url: url });
+      saveTiles(tiles);
+    }
+    document.getElementById("addForm").style.display = "none";
+    renderGrid();
+  });
+  document.getElementById("addCancel").addEventListener("click", function () {
+    document.getElementById("addForm").style.display = "none";
+  });
+  document.getElementById("addForm").addEventListener("click", function (e) {
+    if (e.target === this) this.style.display = "none";
+  });
+
+  renderGrid();
+  var q = document.getElementById("q");
+  if (document.hasFocus()) q.focus();
+})();
+</script>
+</body>
+</html>

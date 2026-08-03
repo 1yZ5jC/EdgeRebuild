@@ -13,7 +13,7 @@ namespace EdgeRebuild.Controls
         public event EventHandler CloseRequested;
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle;
+        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _ntpToggle;
         private TextBox _homePageBox;
         private ComboBox _searchEngineCombo;
         private TextBlock _downloadPathBlock;
@@ -50,6 +50,9 @@ namespace EdgeRebuild.Controls
 
             _restoreToggle = new ToggleSwitch { Header = "启动时恢复上次会话", Margin = new Thickness(0, 0, 0, 8) };
             generalPanel.Children.Add(_restoreToggle);
+
+            _ntpToggle = new ToggleSwitch { Header = "新标签页显示主页（关闭则使用空白页）", Margin = new Thickness(0, 0, 0, 8) };
+            generalPanel.Children.Add(_ntpToggle);
 
             generalPanel.Children.Add(new TextBlock { Text = "搜索引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _searchEngineCombo = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
@@ -190,6 +193,9 @@ namespace EdgeRebuild.Controls
                 string restoreSession = await SettingsManager.GetAsync("RestoreSession") ?? "True";
                 _restoreToggle.IsOn = (restoreSession == "True" || restoreSession == "true");
 
+                string ntp = await SettingsManager.GetAsync("NewTabShowNtp") ?? "True";
+                _ntpToggle.IsOn = (ntp == "True" || ntp == "true");
+
                 string searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
                 _searchEngineCombo.SelectedIndex = searchEngine switch { "Bing" => 1, "DuckDuckGo" => 2, _ => 0 };
 
@@ -218,6 +224,7 @@ namespace EdgeRebuild.Controls
                 _doNotTrackToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("DoNotTrack", _doNotTrackToggle.IsOn.ToString());
                 _homePageBox.TextChanged += async (s, e) => await SettingsManager.SetAsync("HomePage", _homePageBox.Text);
                 _restoreToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("RestoreSession", _restoreToggle.IsOn.ToString());
+                _ntpToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("NewTabShowNtp", _ntpToggle.IsOn.ToString());
                 _searchEngineCombo.SelectionChanged += async (s, e) =>
                 {
                     string engineName = _searchEngineCombo.SelectedItem?.ToString() ?? "Google";

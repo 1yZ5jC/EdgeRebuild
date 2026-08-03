@@ -114,6 +114,26 @@ if (pdfjsViewer === "timeout") {
     return;
   }
 
+  // ---- 阅读位置与画笔设置记忆（按来源 URL 关联，与批注缓存回写配套） ----
+  var posSrcUrl = null;
+  try { posSrcUrl = new URLSearchParams(location.search).get("src") || fileParam; } catch (e) { posSrcUrl = fileParam; }
+  var posKey = "pdf_pos_" + posSrcUrl;
+  var posSaveTimer = null;
+  function persistPos() {
+    if (posSaveTimer) clearTimeout(posSaveTimer);
+    posSaveTimer = setTimeout(function () {
+      try {
+        localStorage.setItem(posKey, JSON.stringify({
+          page: pdfViewer ? pdfViewer.currentPageNumber : null,
+          scale: pdfViewer ? pdfViewer.currentScale : null,
+          color: currentInkColor || null,
+          thickness: currentInkThickness || null,
+          updated: Date.now()
+        }));
+      } catch (e) { }
+    }, 800);
+  }
+
   var container = document.getElementById("mainContainer");
   var viewerEl = document.getElementById("pdfViewer");
   var pageNumInput = document.getElementById("pageNum");
@@ -165,18 +185,36 @@ if (pdfjsViewer === "timeout") {
   // ---- 事件 ----
   eventBus.on("pagesinit", function () {
     dbg("pagesinit: 页面结构就绪");
-    pdfViewer.currentScale = 1;
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(posKey) || "null"); } catch (e) { }
+    if (saved && saved.page && saved.page >= 1 && pdfDocument && saved.page <= pdfDocument.numPages) {
+      if (saved.scale) pdfViewer.currentScale = saved.scale;
+      pdfViewer.currentPageNumber = saved.page;
+      if (saved.color) selectInkColor(saved.color);
+      if (saved.thickness) selectInkThickness(saved.thickness);
+      statusText.textContent = "已恢复上次位置：第 " + saved.page + " 页";
+      dbg("恢复位置: page=" + saved.page + " scale=" + (saved.scale || 1));
+    } else {
+      pdfViewer.currentScale = 1;
+    }
     updateZoomLabel();
     if (pdfDocument) {
       loadOutline();
       loadThumbnails();
-      statusText.textContent = pdfDocument.numPages + " 页";
+      if (!(saved && saved.page)) statusText.textContent = pdfDocument.numPages + " 页";
     }
   });
 
   eventBus.on("pagechanging", function (evt) {
     currentPage = evt.pageNumber;
     pageNumInput.value = currentPage;
+    persistPos();
+  });
+
+  eventBus.on("scalechanging", function (evt) {
+    currentScale = evt.scale;
+    updateZoomLabel();
+    persistPos();
   });
 
   eventBus.on("updatefindmatchescount", function (evt) {
@@ -282,7 +320,17 @@ if (pdfjsViewer === "timeout") {
       a.href = URL.createObjectURL(blob);
       a.download = "annotated.pdf";
       a.click();
-      statusText.textContent = "已保存（含批注）";
+      // 回写缓存：批注版替换缓存文件，下次打开直接恢复批注
+      var fr = new FileReader();
+      fr.onload = function () {
+        var b64 = String(fr.result).split(",")[1];
+        if (b64 && window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+          window.chrome.webview.postMessage("savepdf:" + b64);
+        }
+      };
+      fr.readAsDataURL(blob);
+      statusText.textContent = "已保存（含批注，已回写缓存）";
+      persistPos();
     }).catch(function (err) {
       statusText.textContent = "保存失败：" + (err && err.message ? err.message : err);
     });

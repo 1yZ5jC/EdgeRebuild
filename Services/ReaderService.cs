@@ -11,6 +11,7 @@ namespace EdgeRebuild.Services
         public string Title { get; set; }
         public string Byline { get; set; }
         public string Content { get; set; }
+        public string Text { get; set; }
     }
 
     /// <summary>
@@ -98,6 +99,47 @@ namespace EdgeRebuild.Services
                 Diagnostics.Log($"[阅读模式] 脚本原始返回（截断200字符）: {result.Substring(0, Math.Min(200, result.Length))}");
             return ParseResult(result);
         }
+
+        /// <summary>
+        /// 大声朗读用：提取文章纯文本（不切换页面，原页面保持不动）。
+        /// </summary>
+        public static async Task<ArticleResult> ExtractTextForTtsAsync(IBrowserTab tab)
+        {
+            try
+            {
+                string js = await LoadReadabilityJsAsync();
+                string result = await tab.ExecuteScriptAsync(js + "\n" + TtsExtractScript);
+                if (string.IsNullOrEmpty(result))
+                {
+                    Diagnostics.Log("[朗读] ExecuteScriptAsync 返回空");
+                    return null;
+                }
+                return ParseResult(result);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[朗读] 提取异常: {ex}");
+                return null;
+            }
+        }
+
+        private const string TtsExtractScript = @"
+;(function(){
+    if (typeof Readability === 'undefined') return 'null';
+    try {
+        var article = new Readability(document.cloneNode(true)).parse();
+        if (!article) return 'null';
+        var doc = new DOMParser().parseFromString(article.content, 'text/html');
+        return JSON.stringify({
+            title: article.title || document.title || '',
+            byline: article.byline || '',
+            content: doc.body.innerHTML,
+            text: (doc.body.textContent || '').replace(/\s+/g, ' ').trim()
+        });
+    } catch (e) {
+        return 'null';
+    }
+})()";
 
         private static ArticleResult ParseResult(string raw)
         {

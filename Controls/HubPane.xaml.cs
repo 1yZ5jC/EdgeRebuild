@@ -185,6 +185,27 @@ namespace EdgeRebuild.Controls
             if (fav == null) return;
 
             var menu = new MenuFlyout();
+            var renameItem = new MenuFlyoutItem { Text = "重命名" };
+            renameItem.Click += async (s, args) =>
+            {
+                var box = new TextBox { Text = fav.Title ?? "" };
+                var dialog = new ContentDialog
+                {
+                    Title = "重命名书签",
+                    Content = box,
+                    PrimaryButtonText = "确定",
+                    CloseButtonText = "取消",
+                    XamlRoot = this.XamlRoot
+                };
+                var result = await dialog.ShowAsync();
+                if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(box.Text))
+                {
+                    await FavoritesManager.Instance.RenameAsync(fav, box.Text.Trim());
+                    RefreshFavorites();
+                }
+            };
+            menu.Items.Add(renameItem);
+
             var deleteItem = new MenuFlyoutItem { Text = "删除" };
             deleteItem.Click += (s, args) =>
             {
@@ -203,6 +224,40 @@ namespace EdgeRebuild.Controls
             menu.Items.Add(copyLinkItem);
 
             menu.ShowAt(grid, e.GetPosition(grid));
+        }
+
+        // ---- 多选管理模式 ----
+        private void ToggleManageBtn_Click(object sender, RoutedEventArgs e)
+        {
+            bool managing = FavListView.SelectionMode == ListViewSelectionMode.None;
+            FavListView.SelectionMode = managing ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
+            FavListView.IsItemClickEnabled = !managing;
+            ManageBar.Visibility = managing ? Visibility.Visible : Visibility.Collapsed;
+            FavListView.SelectedItems.Clear();
+            UpdateManageCount();
+        }
+
+        private void ManageCancelBtn_Click(object sender, RoutedEventArgs e)
+            => ToggleManageBtn_Click(null, null);
+
+        private void FavListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+            => UpdateManageCount();
+
+        private void UpdateManageCount()
+        {
+            if (ManageCountText == null || ManageDeleteBtn == null) return;
+            int count = FavListView.SelectedItems.Count;
+            ManageCountText.Text = count + " 项已选择";
+            ManageDeleteBtn.IsEnabled = count > 0;
+        }
+
+        private async void ManageDeleteBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var selected = FavListView.SelectedItems.Cast<FavoriteItem>().ToList();
+            foreach (var fav in selected)
+                await FavoritesManager.Instance.RemoveAsync(fav);
+            ToggleManageBtn_Click(null, null);
+            RefreshFavorites();
         }
 
         private void HistoryItem_RightTapped(object sender, RightTappedRoutedEventArgs e)

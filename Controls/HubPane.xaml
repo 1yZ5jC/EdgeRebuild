@@ -160,25 +160,51 @@
                             <!-- 新增：收藏夹搜索框 -->
                             <TextBox x:Name="FavoritesSearchBox" 
                                      PlaceholderText="搜索收藏夹..." 
-                                     Width="180"
+                                     Width="150"
                                      TextChanged="FavoritesSearchBox_TextChanged"
                                      VerticalAlignment="Center"/>
                             <Button x:Name="ImportFavBtn" Content="导入"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
-                                    Padding="12,4" FontSize="12"
+                                    Padding="10,4" FontSize="12"
                                     Click="ImportFavBtn_Click"/>
                             <Button x:Name="ExportFavBtn" Content="导出"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
-                                    Padding="12,4" FontSize="12"
+                                    Padding="10,4" FontSize="12"
                                     Click="ExportFavBtn_Click"/>
+                            <Button x:Name="ToggleManageBtn" Content="管理"
+                                    Background="Transparent"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="10,4" FontSize="12"
+                                    Click="ToggleManageBtn_Click"/>
                         </StackPanel>
+
+                        <!-- 多选管理操作栏 -->
+                        <Border x:Name="ManageBar" Visibility="Collapsed" Margin="12,0,12,4"
+                                Padding="8,6" BorderBrush="LightGray" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="ManageCountText" Text="0 项已选择" FontSize="12"
+                                           VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" x:Name="ManageDeleteBtn" Content="删除"
+                                        IsEnabled="False" Click="ManageDeleteBtn_Click"
+                                        Margin="0,0,8,0" Padding="10,4" FontSize="12"/>
+                                <Button Grid.Column="2" x:Name="ManageCancelBtn" Content="取消"
+                                        Click="ManageCancelBtn_Click" Padding="10,4" FontSize="12"
+                                        Background="Transparent" BorderThickness="1" BorderBrush="LightGray"/>
+                            </Grid>
+                        </Border>
 
                         <ListView x:Name="FavListView" 
                                   SelectionMode="None"
                                   IsItemClickEnabled="True" 
                                   ItemClick="FavListView_ItemClick"
+                                  SelectionChanged="FavListView_SelectionChanged"
                                   ContainerContentChanging="FavListView_ContainerContentChanging"
                                   Background="Transparent"
                                   MinHeight="300"

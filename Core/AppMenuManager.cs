@@ -34,6 +34,8 @@ namespace EdgeRebuild.Core
         private readonly Action _onCopyCurrentUrl;
         private readonly Func<bool> _isReaderModeActive;
         private readonly Action _onToggleReaderMode;
+        private readonly Func<string> _getReadAloudLabel;
+        private readonly Action _onToggleReadAloud;
 
         public AppMenuManager(
             TabManager tabManager,
@@ -59,7 +61,9 @@ namespace EdgeRebuild.Core
             Func<bool> hasClosedTabs,
             Action onCopyCurrentUrl,
             Func<bool> isReaderModeActive,
-            Action onToggleReaderMode)
+            Action onToggleReaderMode,
+            Func<string> getReadAloudLabel,
+            Action onToggleReadAloud)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -85,6 +89,8 @@ namespace EdgeRebuild.Core
             _onCopyCurrentUrl = onCopyCurrentUrl;
             _isReaderModeActive = isReaderModeActive;
             _onToggleReaderMode = onToggleReaderMode;
+            _getReadAloudLabel = getReadAloudLabel;
+            _onToggleReadAloud = onToggleReadAloud;
         }
 
         public MenuFlyout BuildMenu()
@@ -126,6 +132,10 @@ namespace EdgeRebuild.Core
             var readerItem = new MenuFlyoutItem { Text = (_isReaderModeActive?.Invoke() ?? false) ? "退出阅读模式" : "阅读模式" };
             readerItem.Click += (_, _) => _onToggleReaderMode?.Invoke();
             menu.Items.Add(readerItem);
+
+            var readAloudItem = new MenuFlyoutItem { Text = _getReadAloudLabel?.Invoke() ?? "大声朗读" };
+            readAloudItem.Click += (_, _) => _onToggleReadAloud?.Invoke();
+            menu.Items.Add(readAloudItem);
 
             var printItem = new MenuFlyoutItem { Text = "打印" };
             printItem.Click += async (_, _) => await _onPrint?.Invoke();

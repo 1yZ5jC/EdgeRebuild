@@ -39,6 +39,8 @@ namespace EdgeRebuild.Core
         public event Action<bool> LoadingChanged;
         public event Action<PageShortcutKey> PageShortcutKeyPressed;
         public event Action<string> PageMarkActionRequested;
+        public event Action<string> TtsTextRequested;
+        public event Action<string> NtpSearchRequested;
 
         // 页面内快捷键桥（EdgeHTML 版）：外部网站的 window.external.notify 会被
         // ApplicationContentUriRules 白名单拦截（且不允许域通配），AddWebAllowedObject
@@ -73,6 +75,32 @@ namespace EdgeRebuild.Core
             var raw = await ExecuteScriptAsync("(window.__edgKeyMarker)||''");
             if (string.IsNullOrEmpty(raw) || raw == "\"\"") return "";
             _ = ExecuteScriptAsync("window.__edgKeyMarker='';");
+            return raw.Trim('"');
+        }
+
+        /// <summary>
+        /// 读取并清空页面朗读 marker（EPUB 在 EdgeHTML 引擎下无 postMessage，
+        /// 页面把 "tts:" + 文本写入 window.__edgTtsMarker，由宿主轮询转发）。
+        /// </summary>
+        public async Task<string> PollTtsAsync()
+        {
+            if (_disposed) return "";
+            var raw = await ExecuteScriptAsync("(window.__edgTtsMarker)||''");
+            if (string.IsNullOrEmpty(raw) || raw == "\"\"") return "";
+            _ = ExecuteScriptAsync("window.__edgTtsMarker='';");
+            return raw.Trim('"');
+        }
+
+        /// <summary>
+        /// 读取并清空页面 NTP 搜索 marker（NTP 页面无 postMessage 时把搜索词
+        /// 写入 window.__edgNtpSearch，由宿主轮询转发，与 WebView2 行为统一）。
+        /// </summary>
+        public async Task<string> PollNtpSearchAsync()
+        {
+            if (_disposed) return "";
+            var raw = await ExecuteScriptAsync("(window.__edgNtpSearch)||''");
+            if (string.IsNullOrEmpty(raw) || raw == "\"\"") return "";
+            _ = ExecuteScriptAsync("window.__edgNtpSearch='';");
             return raw.Trim('"');
         }
 
@@ -208,9 +236,21 @@ namespace EdgeRebuild.Core
             catch (Exception ex) { Services.Diagnostics.Log($"[EdgeHTML] ExecuteScriptAsync 异常: {ex.GetType().Name}: {ex.Message}"); return ""; }
         }
 
-        public Task NavigateAsync(string url)
+        public async Task NavigateAsync(string url)
         {
             if (string.IsNullOrWhiteSpace(url)) url = "about:blank";
+            // 新标签页（about:blank）→ 本地 NTP 页面（设置里可改回真空白页；EdgeHTML 无
+            // prefers-color-scheme 支持，主题经查询参数显式传入）
+            if (url == "about:blank")
+            {
+                bool showNtp = true;
+                try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
+                if (showNtp)
+                {
+                    string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
+                    url = $"ms-appx-web:///Assets/Ntp/index.html?theme={theme}";
+                }
+            }
             if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
                 !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
                 !url.Contains("://"))
@@ -218,7 +258,6 @@ namespace EdgeRebuild.Core
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) uri = new Uri("about:blank");
             _httpsFailed = false;
             _webView.Navigate(uri);
-            return Task.CompletedTask;
         }
 
         public Task NavigateToHtmlAsync(string html)

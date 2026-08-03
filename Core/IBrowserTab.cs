@@ -43,5 +43,7 @@ namespace EdgeRebuild.Core
         event Action<bool> LoadingChanged;   // 新增：加载状态 true=开始，false=结束
         event Action<PageShortcutKey> PageShortcutKeyPressed;   // 页面内快捷键回传
         event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
+        event Action<string> TtsTextRequested;   // 大声朗读文本回传（如 EPUB 章节）
+        event Action<string> NtpSearchRequested;   // 新标签页搜索词回传
     }
 }

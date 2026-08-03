@@ -311,27 +311,68 @@
         <!-- 网页捕获覆盖层：只覆盖网页区域（Row 2），地址栏/标签栏保持可见，如同旧版 Edge 批注模式 -->
         <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="2" Canvas.ZIndex="90"
               Background="#A0000000" Tapped="CaptureOverlay_Tapped">
-            <Border x:Name="CaptureBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    BorderBrush="Gray" BorderThickness="1" Padding="12">
-                <StackPanel Spacing="8">
-                    <TextBlock x:Name="CaptureTitle" Text="网页捕获 - 在图上批注，然后保存或复制" FontSize="13"/>
-                    <InkToolbar x:Name="CaptureInkToolbar" HorizontalAlignment="Left">
-                        <InkToolbarHighlighterButton/>
-                    </InkToolbar>
-                    <Grid x:Name="CaptureImageGrid" Background="White">
-                        <Image x:Name="CaptureImage" Stretch="Uniform"/>
-                        <InkCanvas x:Name="CaptureInk"/>
-                    </Grid>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                        <Button x:Name="CaptureSaveBtn" Content="保存" Click="CaptureSaveBtn_Click"/>
-                        <Button x:Name="CaptureCopyBtn" Content="复制" Click="CaptureCopyBtn_Click"/>
-                        <Button x:Name="CaptureCloseBtn" Content="取消" Click="CaptureCloseBtn_Click"/>
+                <Border x:Name="CaptureBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        BorderBrush="Gray" BorderThickness="1" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock x:Name="CaptureTitle" Text="网页捕获 - 在图上批注，然后保存或复制" FontSize="13"/>
+                        <InkToolbar x:Name="CaptureInkToolbar" HorizontalAlignment="Left">
+                            <InkToolbarHighlighterButton/>
+                        </InkToolbar>
+                        <Grid x:Name="CaptureImageGrid" Background="White"
+                              PointerPressed="CaptureImageGrid_PointerPressed"
+                              PointerMoved="CaptureImageGrid_PointerMoved"
+                              PointerReleased="CaptureImageGrid_PointerReleased">
+                            <Image x:Name="CaptureImage" Stretch="Uniform"/>
+                            <InkCanvas x:Name="CaptureInk"/>
+                            <Canvas x:Name="CaptureCropLayer" IsHitTestVisible="False">
+                                <Rectangle x:Name="CaptureCropRect" Visibility="Collapsed"
+                                           Stroke="Red" StrokeThickness="1.5" StrokeDashArray="4,3"
+                                           Fill="#22000000"/>
+                                <TextBlock x:Name="CaptureCropSize" Visibility="Collapsed"
+                                           Foreground="White" FontSize="12" IsHitTestVisible="False"
+                                           Text="0×0"/>
+                            </Canvas>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                            <Button x:Name="CaptureSaveBtn" Content="保存" Click="CaptureSaveBtn_Click"/>
+                            <Button x:Name="CaptureCropBtn" Content="裁剪" Click="CaptureCropBtn_Click"/>
+                            <Button x:Name="CaptureCopyBtn" Content="复制" Click="CaptureCopyBtn_Click"/>
+                            <Button x:Name="CaptureCloseBtn" Content="取消" Click="CaptureCloseBtn_Click"/>
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
-            </Border>
+                </Border>
         </Grid>
 
         <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"
                 IsHitTestVisible="False" Canvas.ZIndex="1000"/>
+
+        <!-- 大声朗读控制浮层：网页/EPUB 朗读时的播放控制（直角 + 主题化，颜色由 ApplyTheme 提供） -->
+        <Border x:Name="ReadAloudBar" Visibility="Collapsed" Grid.Row="2"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,20"
+                Padding="14,6" BorderThickness="1"
+                Canvas.ZIndex="95">
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <FontIcon x:Name="ReadAloudIcon" Glyph="&#xE8BD;" FontFamily="Segoe MDL2 Assets"
+                          FontSize="16" VerticalAlignment="Center"/>
+                <TextBlock x:Name="ReadAloudLabel" Text="正在朗读" FontSize="13"
+                           VerticalAlignment="Center" MaxWidth="280"
+                           TextTrimming="CharacterEllipsis"/>
+                <Button x:Name="ReadAloudPauseBtn" Content="&#xE769;" FontFamily="Segoe MDL2 Assets"
+                        FontSize="14" Padding="10,4" MinWidth="40"
+                        Click="ReadAloudPauseBtn_Click"
+                        ToolTipService.ToolTip="暂停/继续"/>
+                <Button x:Name="ReadAloudStopBtn" Content="&#xE71A;" FontFamily="Segoe MDL2 Assets"
+                        FontSize="14" Padding="10,4" MinWidth="40"
+                        Click="ReadAloudStopBtn_Click"
+                        ToolTipService.ToolTip="停止朗读"/>
+                <Button x:Name="ReadAloudCloseBtn" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                        FontSize="12" Padding="8,4" MinWidth="32"
+                        Click="ReadAloudCloseBtn_Click"
+                        ToolTipService.ToolTip="隐藏面板（朗读继续）"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 大声朗读播放器（隐藏）：Windows.Media.SpeechSynthesis 流经此播放 -->
+        <MediaElement x:Name="TtsPlayer" AutoPlay="True" Visibility="Collapsed"/>
     </Grid>
 </Page>
