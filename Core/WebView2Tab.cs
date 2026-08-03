@@ -23,6 +23,7 @@ namespace EdgeRebuild.Core
         private string _suspendedUrl = "";
         private bool _httpsFailed = false;
         private bool _disposed = false;
+        private bool _metroHome = false;
         private string _currentDocSource = null;
 
         public string Id { get; } = Guid.NewGuid().ToString();
@@ -564,6 +565,8 @@ namespace EdgeRebuild.Core
 
         public async Task<string> ExecuteScriptAsync(string script) => (_webView?.CoreWebView2 != null) ? await _webView.CoreWebView2.ExecuteScriptAsync(script) : "";
 
+        public void SetMetroHome() => _metroHome = true;
+
         public async Task NavigateAsync(string url)
         {
             if (_disposed) return;
@@ -571,16 +574,25 @@ namespace EdgeRebuild.Core
             // 新标签页（about:blank）→ 本地 NTP 页面（设置里可改回真空白页）
             if (url == "about:blank")
             {
-                bool showNtp = true;
-                try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
-                if (showNtp)
+                if (_metroHome)
                 {
-                    // 页面经 contentcache.local（LocalFolder）托管：InstalledLocation 的
-                    // ntp.local 映射在部分环境中不生效（导航会 ERR_ACCESS_DENIED），
-                    // LocalFolder 通道经 PDF/EPUB 缓存长期验证可用。
-                    EnsureNtpLocalFile();
-                    string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
-                    url = $"https://contentcache.local/ntp/index.html?theme={theme}";
+                    // Metro IE 窗口：磁贴风格主页，深色固定主题
+                    EnsureNtpMetroLocalFile();
+                    url = "https://contentcache.local/ntpmetro/index.html?theme=dark";
+                }
+                else
+                {
+                    bool showNtp = true;
+                    try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
+                    if (showNtp)
+                    {
+                        // 页面经 contentcache.local（LocalFolder）托管：InstalledLocation 的
+                        // ntp.local 映射在部分环境中不生效（导航会 ERR_ACCESS_DENIED），
+                        // LocalFolder 通道经 PDF/EPUB 缓存长期验证可用。
+                        EnsureNtpLocalFile();
+                        string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
+                        url = $"https://contentcache.local/ntp/index.html?theme={theme}";
+                    }
                 }
             }
 
@@ -632,6 +644,31 @@ namespace EdgeRebuild.Core
             catch (Exception ex)
             {
                 Diagnostics.Log($"[本地查看器] NTP 页面复制失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Metro IE 磁贴主页：复制 Assets\NtpMetro\ 到 LocalFolder 的
+        /// contentcache\ntpmetro 目录（与 EnsureNtpLocalFile 同机制）。
+        /// </summary>
+        private static void EnsureNtpMetroLocalFile()
+        {
+            try
+            {
+                var dir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", "ntpmetro");
+                Directory.CreateDirectory(dir);
+                var dest = Path.Combine(dir, "index.html");
+                if (File.Exists(dest))
+                {
+                    var srcLen = new FileInfo(Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "NtpMetro", "index.html")).Length;
+                    if (new FileInfo(dest).Length == srcLen) return;
+                }
+                byte[] bytes = File.ReadAllBytes(Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "NtpMetro", "index.html"));
+                File.WriteAllBytes(dest, bytes);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[本地查看器] Metro NTP 页面复制失败: {ex.Message}");
             }
         }
 

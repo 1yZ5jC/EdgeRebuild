@@ -216,6 +216,7 @@ namespace EdgeRebuild
                     BookmarkAllTabs,
                     ShowAboutDialog,
                     async () => { if (!await WindowManager.OpenNewWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开新窗口", "创建窗口失败"); },
+                    async () => { if (!await WindowManager.OpenMetroWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开 Metro IE 窗口", "创建窗口失败"); },
                     AdjustZoom,
                     ResetZoom,
                     FindOnPage,

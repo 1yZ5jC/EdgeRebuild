@@ -1,0 +1,61 @@
+<Page
+    x:Class="EdgeRebuild.Metro.MetroPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:metro="using:EdgeRebuild.Metro"
+    Background="#FF2D2D30"
+    KeyDown="Page_KeyDown" KeyUp="Page_KeyUp">
+
+    <!-- 布局（Metro IE 真实形态：内容区之上只有标题栏，地址栏与标签条都在底部）：
+         Row0 标题栏 / Row1 内容区 / Row2 底部标签条 / Row3 底部地址栏 / Row4 底部 AppBar
+         原“顶部地址栏”方案保留在 MetroAddressBarControl 与 git 历史中作储备。 -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏：显示当前页标题，整条可拖动（ExtendsContentIntoTitleBar 下默认全标题栏区域可拖）；全屏时隐藏 -->
+        <Grid x:Name="TopBar" Grid.Row="0" Height="32" Background="#FF2D2D30">
+            <TextBlock x:Name="TopBarTitle" Text="Metro IE" FontFamily="Segoe UI" FontSize="12"
+                       Foreground="#FF8E8E8E" VerticalAlignment="Center" Margin="12,0,140,0"
+                       TextTrimming="CharacterEllipsis"/>
+        </Grid>
+
+        <!-- 内容区（必须用 Grid：StackPanel 给子元素无限高度，WebView 会塌成 0 高不可见） -->
+        <Grid Grid.Row="1">
+            <Grid x:Name="ContentPanel" Background="#FF1E1E1E"/>
+        </Grid>
+
+        <!-- 底部标签条（横向滚动，当前标签蓝底） -->
+        <metro:MetroTabStripControl x:Name="TabStrip" Grid.Row="2"
+            TabSelected="TabStrip_TabSelected"
+            NewTabRequested="TabStrip_NewTabRequested"/>
+
+        <!-- 底部地址栏 -->
+        <metro:MetroAddressBarControl x:Name="AddressBar" Grid.Row="3"
+            BackRequested="AddressBar_BackRequested"
+            ForwardRequested="AddressBar_ForwardRequested"
+            RefreshRequested="AddressBar_RefreshRequested"
+            HomeRequested="AddressBar_HomeRequested"
+            FullscreenRequested="AddressBar_FullscreenRequested"
+            UrlSubmitted="AddressBar_UrlSubmitted"/>
+
+        <!-- 底部 AppBar（标签网格 / 设置） -->
+        <metro:MetroAppBarControl x:Name="AppBar" Grid.Row="4"
+            TabsClicked="AppBar_TabsClicked"
+            NewTabClicked="AppBar_NewTabClicked"
+            SettingsClicked="AppBar_SettingsClicked"/>
+
+        <!-- 全屏缩略图网格覆盖层 -->
+        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="5"
+            Visibility="Collapsed"
+            TabSelected="TabGrid_TabSelected"
+            TabCloseRequested="TabGrid_TabCloseRequested"
+            NewTabRequested="TabGrid_NewTabRequested"
+            DismissRequested="TabGrid_DismissRequested"/>
+    </Grid>
+</Page>

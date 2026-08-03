@@ -22,6 +22,7 @@ namespace EdgeRebuild.Core
         private readonly Action _onBookmarkAll;
         private readonly Action _onAbout;
         private readonly Action _onNewWindow;
+        private readonly Action _onOpenMetroWindow;
         private readonly Action<double> _onZoomAdjust;
         private readonly Action _onZoomReset;
         private readonly Action _onFind;
@@ -50,6 +51,7 @@ namespace EdgeRebuild.Core
             Action onBookmarkAll,
             Action onAbout,
             Action onNewWindow,
+            Action onOpenMetroWindow,
             Action<double> onZoomAdjust,
             Action onZoomReset,
             Action onFind,
@@ -77,6 +79,7 @@ namespace EdgeRebuild.Core
             _onBookmarkAll = onBookmarkAll;
             _onAbout = onAbout;
             _onNewWindow = onNewWindow;
+            _onOpenMetroWindow = onOpenMetroWindow;
             _onZoomAdjust = onZoomAdjust;
             _onZoomReset = onZoomReset;
             _onFind = onFind;
@@ -113,6 +116,11 @@ namespace EdgeRebuild.Core
             var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
             newWindowItem.Click += (_, _) => _onNewWindow?.Invoke();
             menu.Items.Add(newWindowItem);
+
+            // Metro IE 窗口（无标签条 + 缩略图网格 + 磁贴主页）
+            var metroWindowItem = new MenuFlyoutItem { Text = "打开 Metro IE 窗口" };
+            metroWindowItem.Click += (_, _) => _onOpenMetroWindow?.Invoke();
+            menu.Items.Add(metroWindowItem);
             menu.Items.Add(new MenuFlyoutSeparator());
 
             // 缩放子菜单

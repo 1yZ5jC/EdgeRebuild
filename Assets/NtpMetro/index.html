@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metro IE</title>
+<style>
+  :root {
+    --bg: #1E1E1E;
+    --muted: #8E8E8E;
+    --accent: #0078D7;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: #fff;
+    font-family: "Segoe UI Light", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .wrap { height: 100%; display: flex; flex-direction: column; }
+
+  /* 顶栏：时钟 */
+  #clock {
+    text-align: right;
+    font-size: 13px;
+    color: var(--muted);
+    padding: 14px 28px 0 0;
+  }
+
+  /* 搜索框：Metro 风格，白色大字 + 底部细线，聚焦变 2px 主题蓝 */
+  #searchbox {
+    margin: 34px auto 0 auto;
+    width: 640px;
+    max-width: 88vw;
+  }
+  #search-input {
+    display: block;
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-family: inherit;
+    font-size: 28px;
+    font-weight: 300;
+    padding: 6px 2px;
+    border-bottom: 1px solid var(--muted);
+    border-radius: 0;
+    -webkit-appearance: none;
+  }
+  #search-input:focus { border-bottom: 2px solid var(--accent); }
+  #search-input::placeholder { color: #6E6E6E; }
+
+  /* 磁贴网格：Win8 开始屏幕形态，支持方/宽磁贴，拖拽排序 */
+  #tiles {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-content: flex-start;
+    max-width: 1104px;
+    margin: 40px auto 0 auto;
+    overflow-y: auto;
+    padding-bottom: 24px;
+  }
+  .tile {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin: 12px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: filter 0.1s ease;
+  }
+  .tile.wide { width: 344px; flex-direction: row; justify-content: flex-start; padding: 0 28px; }
+  .tile.wide .icon { margin: 0 20px 0 0; }
+  .tile:hover::after { background: rgba(255, 255, 255, 0.09); }
+  .tile:active::after { background: rgba(255, 255, 255, 0.16); }
+  .tile::after {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255, 255, 255, 0);
+    transition: background 0.1s ease;
+    pointer-events: none;
+  }
+  .tile.dragging { opacity: 0.4; }
+  .tile.drop-target { outline: 3px solid rgba(255, 255, 255, 0.35); }
+  .tile .icon { font-size: 44px; line-height: 1; margin-bottom: 14px; pointer-events: none; }
+  .tile.wide .icon { font-size: 52px; }
+  .tile .name {
+    font-size: 15px;
+    color: #fff;
+    max-width: 130px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
+  .tile.wide .name { max-width: 240px; font-size: 17px; }
+  .tile .remove {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+    visibility: hidden;
+    font-family: "Segoe UI", sans-serif;
+    pointer-events: none;
+  }
+  .tile:hover .remove { visibility: visible; }
+  .tile.add-tile { border: 2px dashed #5A5A5E; }
+  .tile.add-tile .icon { color: var(--muted); margin-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="clock"></div>
+  <div id="searchbox"><input id="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="搜索 Web"></div>
+  <div id="tiles"></div>
+</div>
+
+<script>
+(function () {
+  var LS_KEY = "ntp_tiles_metro_v1";
+  var DEFAULT_TILES = [
+    { name: "Bing", url: "https://www.bing.com", icon: "\uD83D\uDD0E", color: "#0078D7", wide: true },
+    { name: "YouTube", url: "https://www.youtube.com", icon: "\uD83C\uDFA5", color: "#D13438" },
+    { name: "\u77E5\u4E4E", url: "https://www.zhihu.com", icon: "\uD83D\uDCD6", color: "#0084FF", wide: true },
+    { name: "\u5FEB\u624B", url: "https://www.bilibili.com", icon: "\uD83D\uDC4B", color: "#FB7299" },
+    { name: "Wikipedia", url: "https://zh.wikipedia.org", icon: "\uD83D\uDD73", color: "#6B69D6" },
+    { name: "GitHub", url: "https://github.com", icon: "\uD83E\uDD9F", color: "#2D2D30" },
+    { name: "\u5FAE\u535A", url: "https://weibo.com", icon: "\uD83D\uDDE3", color: "#E6162D" },
+    { name: "Stack Overflow", url: "https://stackoverflow.com", icon: "\uD83D\uDCC4", color: "#F48024" },
+    { name: "\u7F51\u6613\u4E91\u97F3\u4E50", url: "https://music.163.com", icon: "\uD83C\uDFB5", color: "#C20C0C" },
+    { name: "\u767E\u5EA6", url: "https://www.baidu.com", icon: "\uD83D\uDDA5", color: "#2932E1" }
+  ];
+
+  function loadTiles() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_TILES.slice();
+  }
+
+  function saveTiles(tiles) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(tiles)); } catch (e) {}
+  }
+
+  var tiles = loadTiles();
+  var container = document.getElementById("tiles");
+  var dragFrom = null;
+
+  function render() {
+    container.innerHTML = "";
+    tiles.forEach(function (tile, i) {
+      var el = document.createElement("div");
+      el.className = "tile" + (tile.wide ? " wide" : "");
+      el.style.background = tile.color || "#767676";
+      el.title = tile.name + " \u2014 " + tile.url;
+      el.innerHTML = '<div class="icon">' + (tile.icon || "\uD83D\uDCC5") +
+        '</div><div class="name"></div><div class="remove">\u2715</div>';
+      el.querySelector(".name").textContent = tile.name;
+
+      // 点击打开
+      el.addEventListener("click", function () { window.location.href = tile.url; });
+
+      // 右键移除
+      el.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+        if (confirm("\u79FB\u9664\u78C1\u8D34\u201C" + tile.name + "\u201D?")) {
+          tiles.splice(i, 1);
+          saveTiles(tiles);
+          render();
+        }
+      });
+
+      // 拖拽排序（EdgeHTML/Chromium 均支持 HTML5 DnD）
+      el.draggable = true;
+      el.addEventListener("dragstart", function (e) {
+        dragFrom = i;
+        el.classList.add("dragging");
+        try { e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; } catch (err) {}
+      });
+      el.addEventListener("dragend", function () {
+        el.classList.remove("dragging");
+        render();
+      });
+      el.addEventListener("dragover", function (e) {
+        if (dragFrom === null || dragFrom === i) return;
+        e.preventDefault();
+        el.classList.add("drop-target");
+      });
+      el.addEventListener("dragleave", function () { el.classList.remove("drop-target"); });
+      el.addEventListener("drop", function (e) {
+        e.preventDefault();
+        el.classList.remove("drop-target");
+        if (dragFrom === null || dragFrom === i) { dragFrom = null; return; }
+        var from = dragFrom;
+        dragFrom = null;
+        var moved = tiles.splice(from, 1)[0];
+        var to = from < i ? i - 1 : i;
+        tiles.splice(to, 0, moved);
+        saveTiles(tiles);
+        render();
+      });
+
+      container.appendChild(el);
+    });
+
+    // “+” 添加磁贴
+    var add = document.createElement("div");
+    add.className = "tile add-tile";
+    add.style.background = "transparent";
+    add.innerHTML = '<div class="icon">+</div>';
+    add.addEventListener("click", function () {
+      var url = prompt("\u8F93\u5165\u7F51\u5740\uff08\u542B https:// \u6216 http://\uff09\uff1A");
+      if (!url) return;
+      var clean = url.trim();
+      if (!/^https?:\/\//i.test(clean)) clean = "https://" + clean;
+      var host = "";
+      try { host = clean.replace(/^https?:\/\//i, "").split(/[/?#]/)[0]; } catch (err) {}
+      tiles.push({ name: host || "新磁贴", url: clean, icon: "\uD83C\uDF10", color: "#767676", wide: false });
+      saveTiles(tiles);
+      render();
+    });
+    container.appendChild(add);
+  }
+
+  render();
+
+  // 搜索：回车 → 跳转 Bing（Metro IE 行为：当前页内导航）
+  document.getElementById("search-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.keyCode === 13) {
+      var q = this.value.trim();
+      if (q) window.location.href = "https://www.bing.com/search?q=" + encodeURIComponent(q);
+    }
+  });
+
+  // 时钟
+  function tick() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    document.getElementById("clock").textContent =
+      d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate()) +
+      " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

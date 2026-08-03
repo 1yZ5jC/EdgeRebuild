@@ -1,0 +1,25 @@
+<UserControl
+    x:Class="EdgeRebuild.Metro.MetroAppBarControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Height="48" Background="#FF2D2D30">
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+            <!-- 标签按钮：显示当前标签计数，点击展开全屏缩略图网格 -->
+            <Button x:Name="TabsBtn" Click="TabsBtn_Click"
+                    Style="{StaticResource MetroAppBarButtonStyle}">
+                <StackPanel Orientation="Horizontal">
+                    <FontIcon Glyph="&#xE78C;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="White"/>
+                    <TextBlock x:Name="TabCountText" Text="0" FontSize="14" Foreground="White" Margin="8,0,0,0"/>
+                </StackPanel>
+            </Button>
+            <Button Content="&#xE710;" ToolTipService.ToolTip="新建标签"
+                    Click="NewTabBtn_Click" Style="{StaticResource MetroAppBarButtonStyle}"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <Button Content="&#xE713;" ToolTipService.ToolTip="设置"
+                    Click="SettingsBtn_Click" Style="{StaticResource MetroAppBarButtonStyle}"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

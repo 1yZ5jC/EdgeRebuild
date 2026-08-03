@@ -57,6 +57,7 @@
     <Content Include="Assets\EpubReader\jszip.min.js" />
     <Content Include="Assets\EpubReader\**" />
     <Content Include="Assets\Ntp\**" />
+    <Content Include="Assets\NtpMetro\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />

@@ -5,6 +5,7 @@ using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Hosting;
+using EdgeRebuild.Metro;
 
 namespace EdgeRebuild.Core
 {
@@ -13,6 +14,7 @@ namespace EdgeRebuild.Core
         public EngineType Engine { get; set; }
         public string Url { get; set; }
         public Windows.UI.WindowManagement.AppWindow AppWindow { get; set; }
+        public bool IsMetro { get; set; }
     }
 
     /// <summary>
@@ -23,9 +25,22 @@ namespace EdgeRebuild.Core
     {
         public static async Task<bool> OpenNewWindowAsync(EngineType engine, string url)
         {
+            return await OpenWindowCoreAsync(engine, url, typeof(MainPage), false);
+        }
+
+        /// <summary>
+        /// 打开 Metro IE 风格窗口（MetroPage，无标签条 + 全屏缩略图网格 + 磁贴主页）。
+        /// </summary>
+        public static async Task<bool> OpenMetroWindowAsync(EngineType engine, string url)
+        {
+            return await OpenWindowCoreAsync(engine, url, typeof(MetroPage), true);
+        }
+
+        private static async Task<bool> OpenWindowCoreAsync(EngineType engine, string url, Type pageType, bool isMetro)
+        {
             try
             {
-                Services.Diagnostics.Log($"[NewWindow] 开始创建窗口 url={url}");
+                Services.Diagnostics.Log($"[NewWindow] 开始创建窗口 page={pageType.Name} url={url}");
 
                 if (!ApiInformation.IsTypePresent("Windows.UI.WindowManagement.AppWindow"))
                 {
@@ -41,7 +56,7 @@ namespace EdgeRebuild.Core
                 }
 
                 var frame = new Frame();
-                frame.Navigate(typeof(MainPage), new NewWindowArgs { Engine = engine, Url = url, AppWindow = appWindow });
+                frame.Navigate(pageType, new NewWindowArgs { Engine = engine, Url = url, AppWindow = appWindow, IsMetro = isMetro });
 
                 ElementCompositionPreview.SetAppWindowContent(appWindow, frame);
                 Services.Diagnostics.Log($"[NewWindow] 视图创建完成 uiContext={frame.UIContext}");

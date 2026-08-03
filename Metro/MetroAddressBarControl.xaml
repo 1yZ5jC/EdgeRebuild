@@ -1,0 +1,44 @@
+<UserControl
+    x:Class="EdgeRebuild.Metro.MetroAddressBarControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Height="48" Background="#FF2D2D30">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 后退 / 前进 / 刷新 -->
+        <Button x:Name="BackBtn" Grid.Column="0" Content="&#xE72B;"
+                Click="BackBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+        <Button x:Name="ForwardBtn" Grid.Column="1" Content="&#xE72A;"
+                Click="ForwardBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+        <Button x:Name="RefreshBtn" Grid.Column="2" Content="&#xE72C;"
+                Click="RefreshBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+
+        <!-- 地址栏：聚焦时底部 2px Metro 蓝下划线 -->
+        <Grid Grid.Column="3" VerticalAlignment="Center" Height="44" Margin="8,0">
+            <Border x:Name="FocusLine" Height="2" VerticalAlignment="Bottom"
+                    Background="#FF0078D7" Visibility="Collapsed"/>
+            <TextBox x:Name="UrlBox" FontFamily="Segoe UI" FontSize="16"
+                     BorderThickness="0" Background="Transparent" Foreground="White"
+                     PlaceholderText="输入网址或搜索"
+                     GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
+                     KeyDown="UrlBox_KeyDown" VerticalAlignment="Center"
+                     Padding="4,0,4,4"/>
+        </Grid>
+
+        <!-- 主页 -->
+        <Button x:Name="HomeBtn" Grid.Column="4" Content="&#xE80F;"
+                Click="HomeBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+
+        <!-- 全屏 -->
+        <Button x:Name="FullscreenBtn" Grid.Column="5" Content="&#xE740;"
+                Click="FullscreenBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+    </Grid>
+</UserControl>

@@ -15,6 +15,7 @@ namespace EdgeRebuild.Core
         private string _title = "";
         private bool _httpsFailed = false;
         private bool _disposed = false;
+        private bool _metroHome = false;
 
         public static event Action<string> DownloadRequested;
 
@@ -278,6 +279,8 @@ namespace EdgeRebuild.Core
             catch (Exception ex) { Services.Diagnostics.Log($"[EdgeHTML] ExecuteScriptAsync 异常: {ex.GetType().Name}: {ex.Message}"); return ""; }
         }
 
+        public void SetMetroHome() => _metroHome = true;
+
         public async Task NavigateAsync(string url)
         {
             if (string.IsNullOrWhiteSpace(url)) url = "about:blank";
@@ -285,12 +288,20 @@ namespace EdgeRebuild.Core
             // prefers-color-scheme 支持，主题经查询参数显式传入）
             if (url == "about:blank")
             {
-                bool showNtp = true;
-                try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
-                if (showNtp)
+                if (_metroHome)
                 {
-                    string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
-                    url = $"ms-appx-web:///Assets/Ntp/index.html?theme={theme}";
+                    // Metro IE 窗口：磁贴风格主页，深色固定主题
+                    url = "ms-appx-web:///Assets/NtpMetro/index.html?theme=dark";
+                }
+                else
+                {
+                    bool showNtp = true;
+                    try { showNtp = (await Services.SettingsManager.GetAsync("NewTabShowNtp")) != "False"; } catch { }
+                    if (showNtp)
+                    {
+                        string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
+                        url = $"ms-appx-web:///Assets/Ntp/index.html?theme={theme}";
+                    }
                 }
             }
             if (!url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&

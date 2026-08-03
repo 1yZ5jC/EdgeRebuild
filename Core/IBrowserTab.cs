@@ -31,6 +31,7 @@ namespace EdgeRebuild.Core
         Task GoForwardAsync();
         Task RefreshAsync();
         Task StopAsync();
+        void SetMetroHome();   // 新标签页改用 Metro 磁贴主页（仅 Metro IE 窗口）
         void Dispose();
 
         event Action<string> TitleChanged;

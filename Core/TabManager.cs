@@ -26,6 +26,10 @@ namespace EdgeRebuild.Core
 
         private StackPanel _tabBarPanel;
         private Panel _contentContainer;
+        private readonly Func<SkinManager.SkinColors> _colorProvider;
+
+        // 无标签条模式（Metro 窗口）：标签 UI 不构建，靠 TabCreated/TabChanged 事件驱动
+        private bool IsTabBarlessMode => _tabBarPanel == null;
 
         public event Action<TabViewItem> TabCreated;
         public event Action<TabViewItem> TabChanged;
@@ -50,8 +54,9 @@ namespace EdgeRebuild.Core
 
         public const int PinnedTabWidth = 36;
 
-        public TabManager()
+        public TabManager(Func<SkinManager.SkinColors> colorProvider = null)
         {
+            _colorProvider = colorProvider;
             _ = LoadSettingsAsync();
         }
 
@@ -61,15 +66,18 @@ namespace EdgeRebuild.Core
             _contentContainer = contentContainer;
         }
 
+        private SkinManager.SkinColors GetColors() => _colorProvider?.Invoke() ?? ThemeManager.Colors;
+
         private async Task LoadSettingsAsync()
         {
             var setting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
             _enableTabSuspend = (setting == "True" || setting == "true");
         }
 
-        public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false)
+        public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false)
         {
             IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
+            if (isMetroHome) tab.SetMetroHome();
 
             if (tab is WebView2Tab wv2Tab)
             {
@@ -115,13 +123,15 @@ namespace EdgeRebuild.Core
 
         private void BuildTabUI(TabViewItem viewItem)
         {
-            if (_tabBarPanel == null || _contentContainer == null)
+            if (_contentContainer == null)
                 throw new InvalidOperationException("TabManager not initialized. Call Initialize() first.");
 
             var tab = viewItem.Tab;
-            var colors = ThemeManager.Colors;
-            if (colors == null) return;
+            var colors = GetColors();
 
+            // 无标签条模式（Metro 窗口）：不构建顶部标签 UI，仅内容容器
+            if (_tabBarPanel != null && colors != null)
+            {
             var tabBorder = new Border
             {
                 Height = 32,
@@ -255,6 +265,8 @@ namespace EdgeRebuild.Core
             viewItem.SuspendedIndicator = suspendedIndicator;
             viewItem.LoadingRing = loadingRing;
             viewItem.TabAccentBar = accentBar;
+            closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
+            }
 
             var contentBorder = new Border
             {
@@ -264,8 +276,6 @@ namespace EdgeRebuild.Core
             };
             _contentContainer.Children.Add(contentBorder);
             viewItem.ContentContainer = contentBorder;
-
-            closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
         }
 
         private static void RunOnUiThread(Action action)
@@ -283,6 +293,7 @@ namespace EdgeRebuild.Core
             {
                 RunOnUiThread(() =>
                 {
+                    if (viewItem.TitleText == null) return;   // 无标签条模式（Metro）没有标题 UI
                     string displayTitle = string.IsNullOrEmpty(title) ? "新标签页" : title;
                     if (tab.IsSuspended) displayTitle = "[已挂起] " + displayTitle;
                     viewItem.TitleText.Text = displayTitle;
@@ -345,6 +356,7 @@ namespace EdgeRebuild.Core
         {
             RunOnUiThread(() =>
             {
+                    if (viewItem.FaviconPlaceholder == null || viewItem.FaviconImage == null) return;   // 无标签条模式（Metro）没有 favicon UI（网格卡片自行加载）
                     if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
                     {
                         viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
@@ -379,8 +391,11 @@ namespace EdgeRebuild.Core
                     viewItem.SuspendedIndicator.Visibility = suspended ? Visibility.Visible : Visibility.Collapsed;
             }
             string originalTitle = tab.Title ?? "新标签页";
-            viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
-            ToolTipService.SetToolTip(viewItem.TitleText, viewItem.TitleText.Text);
+            if (viewItem.TitleText != null)   // 无标签条模式（Metro）没有标题 UI
+            {
+                viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
+                ToolTipService.SetToolTip(viewItem.TitleText, viewItem.TitleText.Text);
+            }
         }
 
         public async Task SwitchToTabAsync(TabViewItem viewItem)
@@ -393,15 +408,26 @@ namespace EdgeRebuild.Core
             if (_currentTab.IsSuspended)
                 await _currentTab.ResumeAsync();
 
-            var colors = ThemeManager.Colors;
-            foreach (var item in _tabs)
+            var colors = GetColors();
+            if (colors != null)
             {
-                if (item.Container != null)
-                    item.Container.Background = (item == viewItem) ? colors.TabActiveBackground : colors.TabInactiveBackground;
-                if (item.TabAccentBar != null)
-                    item.TabAccentBar.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
-                if (item.ContentContainer != null)
-                    item.ContentContainer.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
+                foreach (var item in _tabs)
+                {
+                    if (item.Container != null)
+                        item.Container.Background = (item == viewItem) ? colors.TabActiveBackground : colors.TabInactiveBackground;
+                    if (item.TabAccentBar != null)
+                        item.TabAccentBar.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
+                    if (item.ContentContainer != null)
+                        item.ContentContainer.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                foreach (var item in _tabs)
+                {
+                    if (item.ContentContainer != null)
+                        item.ContentContainer.Visibility = (item == viewItem) ? Visibility.Visible : Visibility.Collapsed;
+                }
             }
 
             if (_enableTabSuspend && previousTab != null && previousTab != _currentTab)
