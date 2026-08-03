@@ -6,14 +6,13 @@
     Background="#FF2D2D30"
     KeyDown="Page_KeyDown" KeyUp="Page_KeyUp">
 
-    <!-- 布局（Metro IE 真实形态：内容区之上只有标题栏，地址栏与标签条都在底部）：
-         Row0 标题栏 / Row1 内容区 / Row2 底部标签条 / Row3 底部地址栏 / Row4 底部 AppBar
-         原“顶部地址栏”方案保留在 MetroAddressBarControl 与 git 历史中作储备。 -->
-    <Grid>
+    <!-- 布局（Metro IE 真实形态：底部只有标签条 + 地址栏，其余功能收进右键菜单，
+         Windows 8.1 形式）：Row0 标题栏 / Row1 内容区 / Row2 底部标签条 / Row3 底部地址栏
+         原“底部 AppBar”方案保留在 MetroAppBarControl 与 git 历史中作储备。 -->
+    <Grid RightTapped="Root_RightTapped">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -33,6 +32,7 @@
         <!-- 底部标签条（横向滚动，当前标签蓝底） -->
         <metro:MetroTabStripControl x:Name="TabStrip" Grid.Row="2"
             TabSelected="TabStrip_TabSelected"
+            TabCloseRequested="TabStrip_TabCloseRequested"
             NewTabRequested="TabStrip_NewTabRequested"/>
 
         <!-- 底部地址栏 -->
@@ -44,14 +44,8 @@
             FullscreenRequested="AddressBar_FullscreenRequested"
             UrlSubmitted="AddressBar_UrlSubmitted"/>
 
-        <!-- 底部 AppBar（标签网格 / 设置） -->
-        <metro:MetroAppBarControl x:Name="AppBar" Grid.Row="4"
-            TabsClicked="AppBar_TabsClicked"
-            NewTabClicked="AppBar_NewTabClicked"
-            SettingsClicked="AppBar_SettingsClicked"/>
-
         <!-- 全屏缩略图网格覆盖层 -->
-        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="5"
+        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="4"
             Visibility="Collapsed"
             TabSelected="TabGrid_TabSelected"
             TabCloseRequested="TabGrid_TabCloseRequested"

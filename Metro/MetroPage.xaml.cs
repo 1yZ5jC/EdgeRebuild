@@ -1,9 +1,8 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
 using Windows.System;
-using Windows.UI.ViewManagement;
 using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -15,8 +14,8 @@ using Windows.UI.Xaml.Navigation;
 namespace EdgeRebuild.Metro
 {
     /// <summary>
-    /// Metro IE 风格窗口：内容区之上无工具栏，地址栏 + 标签条 + AppBar 全部在底部，
-    /// 全屏缩略图标签网格，磁贴风格新标签主页。色板固定（MetroColorPalette），
+    /// Metro IE 风格窗口：底部只有标签条 + 地址栏，其余功能收进右键菜单（Windows 8.1 形式）；
+    /// 全屏缩略图标签网格、磁贴风格新标签主页。色板固定（MetroColorPalette），
     /// 与主窗口皮肤完全隔离；键盘快捷键自处理，不经过全局 ShortcutManager。
     /// </summary>
     public sealed partial class MetroPage : Page
@@ -26,10 +25,32 @@ namespace EdgeRebuild.Metro
         private TabManager _tabManager;
         private bool _gridOpen;
         private bool _isFullscreen;
+        private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
         public MetroPage()
         {
             InitializeComponent();
+            _stripRefreshTimer.Tick += (s, e) =>
+            {
+                _stripRefreshTimer.Stop();
+                TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
+            };
+        }
+
+        // 标签条内容变化（标题/图标/URL/加载态）防抖刷新，避免高频事件刷屏重建
+        private void RefreshStripSoon()
+        {
+            _stripRefreshTimer.Stop();
+            _stripRefreshTimer.Start();
+        }
+
+        private void AttachStripRefresh(TabViewItem viewItem)
+        {
+            var tab = viewItem.Tab;
+            tab.TitleChanged += _ => RefreshStripSoon();
+            tab.FaviconChanged += _ => RefreshStripSoon();
+            tab.UrlChanged += _ => RefreshStripSoon();
+            tab.LoadingChanged += _ => RefreshStripSoon();
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -42,10 +63,10 @@ namespace EdgeRebuild.Metro
 
             _tabManager = new TabManager(() => MetroColorPalette.GetSkinColors());
             _tabManager.Initialize(null, ContentPanel);
+            _tabManager.TabCreated += AttachStripRefresh;
             _tabManager.TabCountChanged += count =>
             {
-                AppBar.UpdateTabCount(count);
-                TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
+                RefreshStripSoon();
                 // Metro IE 不允许无标签窗口：最后一个标签关闭后自动新建
                 if (count == 0)
                     _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
@@ -137,17 +158,69 @@ namespace EdgeRebuild.Metro
 
         // ---- 底部标签条 ----
         private void TabStrip_TabSelected(TabViewItem viewItem) => _ = _tabManager.SwitchToTabAsync(viewItem);
+        private void TabStrip_TabCloseRequested(TabViewItem viewItem) => _ = _tabManager.CloseTabAsync(viewItem);
         private void TabStrip_NewTabRequested() => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
 
-        // ---- AppBar ----
-        private void AppBar_TabsClicked() => ToggleGrid();
-        private void AppBar_NewTabClicked() => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
-        private void AppBar_SettingsClicked()
+        // ---- 右键菜单（Windows 8.1 形式：其余功能收进右键菜单，底部只留地址栏+标签栏） ----
+        private void Root_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
-            NotificationService.ShowToast("Metro IE", "设置面板（开发中）");
+            var menu = new MenuFlyout();
+
+            var newTabItem = new MenuFlyoutItem
+            {
+                Text = "新建标签",
+                Icon = new FontIcon { Glyph = "\xE710", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            newTabItem.Click += (s, a) => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+            menu.Items.Add(newTabItem);
+
+            var closeItem = new MenuFlyoutItem
+            {
+                Text = "关闭当前标签",
+                Icon = new FontIcon { Glyph = "\xE711", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            closeItem.Click += (s, a) => _ = _tabManager.CloseTabAsync(FindViewItem(_tabManager.CurrentTab));
+            menu.Items.Add(closeItem);
+
+            var gridItem = new MenuFlyoutItem
+            {
+                Text = _gridOpen ? "收起标签视图" : "标签缩略图",
+                Icon = new FontIcon { Glyph = "\xE78C", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            gridItem.Click += (s, a) => ToggleGrid();
+            menu.Items.Add(gridItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            var refreshItem = new MenuFlyoutItem
+            {
+                Text = "刷新",
+                Icon = new FontIcon { Glyph = "\xE72C", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            refreshItem.Click += (s, a) => _ = _tabManager.CurrentTab?.RefreshAsync();
+            menu.Items.Add(refreshItem);
+
+            var fsItem = new MenuFlyoutItem
+            {
+                Text = _isFullscreen ? "退出全屏" : "全屏",
+                Icon = new FontIcon { Glyph = "\xE740", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            fsItem.Click += (s, a) => ToggleFullscreen();
+            menu.Items.Add(fsItem);
+
+            var settingsItem = new MenuFlyoutItem
+            {
+                Text = "设置",
+                Icon = new FontIcon { Glyph = "\xE713", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            settingsItem.Click += (s, a) => NotificationService.ShowToast("Metro IE", "设置面板（开发中）");
+            menu.Items.Add(settingsItem);
+
+            menu.ShowAt(this, e.GetPosition(this));
+            e.Handled = true;
         }
 
-        // ---- 缩略图网格（淡入缩放动画） ----
+        // ---- 缩略图网格（淡入动画） ----
         private void ToggleGrid()
         {
             if (_gridOpen) CloseGrid();
@@ -268,6 +341,7 @@ namespace EdgeRebuild.Metro
             else if (e.Key == VirtualKey.Escape)
             {
                 e.Handled = true;
+                if (_isFullscreen) ToggleFullscreen();
             }
         }
 

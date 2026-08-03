@@ -56,6 +56,8 @@ namespace EdgeRebuild.Metro
             {
                 Style = (Style)Resources["MetroTabButtonStyle"],
                 Tag = item,
+                MinWidth = 200,
+                MaxWidth = 260,
                 Background = isCurrent
                     ? new SolidColorBrush(MetroColorPalette.MetroBlue)
                     : new SolidColorBrush(Colors.Transparent)
@@ -64,6 +66,7 @@ namespace EdgeRebuild.Metro
 
             var grid = new Grid();
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var icon = new FontIcon
@@ -89,22 +92,61 @@ namespace EdgeRebuild.Metro
                 FontSize = 13,
                 Foreground = new SolidColorBrush(Windows.UI.Colors.White),
                 VerticalAlignment = VerticalAlignment.Center,
-                MaxWidth = 260,
+                HorizontalAlignment = HorizontalAlignment.Left,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
-            Grid.SetColumn(faviconImage, 0);
+            var closeBtn = new Button
+            {
+                Content = "\xE711",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 10,
+                Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Width = 22,
+                Height = 22,
+                Padding = new Thickness(0),
+                Tag = item,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            closeBtn.Click += (s, e) =>
+            {
+                if ((s as Button)?.Tag is TabViewItem t)
+                    TabCloseRequested?.Invoke(t);
+            };
+
             Grid.SetColumn(icon, 0);
+            Grid.SetColumn(faviconImage, 0);
             Grid.SetColumn(title, 1);
+            Grid.SetColumn(closeBtn, 2);
             grid.Children.Add(icon);
             grid.Children.Add(faviconImage);
             grid.Children.Add(title);
+            grid.Children.Add(closeBtn);
             btn.Content = grid;
 
             if (!string.IsNullOrEmpty(item.Tab.FaviconUri))
                 _ = LoadFaviconAsync(item, faviconImage, icon);
 
-            btn.Click += (s, e) => TabSelected?.Invoke(item);
+            btn.Click += (s, e) =>
+            {
+                // 点关闭按钮不触发切换（Click 会冒泡到标签按钮）
+                if (e.OriginalSource is DependencyObject src && !IsWithinCloseButton(src, closeBtn))
+                    TabSelected?.Invoke(item);
+            };
             return btn;
+        }
+
+        private bool IsWithinCloseButton(DependencyObject src, Button closeBtn)
+        {
+            DependencyObject cur = src;
+            while (cur != null && cur != this)
+            {
+                if (cur == closeBtn) return true;
+                cur = VisualTreeHelper.GetParent(cur);
+            }
+            return false;
         }
 
         private static async Task LoadFaviconAsync(TabViewItem item, Image faviconImage, FontIcon icon)
