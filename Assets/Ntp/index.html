@@ -1,176 +1,526 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>新标签页</title>
-<style>
-  /* Fluent Design 1（Win10）风格：渐变背景 + 毛玻璃感搜索框 + 悬浮卡片磁贴 */
-  :root {
-    --bg1: #f7f9fc; --bg2: #eef2f8; --bg3: #e6ecf6;
-    --card: rgba(255, 255, 255, 0.92); --card-solid: #ffffff;
-    --text: #1a1a1a; --sub: #6b6b6b;
-    --accent: #0067c0; --accent2: #0078d7;
-    --hover: rgba(0, 0, 0, 0.04);
-    --shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
-    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.10), 0 16px 40px rgba(0, 0, 0, 0.12);
-    --focus-ring: rgba(0, 120, 215, 0.35);
-  }
-  @media (prefers-color-scheme: dark) {
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新标签页</title>
+  <style>
+    /* ===== CSS Variables (与之前一致) ===== */
     :root {
-      --bg1: #242733; --bg2: #1e2129; --bg3: #191c23;
-      --card: rgba(43, 46, 56, 0.92); --card-solid: #2b2e38;
-      --text: #e8e8e8; --sub: #9a9a9a;
-      --accent: #4cc2ff; --accent2: #4cc2ff;
-      --hover: rgba(255, 255, 255, 0.06);
-      --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
-      --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.55);
-      --focus-ring: rgba(76, 194, 255, 0.4);
+      --bg1: #f7f9fc;
+      --bg2: #eef2f8;
+      --bg3: #e6ecf6;
+      --card: rgba(255,255,255,0.92);
+      --card-solid: #ffffff;
+      --text: #1a1a1a;
+      --sub: #6b6b6b;
+      --accent: #0067c0;
+      --accent2: #0078d7;
+      --hover: rgba(0,0,0,0.04);
+      --shadow: 0 2px 6px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.06);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.10), 0 16px 40px rgba(0,0,0,0.12);
+      --focus-ring: rgba(0,120,215,0.35);
     }
-  }
-  html.dark {
-    --bg1: #242733; --bg2: #1e2129; --bg3: #191c23;
-    --card: rgba(43, 46, 56, 0.92); --card-solid: #2b2e38;
-    --text: #e8e8e8; --sub: #9a9a9a;
-    --accent: #4cc2ff; --accent2: #4cc2ff;
-    --hover: rgba(255, 255, 255, 0.06);
-    --shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
-    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.55);
-    --focus-ring: rgba(76, 194, 255, 0.4);
-  }
-  html.light {
-    --bg1: #f7f9fc; --bg2: #eef2f8; --bg3: #e6ecf6;
-    --card: rgba(255, 255, 255, 0.92); --card-solid: #ffffff;
-    --text: #1a1a1a; --sub: #6b6b6b;
-    --accent: #0067c0; --accent2: #0078d7;
-    --hover: rgba(0, 0, 0, 0.04);
-    --shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.06);
-    --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.10), 0 16px 40px rgba(0, 0, 0, 0.12);
-    --focus-ring: rgba(0, 120, 215, 0.35);
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
-    color: var(--text);
-    background: linear-gradient(165deg, var(--bg1) 0%, var(--bg2) 45%, var(--bg3) 100%);
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: 100%;
-  }
-  .logo {
-    font-size: 40px; font-weight: 200; letter-spacing: 1px; margin-bottom: 34px;
-    user-select: none; display: flex; align-items: center;
-    animation: fadeUp .45s ease both;
-  }
-  .logo b { font-weight: 600; color: var(--accent2); }
-  .logo .globe { font-size: 34px; margin-right: 10px; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg1: #242733;
+        --bg2: #1e2129;
+        --bg3: #191c23;
+        --card: rgba(43,46,56,0.92);
+        --card-solid: #2b2e38;
+        --text: #e8e8e8;
+        --sub: #9a9a9a;
+        --accent: #4cc2ff;
+        --accent2: #4cc2ff;
+        --hover: rgba(255,255,255,0.06);
+        --shadow: 0 2px 6px rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.4);
+        --shadow-hover: 0 4px 12px rgba(0,0,0,0.5), 0 16px 40px rgba(0,0,0,0.55);
+        --focus-ring: rgba(76,194,255,0.4);
+      }
+    }
+    html.dark {
+      --bg1: #242733;
+      --bg2: #1e2129;
+      --bg3: #191c23;
+      --card: rgba(43,46,56,0.92);
+      --card-solid: #2b2e38;
+      --text: #e8e8e8;
+      --sub: #9a9a9a;
+      --accent: #4cc2ff;
+      --accent2: #4cc2ff;
+      --hover: rgba(255,255,255,0.06);
+      --shadow: 0 2px 6px rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.4);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.5), 0 16px 40px rgba(0,0,0,0.55);
+      --focus-ring: rgba(76,194,255,0.4);
+    }
+    html.light {
+      --bg1: #f7f9fc;
+      --bg2: #eef2f8;
+      --bg3: #e6ecf6;
+      --card: rgba(255,255,255,0.92);
+      --card-solid: #ffffff;
+      --text: #1a1a1a;
+      --sub: #6b6b6b;
+      --accent: #0067c0;
+      --accent2: #0078d7;
+      --hover: rgba(0,0,0,0.04);
+      --shadow: 0 2px 6px rgba(0,0,0,0.05), 0 8px 24px rgba(0,0,0,0.06);
+      --shadow-hover: 0 4px 12px rgba(0,0,0,0.10), 0 16px 40px rgba(0,0,0,0.12);
+      --focus-ring: rgba(0,120,215,0.35);
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { height:100%; }
+    body {
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100%;
+      position: relative;
+      transition: background 0.35s ease;
+    }
 
-  #searchBox {
-    width: 620px; width: min(620px, 88vw); display: flex; align-items: center;
-    background: var(--card); border-radius: 26px; box-shadow: var(--shadow);
-    padding: 6px 8px 6px 22px;
-    transition: box-shadow .2s ease;
-    animation: fadeUp .45s ease .06s both;
-  }
-  #searchBox:focus-within {
-    box-shadow: 0 0 0 2px var(--focus-ring), var(--shadow-hover);
-  }
-  #searchBox input {
-    flex: 1; border: none; outline: none; background: transparent; color: var(--text);
-    font-size: 16px; padding: 10px 14px 10px 0; min-width: 0;
-  }
-  #searchBox button {
-    border: none; background: linear-gradient(135deg, var(--accent), var(--accent2));
-    color: #fff; border-radius: 19px; padding: 0 24px; height: 38px;
-    font-size: 14px; cursor: pointer; flex-shrink: 0;
-    box-shadow: 0 2px 8px var(--focus-ring);
-    transition: filter .15s ease;
-  }
-  #searchBox button:hover { filter: brightness(1.08); }
+    /* ===== 搜索遮罩 ===== */
+    #searchOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 5;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      will-change: opacity;
+    }
+    #searchOverlay.active { opacity: 1; }
 
-  #grid {
-    margin-top: 48px; display: grid; grid-template-columns: repeat(4, 104px); grid-gap: 18px;
-    animation: fadeUp .45s ease .12s both;
-  }
-  .tile {
-    text-align: center; cursor: pointer; border-radius: 12px; padding: 18px 6px 12px;
-    text-decoration: none; color: var(--text); position: relative; display: block;
-    background: var(--card); box-shadow: var(--shadow);
-    transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
-  }
-  .tile:hover {
-    transform: translateY(-3px);
-    box-shadow: var(--shadow-hover);
-    background: var(--card-solid);
-  }
-  .tile .fav {
-    width: 52px; height: 52px; border-radius: 16px; background: var(--card-solid);
-    box-shadow: inset 0 0 0 1px var(--hover);
-    display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;
-    font-size: 20px; color: var(--accent2); overflow: hidden; font-weight: 600;
-  }
-  .tile .fav img { width: 100%; height: 100%; object-fit: cover; }
-  .tile .name {
-    font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .tile .del {
-    position: absolute; top: 6px; right: 10px; display: none; color: var(--sub);
-    font-size: 14px; line-height: 1; z-index: 2; background: var(--card-solid);
-    border-radius: 50%; width: 18px; height: 18px; text-align: center;
-  }
-  .tile:hover .del { display: block; }
-  .tile.add {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    border: 1px dashed var(--sub); background: transparent; box-shadow: none;
-  }
-  .tile.add:hover { background: var(--hover); transform: none; box-shadow: none; }
-  .tile.add .plus {
-    width: 52px; height: 52px; border-radius: 50%; background: var(--card-solid);
-    display: flex; align-items: center; justify-content: center; margin: 0 auto 10px;
-    font-size: 26px; color: var(--sub); box-shadow: var(--shadow);
-  }
+    .logo {
+      font-size: 34px;
+      font-weight: 200;
+      letter-spacing: 1px;
+      margin-bottom: 28px;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      animation: fadeUp .45s ease both;
+      position: relative;
+      z-index: 6;
+    }
+    .logo b { font-weight: 600; color: var(--accent2); }
+    .logo .globe { font-size: 30px; margin-right: 8px; }
 
-  #addForm {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: none;
-    align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.25); z-index: 10;
-  }
-  #addForm .box {
-    background: var(--card-solid); border-radius: 12px; box-shadow: var(--shadow-hover);
-    padding: 20px; width: 380px; width: min(380px, 90vw); display: flex; flex-direction: column;
-  }
-  #addForm input {
-    border: 1px solid var(--hover); border-radius: 8px; padding: 9px 12px;
-    background: var(--bg2); color: var(--text); font-size: 14px; outline: none;
-    margin-bottom: 10px;
-  }
-  #addForm .row { display: flex; justify-content: flex-end; }
-  #addForm .row .ok { margin-left: 8px; }
-  #addForm button {
-    border: none; border-radius: 8px; padding: 8px 18px; font-size: 13px; cursor: pointer;
-  }
-  #addForm .ok { background: var(--accent2); color: #fff; }
-  #addForm .cancel { background: var(--hover); color: var(--text); }
+    #settingsBtn {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 20;
+      transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
+      font-size: 20px;
+      line-height: 1;
+      user-select: none;
+      border: none;
+      color: var(--text);
+    }
+    #settingsBtn:hover,
+    #settingsBtn:focus-visible {
+      background: var(--card-solid);
+      transform: scale(1.05);
+      box-shadow: var(--shadow-hover);
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
 
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: none; }
-  }
-</style>
+    #settingsPanel {
+      position: fixed;
+      top: 70px;
+      right: 20px;
+      background: var(--card-solid);
+      border-radius: 12px;
+      box-shadow: var(--shadow-hover);
+      padding: 10px 0;
+      min-width: 200px;
+      z-index: 21;
+      visibility: hidden;
+      opacity: 0;
+      transform: scale(0.94) translateY(-8px);
+      transform-origin: top right;
+      transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s 0.18s;
+      display: block;
+      pointer-events: none;
+    }
+    #settingsPanel.open {
+      visibility: visible;
+      opacity: 1;
+      transform: scale(1) translateY(0);
+      transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s 0s;
+      pointer-events: auto;
+    }
+    #settingsPanel .option {
+      padding: 10px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-size: 14px;
+      transition: background 0.12s;
+    }
+    #settingsPanel .option:hover { background: var(--hover); }
+    #settingsPanel .option .indicator {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--sub);
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    #settingsPanel .option.active .indicator {
+      border-color: var(--accent2);
+      background: var(--accent2);
+      box-shadow: inset 0 0 0 2px var(--card-solid);
+    }
+
+    #searchBox {
+      width: 560px;
+      width: min(560px, 88vw);
+      display: flex;
+      align-items: center;
+      background: var(--card);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      padding: 4px 6px 4px 18px;
+      transition: box-shadow .2s ease;
+      animation: fadeUp .45s ease .06s both;
+      position: relative;
+      z-index: 10;
+    }
+    #searchBox:focus-within {
+      box-shadow: 0 0 0 2px var(--focus-ring), var(--shadow-hover);
+    }
+    #searchBox input {
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: var(--text);
+      font-size: 15px;
+      padding: 8px 12px 8px 0;
+      min-width: 0;
+    }
+    #searchBox button {
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      border-radius: 16px;
+      padding: 0 20px;
+      height: 32px;
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px var(--focus-ring);
+      transition: filter .15s ease;
+    }
+    #searchBox button:hover { filter: brightness(1.08); }
+
+    /* ===== 单行 Flex 容器，居中，可水平滚动 ===== */
+    #grid {
+      margin-top: 40px;
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 14px;
+      justify-content: center;
+      padding: 10px 0;
+      max-width: 90vw;
+      animation: fadeUp .45s ease .12s both;
+      position: relative;
+      z-index: 6;
+      /* 隐藏滚动条（可选） */
+      scrollbar-width: thin;
+      -webkit-overflow-scrolling: touch;
+    }
+    #grid::-webkit-scrollbar {
+      height: 4px;
+    }
+    #grid::-webkit-scrollbar-thumb {
+      background: var(--sub);
+      border-radius: 4px;
+    }
+
+    .tile {
+      flex: 0 0 80px;           /* 固定宽度 80px，不伸缩 */
+      height: 80px;             /* 正方形 */
+      text-align: center;
+      cursor: pointer;
+      border-radius: 12px;
+      padding: 10px 4px 8px;
+      text-decoration: none;
+      color: var(--text);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+      cursor: grab;
+      user-select: none;
+    }
+    .tile:active {
+      cursor: grabbing;
+    }
+    .tile.dragging {
+      opacity: 0.4;
+      transform: scale(0.95);
+    }
+    .tile.drag-over {
+      transform: scale(1.02);
+      box-shadow: var(--shadow-hover);
+      border: 2px solid var(--accent2);
+    }
+
+    .tile:hover,
+    .tile:focus-visible {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-hover);
+      background: var(--card-solid);
+      outline: none;
+    }
+    .tile .fav {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: var(--card-solid);
+      box-shadow: inset 0 0 0 1px var(--hover);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 4px;
+      font-size: 16px;
+      color: var(--accent2);
+      overflow: hidden;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .tile .fav img { width:100%; height:100%; object-fit:cover; }
+    .tile .name {
+      font-size: 11px;
+      color: var(--sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+      line-height: 1.2;
+      width: 100%;
+    }
+    .tile .del {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      color: var(--sub);
+      font-size: 13px;
+      line-height: 1;
+      z-index: 2;
+      background: var(--card-solid);
+      border-radius: 50%;
+      width: 18px;
+      height: 18px;
+      text-align: center;
+      line-height: 18px;
+      opacity: 0.4;
+      transition: opacity 0.15s, background 0.15s, transform 0.15s;
+      cursor: pointer;
+      border: none;
+      padding: 0;
+      font-weight: 600;
+    }
+    .tile .del:hover,
+    .tile .del:focus-visible {
+      opacity: 1;
+      background: var(--card-solid);
+      transform: scale(1.15);
+      outline: 1px solid var(--focus-ring);
+    }
+
+    /* ===== 添加磁贴（特殊样式） ===== */
+    .tile.add {
+      background: transparent;
+      box-shadow: none;
+      border: 1px dashed var(--sub);
+      cursor: pointer;
+      flex: 0 0 80px;
+      height: 80px;
+    }
+    .tile.add:hover,
+    .tile.add:focus-visible {
+      background: var(--hover);
+      transform: none;
+      box-shadow: none;
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+    .tile.add .plus {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--card-solid);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 4px;
+      font-size: 22px;
+      color: var(--sub);
+      box-shadow: var(--shadow);
+    }
+    .tile.add {
+      cursor: pointer;
+      user-select: none;
+    }
+    .tile.add:active { cursor: pointer; }
+
+    /* ===== 表单 Modal ===== */
+    #addForm, #editForm {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.25);
+      backdrop-filter: blur(4px);
+      z-index: 10;
+      animation: fadeIn .2s ease;
+    }
+    #addForm .box, #editForm .box {
+      background: var(--card-solid);
+      border-radius: 12px;
+      box-shadow: var(--shadow-hover);
+      padding: 20px;
+      width: 380px;
+      width: min(380px, 90vw);
+      display: flex;
+      flex-direction: column;
+    }
+    #addForm input, #editForm input {
+      border: 1px solid var(--hover);
+      border-radius: 8px;
+      padding: 9px 12px;
+      background: var(--bg2);
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      margin-bottom: 10px;
+      transition: border-color 0.15s;
+    }
+    #addForm input:focus, #editForm input:focus {
+      border-color: var(--accent2);
+      box-shadow: 0 0 0 2px var(--focus-ring);
+    }
+    #addForm .row, #editForm .row { display: flex; justify-content: flex-end; }
+    #addForm .row .ok, #editForm .row .ok { margin-left: 8px; }
+    #addForm button, #editForm button {
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: filter 0.15s;
+    }
+    #addForm .ok, #editForm .ok { background: var(--accent2); color: #fff; }
+    #addForm .cancel, #editForm .cancel { background: var(--hover); color: var(--text); }
+    #addForm .ok:hover, #addForm .ok:focus-visible,
+    #editForm .ok:hover, #editForm .ok:focus-visible {
+      filter: brightness(1.08);
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+    #addForm .cancel:hover, #addForm .cancel:focus-visible,
+    #editForm .cancel:hover, #editForm .cancel:focus-visible {
+      filter: brightness(0.92);
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+
+    #toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--card-solid);
+      color: var(--text);
+      padding: 10px 24px;
+      border-radius: 30px;
+      box-shadow: var(--shadow-hover);
+      font-size: 14px;
+      z-index: 30;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
+      pointer-events: none;
+      border: 1px solid var(--hover);
+      max-width: 90vw;
+    }
+    #toast.show {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+      transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0s;
+    }
+  </style>
 </head>
 <body>
-  <div class="logo"><span class="globe">&#x1F310;</span> Edge <b>Rebuild</b></div>
+
+  <!-- 搜索遮罩 -->
+  <div id="searchOverlay"></div>
+
+  <button id="settingsBtn" role="button" aria-label="背景设置" tabindex="0">⚙️</button>
+
+  <div id="settingsPanel" role="menu">
+    <div class="option active" data-type="solid" role="menuitemradio" aria-checked="true" tabindex="0">
+      <span class="indicator" aria-hidden="true"></span> 纯色渐变
+    </div>
+    <div class="option" data-type="bing" role="menuitemradio" aria-checked="false" tabindex="0">
+      <span class="indicator" aria-hidden="true"></span> Bing 每日壁纸
+    </div>
+    <div class="option" data-type="custom" role="menuitemradio" aria-checked="false" tabindex="0">
+      <span class="indicator" aria-hidden="true"></span> 自定义壁纸
+    </div>
+  </div>
+
+  <div class="logo"><span class="globe" aria-hidden="true">&#x1F310;</span> Edge <b>Rebuild</b></div>
 
   <div id="searchBox">
-    <input id="q" placeholder="搜索网页或输入网址" autofocus spellcheck="false">
+    <label for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;">搜索</label>
+    <input id="q" placeholder="搜索网页或输入网址" autofocus spellcheck="false" aria-label="搜索框">
     <button id="go">搜索</button>
   </div>
 
   <div id="grid"></div>
 
-  <div id="addForm">
+  <!-- 添加表单 -->
+  <div id="addForm" role="dialog" aria-modal="true" aria-label="添加新磁贴">
     <div class="box">
-      <input id="addUrl" placeholder="网址（如 https://example.com）" spellcheck="false">
-      <input id="addName" placeholder="名称（留空自动取域名）" spellcheck="false">
+      <input id="addUrl" placeholder="网址（如 https://example.com）" spellcheck="false" aria-label="网址">
+      <input id="addName" placeholder="名称（留空自动取域名）" spellcheck="false" aria-label="名称">
       <div class="row">
         <button class="cancel" id="addCancel">取消</button>
         <button class="ok" id="addOk">添加</button>
@@ -178,139 +528,597 @@
     </div>
   </div>
 
-<script>
-(function () {
-  "use strict";
-  // 主题：宿主经查询参数显式传入（EdgeHTML 无 prefers-color-scheme），
-  // 无参数时回退媒体查询
-  try {
-    var theme = new URLSearchParams(location.search).get("theme");
-    if (theme === "dark") document.documentElement.classList.add("dark");
-    else if (theme === "light") document.documentElement.classList.add("light");
-  } catch (e) { }
-  var TILE_KEY = "ntp_tiles_v1";
-  var DEFAULT_TILES = [
-    { name: "GitHub", url: "https://github.com" },
-    { name: "YouTube", url: "https://www.youtube.com" },
-    { name: "Bing", url: "https://www.bing.com" },
-    { name: "百度", url: "https://www.baidu.com" }
-  ];
+  <!-- 编辑表单 -->
+  <div id="editForm" role="dialog" aria-modal="true" aria-label="编辑磁贴">
+    <div class="box">
+      <input id="editUrl" placeholder="网址" spellcheck="false" aria-label="编辑网址">
+      <input id="editName" placeholder="名称" spellcheck="false" aria-label="编辑名称">
+      <div class="row">
+        <button class="cancel" id="editCancel">取消</button>
+        <button class="ok" id="editOk">保存</button>
+      </div>
+    </div>
+  </div>
 
-  function loadTiles() {
-    try {
-      var raw = localStorage.getItem(TILE_KEY);
-      if (raw) { var arr = JSON.parse(raw); if (Array.isArray(arr)) return arr; }
-    } catch (e) { }
-    return DEFAULT_TILES.slice();
-  }
+  <div id="toast"></div>
 
-  function saveTiles(tiles) {
-    try { localStorage.setItem(TILE_KEY, JSON.stringify(tiles)); } catch (e) { }
-  }
+  <script>
+    (function() {
+      "use strict";
 
-  function hostOf(url) {
-    try { return new URL(url).hostname; } catch (e) { return url; }
-  }
+      // ============================================================
+      //  搜索栏聚焦变暗（首次聚焦不激活）
+      // ============================================================
+      var searchInput = document.getElementById('q');
+      var overlay = document.getElementById('searchOverlay');
+      var initialFocus = true;
 
-  function renderGrid() {
-    var grid = document.getElementById("grid");
-    grid.innerHTML = "";
-    var tiles = loadTiles();
-    tiles.forEach(function (t, i) {
-      var a = document.createElement("a");
-      a.className = "tile";
-      a.href = t.url;
-      var icon = document.createElement("span");
-      icon.className = "fav";
-      var img = document.createElement("img");
-      img.src = "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(hostOf(t.url)) + "&sz=48";
-      img.loading = "lazy";
-      img.decoding = "async";
-      img.referrerPolicy = "no-referrer";
-      img.onerror = function () { icon.textContent = (t.name || "?").charAt(0).toUpperCase(); };
-      icon.appendChild(img);
-      var name = document.createElement("span");
-      name.className = "name";
-      name.textContent = t.name || hostOf(t.url);
-      name.title = t.url;
-      var del = document.createElement("span");
-      del.className = "del";
-      del.textContent = "\u00D7";
-      del.addEventListener("click", function (e) {
-        e.preventDefault(); e.stopPropagation();
-        tiles.splice(i, 1);
-        saveTiles(tiles);
-        renderGrid();
+      function setOverlayActive(active) {
+        if (active) overlay.classList.add('active');
+        else overlay.classList.remove('active');
+      }
+
+      searchInput.addEventListener('focus', function() {
+        if (initialFocus) { initialFocus = false; return; }
+        setOverlayActive(true);
       });
-      a.appendChild(del);
-      a.appendChild(icon);
-      a.appendChild(name);
-      grid.appendChild(a);
-    });
+      searchInput.addEventListener('blur', function() {
+        setOverlayActive(false);
+      });
 
-    var addTile = document.createElement("div");
-    addTile.className = "tile add";
-    var plus = document.createElement("span");
-    plus.className = "plus";
-    plus.textContent = "+";
-    var addName = document.createElement("span");
-    addName.className = "name";
-    addName.textContent = "添加";
-    addTile.appendChild(plus);
-    addTile.appendChild(addName);
-    addTile.addEventListener("click", function () {
-      document.getElementById("addUrl").value = "";
-      document.getElementById("addName").value = "";
-      document.getElementById("addForm").style.display = "flex";
-      document.getElementById("addUrl").focus();
-    });
-    grid.appendChild(addTile);
-  }
+      // ============================================================
+      //  常量与工具
+      // ============================================================
+      var TILE_KEY = 'ntp_tiles_v1';
+      var BG_KEY = 'ntp_bg_type';
+      var CUSTOM_BG_KEY = 'ntp_custom_bg_url';
 
-  function submitSearch() {
-    var q = document.getElementById("q").value.trim();
-    if (!q) return;
-    if (/^(https?:\/\/|about:|edge:|ms-appx)/i.test(q)) { location.href = q; return; }
-    if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
-      window.chrome.webview.postMessage("ntp:search:" + q);
-    } else {
-      // EdgeHTML 无 postMessage：写 marker 由宿主轮询转发（与 WebView2 同走设置里的搜索引擎）
-      window.__edgNtpSearch = q;
-      setTimeout(function () {
-        if (window.__edgNtpSearch === q) location.href = "https://www.bing.com/search?q=" + encodeURIComponent(q);
-      }, 3000);
-    }
-  }
+      var DEFAULT_TILES = [
+        { name: 'GitHub', url: 'https://github.com' },
+        { name: 'YouTube', url: 'https://www.youtube.com' },
+        { name: 'Bing', url: 'https://www.bing.com' },
+        { name: '百度', url: 'https://www.baidu.com' }
+      ];
 
-  document.getElementById("go").addEventListener("click", submitSearch);
-  document.getElementById("q").addEventListener("keydown", function (e) {
-    if (e.key === "Enter") submitSearch();
-  });
+      var toastEl = document.getElementById('toast');
+      var toastTimer = null;
 
-  document.getElementById("addOk").addEventListener("click", function () {
-    var url = document.getElementById("addUrl").value.trim();
-    if (!url) return;
-    if (!/^https?:\/\//i.test(url)) url = "https://" + url;
-    var name = document.getElementById("addName").value.trim() || hostOf(url);
-    var tiles = loadTiles();
-    if (!tiles.some(function (t) { return t.url === url; })) {
-      tiles.push({ name: name, url: url });
-      saveTiles(tiles);
-    }
-    document.getElementById("addForm").style.display = "none";
-    renderGrid();
-  });
-  document.getElementById("addCancel").addEventListener("click", function () {
-    document.getElementById("addForm").style.display = "none";
-  });
-  document.getElementById("addForm").addEventListener("click", function (e) {
-    if (e.target === this) this.style.display = "none";
-  });
+      function showToast(msg) {
+        if (toastTimer) clearTimeout(toastTimer);
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        toastTimer = setTimeout(function() {
+          toastEl.classList.remove('show');
+          toastTimer = null;
+        }, 3000);
+      }
 
-  renderGrid();
-  var q = document.getElementById("q");
-  if (document.hasFocus()) q.focus();
-})();
-</script>
+      function isDarkMode() {
+        return document.documentElement.classList.contains('dark') ||
+          (!document.documentElement.classList.contains('light') &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches);
+      }
+
+      function getSolidBackground() {
+        return isDarkMode() ?
+          'linear-gradient(165deg, #242733 0%, #1e2129 45%, #191c23 100%)' :
+          'linear-gradient(165deg, #f7f9fc 0%, #eef2f8 45%, #e6ecf6 100%)';
+      }
+
+      function isValidUrl(str) {
+        if (!str) return false;
+        try {
+          var url = new URL(str);
+          return url.protocol === 'http:' || url.protocol === 'https:';
+        } catch (_) {
+          return false;
+        }
+      }
+
+      function safeGetHostname(str) {
+        try {
+          var url = new URL(str);
+          return url.hostname || '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function sanitizeUrl(str) {
+        if (!str) return '#';
+        try {
+          var url = new URL(str);
+          if (url.protocol === 'http:' || url.protocol === 'https:') {
+            return url.href;
+          }
+          return '#';
+        } catch (_) {
+          return '#';
+        }
+      }
+
+      function getBgGradientOverlay() {
+        return isDarkMode() ?
+          'linear-gradient(165deg, rgba(36,39,51,0.55), rgba(30,33,41,0.55) 45%, rgba(25,28,35,0.55) 100%)' :
+          'linear-gradient(165deg, rgba(247,249,252,0.55), rgba(238,242,248,0.55) 45%, rgba(230,236,246,0.55) 100%)';
+      }
+
+      // ============================================================
+      //  背景管理 (第三方镜像)
+      // ============================================================
+      var bingImageUrl = null;
+      var currentBgType = localStorage.getItem(BG_KEY) || 'bing';
+      var customBgUrl = localStorage.getItem(CUSTOM_BG_KEY) || '';
+
+      function getBingMirrorUrl() {
+        var cacheBuster = new Date().getTime();
+        return 'https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN&_=' + cacheBuster;
+      }
+
+      function applyBackground(type) {
+        if (type === 'solid') {
+          document.body.style.background = getSolidBackground();
+          return;
+        }
+        if (type === 'custom' && customBgUrl && isValidUrl(customBgUrl)) {
+          var gradient = getBgGradientOverlay();
+          var safeUrl = encodeURI(customBgUrl);
+          document.body.style.background = gradient + ', url("' + safeUrl + '") center/cover no-repeat fixed';
+          return;
+        }
+        if (type === 'bing') {
+          var mirror = getBingMirrorUrl();
+          var grad = getBgGradientOverlay();
+          document.body.style.background = grad + ', url("' + mirror + '") center/cover no-repeat fixed';
+          bingImageUrl = mirror;
+          return;
+        }
+        document.body.style.background = getSolidBackground();
+      }
+
+      function updateMenuActive() {
+        var options = document.querySelectorAll('#settingsPanel .option');
+        for (var i = 0; i < options.length; i++) {
+          var opt = options[i];
+          var type = opt.getAttribute('data-type');
+          var isActive = (type === currentBgType);
+          if (isActive) {
+            opt.classList.add('active');
+            opt.setAttribute('aria-checked', 'true');
+          } else {
+            opt.classList.remove('active');
+            opt.setAttribute('aria-checked', 'false');
+          }
+        }
+      }
+
+      function setBackgroundType(type) {
+        if (type === currentBgType) {
+          if (type === 'bing') { applyBackground('bing'); showToast('已刷新 Bing 壁纸'); }
+          return;
+        }
+        if (type === 'custom') {
+          var url = prompt('请输入自定义壁纸的图片 URL（需以 http:// 或 https:// 开头）：', customBgUrl || '');
+          if (url === null) { updateMenuActive(); return; }
+          url = url.trim();
+          if (!url) { showToast('未输入 URL，取消设置'); return; }
+          if (!isValidUrl(url)) { showToast('无效的 URL，请以 http:// 或 https:// 开头'); return; }
+          customBgUrl = url;
+          localStorage.setItem(CUSTOM_BG_KEY, customBgUrl);
+          currentBgType = 'custom';
+          localStorage.setItem(BG_KEY, 'custom');
+          applyBackground('custom');
+          updateMenuActive();
+          showToast('自定义壁纸已应用 ✅');
+          return;
+        }
+        currentBgType = type;
+        localStorage.setItem(BG_KEY, type);
+        if (type === 'bing') { applyBackground('bing'); showToast('已切换到 Bing 壁纸（镜像）'); }
+        else { applyBackground('solid'); showToast('已切换到纯色背景'); }
+        updateMenuActive();
+      }
+
+      // ============================================================
+      //  设置面板 UI
+      // ============================================================
+      var settingsBtn = document.getElementById('settingsBtn');
+      var settingsPanel = document.getElementById('settingsPanel');
+
+      function toggleSettings(forceState) {
+        var isOpen = settingsPanel.classList.contains('open');
+        var nextState = (forceState !== undefined) ? forceState : !isOpen;
+        if (nextState) {
+          settingsPanel.classList.add('open');
+          settingsBtn.setAttribute('aria-expanded', 'true');
+        } else {
+          settingsPanel.classList.remove('open');
+          settingsBtn.setAttribute('aria-expanded', 'false');
+        }
+      }
+
+      settingsBtn.addEventListener('click', function(e) { e.stopPropagation(); toggleSettings(); });
+      settingsBtn.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSettings(); }
+      });
+      document.addEventListener('click', function(e) {
+        if (!settingsPanel.contains(e.target) && e.target !== settingsBtn) toggleSettings(false);
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && settingsPanel.classList.contains('open')) {
+          toggleSettings(false);
+          settingsBtn.focus();
+        }
+      });
+      settingsPanel.addEventListener('click', function(e) {
+        var option = e.target.closest('.option');
+        if (!option) return;
+        var type = option.getAttribute('data-type');
+        setBackgroundType(type);
+        toggleSettings(false);
+      });
+      settingsPanel.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          var option = e.target.closest('.option');
+          if (!option) return;
+          e.preventDefault();
+          var type = option.getAttribute('data-type');
+          setBackgroundType(type);
+          toggleSettings(false);
+        }
+      });
+
+      // ============================================================
+      //  磁贴数据管理 + 渲染 (单行 Flex)
+      // ============================================================
+      var tilesData = [];
+
+      function loadTiles() {
+        try {
+          var raw = localStorage.getItem(TILE_KEY);
+          if (raw) {
+            var arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length) {
+              tilesData = arr.filter(function(t) { return t && t.url && isValidUrl(t.url); });
+              if (tilesData.length) return;
+            }
+          }
+        } catch (_) { /* ignore */ }
+        tilesData = DEFAULT_TILES.slice();
+      }
+
+      function saveTiles() {
+        try { localStorage.setItem(TILE_KEY, JSON.stringify(tilesData)); } catch (_) { /* ignore */ }
+      }
+
+      // 编辑相关
+      var editForm = document.getElementById('editForm');
+      var editUrlInput = document.getElementById('editUrl');
+      var editNameInput = document.getElementById('editName');
+      var editOkBtn = document.getElementById('editOk');
+      var editCancelBtn = document.getElementById('editCancel');
+      var editIndex = -1;  // 当前编辑的磁贴索引
+
+      function openEditForm(index) {
+        if (index < 0 || index >= tilesData.length) return;
+        editIndex = index;
+        var tile = tilesData[index];
+        editUrlInput.value = tile.url;
+        editNameInput.value = tile.name || '';
+        editForm.style.display = 'flex';
+        setTimeout(function() { editUrlInput.focus(); }, 50);
+      }
+
+      function closeEditForm() {
+        editForm.style.display = 'none';
+        editIndex = -1;
+      }
+
+      function handleEditOk() {
+        if (editIndex < 0 || editIndex >= tilesData.length) { closeEditForm(); return; }
+        var url = editUrlInput.value.trim();
+        if (!url) { showToast('请输入网址'); return; }
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        if (!isValidUrl(url)) { showToast('无效的网址'); return; }
+        var name = editNameInput.value.trim() || safeGetHostname(url) || url;
+        // 检查是否与其他磁贴重复（排除自身）
+        for (var i = 0; i < tilesData.length; i++) {
+          if (i !== editIndex && tilesData[i].url === url) {
+            showToast('该网址已存在');
+            return;
+          }
+        }
+        tilesData[editIndex].url = url;
+        tilesData[editIndex].name = name;
+        saveTiles();
+        renderGrid();
+        closeEditForm();
+        showToast('已更新');
+      }
+
+      editOkBtn.addEventListener('click', handleEditOk);
+      editCancelBtn.addEventListener('click', closeEditForm);
+      editUrlInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); editNameInput.focus(); }
+      });
+      editNameInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); handleEditOk(); }
+      });
+      editForm.addEventListener('click', function(e) {
+        if (e.target === editForm) closeEditForm();
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && editForm.style.display === 'flex') closeEditForm();
+      });
+
+      // 渲染网格（单行 Flex）
+      function renderGrid() {
+        var grid = document.getElementById('grid');
+        grid.innerHTML = '';
+
+        for (var i = 0; i < tilesData.length; i++) {
+          (function(index) {
+            var t = tilesData[index];
+            var safeUrl = sanitizeUrl(t.url);
+            var host = safeGetHostname(t.url) || t.name || '?';
+            var displayName = t.name || host;
+
+            var a = document.createElement('a');
+            a.className = 'tile';
+            a.href = safeUrl;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.setAttribute('aria-label', displayName + '（在新窗口打开）');
+            a.setAttribute('data-index', index);
+            a.draggable = true;
+
+            // ---- 拖拽事件 ----
+            a.addEventListener('dragstart', function(e) {
+              e.dataTransfer.setData('text/plain', index);
+              this.classList.add('dragging');
+            });
+            a.addEventListener('dragend', function(e) {
+              this.classList.remove('dragging');
+              var tiles = grid.querySelectorAll('.tile');
+              for (var k = 0; k < tiles.length; k++) tiles[k].classList.remove('drag-over');
+            });
+            a.addEventListener('dragover', function(e) {
+              e.preventDefault();
+              var tiles = grid.querySelectorAll('.tile');
+              for (var k = 0; k < tiles.length; k++) tiles[k].classList.remove('drag-over');
+              this.classList.add('drag-over');
+            });
+            a.addEventListener('dragleave', function(e) {
+              this.classList.remove('drag-over');
+            });
+            a.addEventListener('drop', function(e) {
+              e.preventDefault();
+              var fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+              var toIdx = parseInt(this.getAttribute('data-index'));
+              if (isNaN(fromIdx) || isNaN(toIdx) || fromIdx === toIdx) {
+                var tiles = grid.querySelectorAll('.tile');
+                for (var k = 0; k < tiles.length; k++) tiles[k].classList.remove('drag-over');
+                return;
+              }
+              var temp = tilesData[fromIdx];
+              tilesData[fromIdx] = tilesData[toIdx];
+              tilesData[toIdx] = temp;
+              saveTiles();
+              renderGrid();
+              showToast('已排序');
+            });
+
+            // ---- 右键编辑 ----
+            a.addEventListener('contextmenu', function(e) {
+              e.preventDefault();
+              var idx = parseInt(this.getAttribute('data-index'));
+              if (!isNaN(idx)) openEditForm(idx);
+            });
+
+            // ---- 图标 ---- 
+            var icon = document.createElement('span');
+            icon.className = 'fav';
+            var img = document.createElement('img');
+            img.src = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=40';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.referrerPolicy = 'no-referrer';
+            img.alt = '';
+            img.onerror = function() {
+              icon.textContent = (displayName || '?').charAt(0).toUpperCase();
+            };
+            icon.appendChild(img);
+
+            var nameSpan = document.createElement('span');
+            nameSpan.className = 'name';
+            nameSpan.textContent = displayName;
+            nameSpan.title = t.url;
+
+            var del = document.createElement('button');
+            del.className = 'del';
+            del.textContent = '\u00D7';
+            del.setAttribute('aria-label', '删除 ' + displayName);
+            del.type = 'button';
+            del.addEventListener('click', function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+              tilesData.splice(index, 1);
+              saveTiles();
+              renderGrid();
+              showToast('已删除 “' + displayName + '”');
+            });
+
+            a.appendChild(del);
+            a.appendChild(icon);
+            a.appendChild(nameSpan);
+            grid.appendChild(a);
+          })(i);
+        }
+
+        // 添加磁贴 (不可拖拽)
+        var addTile = document.createElement('div');
+        addTile.className = 'tile add';
+        addTile.tabIndex = 0;
+        addTile.setAttribute('role', 'button');
+        addTile.setAttribute('aria-label', '添加新磁贴');
+        addTile.draggable = false;
+
+        var plus = document.createElement('span');
+        plus.className = 'plus';
+        plus.textContent = '+';
+        var addName = document.createElement('span');
+        addName.className = 'name';
+        addName.textContent = '添加';
+
+        addTile.appendChild(plus);
+        addTile.appendChild(addName);
+
+        addTile.addEventListener('click', function() { openAddForm(); });
+        addTile.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAddForm(); }
+        });
+        grid.appendChild(addTile);
+      }
+
+      // ============================================================
+      //  添加表单 (原有)
+      // ============================================================
+      var addForm = document.getElementById('addForm');
+      var addUrlInput = document.getElementById('addUrl');
+      var addNameInput = document.getElementById('addName');
+      var addOkBtn = document.getElementById('addOk');
+      var addCancelBtn = document.getElementById('addCancel');
+      var lastFocusedElement = null;
+
+      function openAddForm() {
+        lastFocusedElement = document.activeElement;
+        addUrlInput.value = '';
+        addNameInput.value = '';
+        addForm.style.display = 'flex';
+        setTimeout(function() { addUrlInput.focus(); }, 50);
+      }
+
+      function closeAddForm() {
+        addForm.style.display = 'none';
+        if (lastFocusedElement && lastFocusedElement.focus) lastFocusedElement.focus();
+        else document.getElementById('q').focus();
+      }
+
+      function handleAddOk() {
+        var url = addUrlInput.value.trim();
+        if (!url) { showToast('请输入网址'); return; }
+        if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+        if (!isValidUrl(url)) { showToast('无效的网址'); return; }
+        var name = addNameInput.value.trim() || safeGetHostname(url) || url;
+        for (var i = 0; i < tilesData.length; i++) {
+          if (tilesData[i].url === url) { showToast('该网址已存在'); return; }
+        }
+        tilesData.push({ name: name, url: url });
+        saveTiles();
+        renderGrid();
+        closeAddForm();
+        showToast('已添加 “' + name + '”');
+      }
+
+      addOkBtn.addEventListener('click', handleAddOk);
+      addCancelBtn.addEventListener('click', closeAddForm);
+      addUrlInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); addNameInput.focus(); }
+      });
+      addNameInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); handleAddOk(); }
+      });
+      addForm.addEventListener('click', function(e) {
+        if (e.target === addForm) closeAddForm();
+      });
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && addForm.style.display === 'flex') closeAddForm();
+      });
+
+      // ============================================================
+      //  搜索
+      // ============================================================
+      var qInput = document.getElementById('q');
+      var goBtn = document.getElementById('go');
+
+      function submitSearch() {
+        var q = qInput.value.trim();
+        if (!q) return;
+        if (/^(https?:\/\/|about:|edge:|ms-appx)/i.test(q)) {
+          try {
+            var url = new URL(q);
+            if (url.protocol === 'http:' || url.protocol === 'https:') {
+              location.href = url.href;
+              return;
+            }
+          } catch (_) { /* ignore */ }
+        }
+        location.href = 'https://www.bing.com/search?q=' + encodeURIComponent(q);
+      }
+
+      goBtn.addEventListener('click', submitSearch);
+      qInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') submitSearch();
+      });
+
+      // ============================================================
+      //  系统主题
+      // ============================================================
+      if (window.matchMedia) {
+        var mq = window.matchMedia('(prefers-color-scheme: dark)');
+        if (mq.addEventListener) {
+          mq.addEventListener('change', function() {
+            if (!document.documentElement.classList.contains('light') &&
+                !document.documentElement.classList.contains('dark')) {
+              applyBackground(currentBgType);
+            }
+          });
+        } else if (mq.addListener) {
+          mq.addListener(function() {
+            if (!document.documentElement.classList.contains('light') &&
+                !document.documentElement.classList.contains('dark')) {
+              applyBackground(currentBgType);
+            }
+          });
+        }
+      }
+
+      // ============================================================
+      //  初始化
+      // ============================================================
+      try {
+        var theme = new URLSearchParams(location.search).get('theme');
+        if (theme === 'dark') document.documentElement.classList.add('dark');
+        else if (theme === 'light') document.documentElement.classList.add('light');
+      } catch (_) { /* ignore */ }
+
+      loadTiles();
+      renderGrid();
+
+      if (currentBgType === 'custom') {
+        if (customBgUrl && isValidUrl(customBgUrl)) applyBackground('custom');
+        else {
+          currentBgType = 'solid';
+          localStorage.setItem(BG_KEY, 'solid');
+          applyBackground('solid');
+          showToast('自定义壁纸 URL 无效，已切换到纯色');
+        }
+      } else if (currentBgType === 'bing') {
+        applyBackground('bing');
+      } else {
+        applyBackground('solid');
+      }
+
+      updateMenuActive();
+      setOverlayActive(false);
+
+      if (document.hasFocus()) {
+        setTimeout(function() { qInput.focus(); }, 100);
+      }
+
+      console.log('✅ Edge Rebuild 已启动 (单行磁贴)');
+    })();
+  </script>
+
 </body>
 </html>
