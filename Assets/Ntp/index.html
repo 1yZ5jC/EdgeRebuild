@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>新标签页</title>
   <style>
-    /* ===== CSS Variables (与之前一致) ===== */
+    /* ===== CSS Variables ===== */
     :root {
       --bg1: #f7f9fc;
       --bg2: #eef2f8;
@@ -68,6 +68,8 @@
       --shadow-hover: 0 4px 12px rgba(0,0,0,0.10), 0 16px 40px rgba(0,0,0,0.12);
       --focus-ring: rgba(0,120,215,0.35);
     }
+
+    /* ===== Reset ===== */
     * { margin:0; padding:0; box-sizing:border-box; }
     html, body { height:100%; }
     body {
@@ -98,6 +100,7 @@
     }
     #searchOverlay.active { opacity: 1; }
 
+    /* ===== Logo ===== */
     .logo {
       font-size: 34px;
       font-weight: 200;
@@ -113,6 +116,7 @@
     .logo b { font-weight: 600; color: var(--accent2); }
     .logo .globe { font-size: 30px; margin-right: 8px; }
 
+    /* ===== 设置按钮 ===== */
     #settingsBtn {
       position: fixed;
       top: 20px;
@@ -143,6 +147,7 @@
       outline-offset: 2px;
     }
 
+    /* ===== 设置面板 ===== */
     #settingsPanel {
       position: fixed;
       top: 70px;
@@ -193,6 +198,7 @@
       box-shadow: inset 0 0 0 2px var(--card-solid);
     }
 
+    /* ===== 搜索框（保留阴影和背景） ===== */
     #searchBox {
       width: 560px;
       width: min(560px, 88vw);
@@ -235,34 +241,26 @@
     }
     #searchBox button:hover { filter: brightness(1.08); }
 
-    /* ===== 单行 Flex 容器，居中，可水平滚动 ===== */
+    /* ===== 磁贴容器 ===== */
     #grid {
       margin-top: 40px;
       display: flex;
       flex-wrap: nowrap;
-      overflow-x: auto;
+      overflow: hidden;
       gap: 14px;
       justify-content: center;
-      padding: 10px 0;
-      max-width: 90vw;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
       animation: fadeUp .45s ease .12s both;
       position: relative;
       z-index: 6;
-      /* 隐藏滚动条（可选） */
-      scrollbar-width: thin;
-      -webkit-overflow-scrolling: touch;
-    }
-    #grid::-webkit-scrollbar {
-      height: 4px;
-    }
-    #grid::-webkit-scrollbar-thumb {
-      background: var(--sub);
-      border-radius: 4px;
     }
 
+    /* ===== 磁贴：完全透明，无阴影 ===== */
     .tile {
-      flex: 0 0 80px;           /* 固定宽度 80px，不伸缩 */
-      height: 80px;             /* 正方形 */
+      flex: 0 0 80px;
+      height: 80px;
       text-align: center;
       cursor: pointer;
       border-radius: 12px;
@@ -274,9 +272,9 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      background: var(--card);
-      box-shadow: var(--shadow);
-      transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+      background: transparent;
+      box-shadow: none;
+      transition: transform .15s ease;
       cursor: grab;
       user-select: none;
     }
@@ -291,15 +289,21 @@
       transform: scale(1.02);
       box-shadow: var(--shadow-hover);
       border: 2px solid var(--accent2);
+      background: var(--card-solid);
     }
 
-    .tile:hover,
-    .tile:focus-visible {
+    /* 悬停时仅上浮，无背景和阴影 */
+    .tile:hover {
       transform: translateY(-2px);
-      box-shadow: var(--shadow-hover);
-      background: var(--card-solid);
-      outline: none;
     }
+
+    /* 选中时仅显示轮廓 */
+    .tile:focus-visible {
+      outline: 2px solid var(--accent2);
+      outline-offset: 2px;
+      transform: translateY(-2px);
+    }
+
     .tile .fav {
       width: 40px;
       height: 40px;
@@ -356,7 +360,7 @@
       outline: 1px solid var(--focus-ring);
     }
 
-    /* ===== 添加磁贴（特殊样式） ===== */
+    /* ===== 添加磁贴 ===== */
     .tile.add {
       background: transparent;
       box-shadow: none;
@@ -364,12 +368,12 @@
       cursor: pointer;
       flex: 0 0 80px;
       height: 80px;
+      transition: opacity 0.2s;
     }
-    .tile.add:hover,
+    .tile.add:hover {
+      /* 无背景变化 */
+    }
     .tile.add:focus-visible {
-      background: var(--hover);
-      transform: none;
-      box-shadow: none;
       outline: 2px solid var(--focus-ring);
       outline-offset: 2px;
     }
@@ -391,6 +395,7 @@
       user-select: none;
     }
     .tile.add:active { cursor: pointer; }
+    .tile.add.hidden { display: none; }
 
     /* ===== 表单 Modal ===== */
     #addForm, #editForm {
@@ -457,9 +462,11 @@
       outline-offset: 2px;
     }
 
+    /* ===== 动画 ===== */
     @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
     @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
 
+    /* ===== Toast ===== */
     #toast {
       position: fixed;
       bottom: 30px;
@@ -492,8 +499,10 @@
   <!-- 搜索遮罩 -->
   <div id="searchOverlay"></div>
 
+  <!-- 设置按钮 -->
   <button id="settingsBtn" role="button" aria-label="背景设置" tabindex="0">⚙️</button>
 
+  <!-- 设置面板 -->
   <div id="settingsPanel" role="menu">
     <div class="option active" data-type="solid" role="menuitemradio" aria-checked="true" tabindex="0">
       <span class="indicator" aria-hidden="true"></span> 纯色渐变
@@ -506,15 +515,21 @@
     </div>
   </div>
 
+  <!-- Logo -->
   <div class="logo"><span class="globe" aria-hidden="true">&#x1F310;</span> Edge <b>Rebuild</b></div>
 
+  <!-- 搜索框 -->
   <div id="searchBox">
     <label for="q" style="position:absolute;width:1px;height:1px;overflow:hidden;">搜索</label>
     <input id="q" placeholder="搜索网页或输入网址" autofocus spellcheck="false" aria-label="搜索框">
     <button id="go">搜索</button>
   </div>
 
+  <!-- 磁贴网格 -->
   <div id="grid"></div>
+
+  <!-- 隐藏的文件选择器（用于自定义壁纸） -->
+  <input type="file" id="customBgFile" accept="image/*" style="display:none;">
 
   <!-- 添加表单 -->
   <div id="addForm" role="dialog" aria-modal="true" aria-label="添加新磁贴">
@@ -540,6 +555,7 @@
     </div>
   </div>
 
+  <!-- Toast 提示 -->
   <div id="toast"></div>
 
   <script>
@@ -644,7 +660,7 @@
       }
 
       // ============================================================
-      //  背景管理 (第三方镜像)
+      //  背景管理 (第三方镜像 + 本地图片)
       // ============================================================
       var bingImageUrl = null;
       var currentBgType = localStorage.getItem(BG_KEY) || 'bing';
@@ -660,10 +676,9 @@
           document.body.style.background = getSolidBackground();
           return;
         }
-        if (type === 'custom' && customBgUrl && isValidUrl(customBgUrl)) {
+        if (type === 'custom' && customBgUrl && customBgUrl.startsWith('data:image/')) {
           var gradient = getBgGradientOverlay();
-          var safeUrl = encodeURI(customBgUrl);
-          document.body.style.background = gradient + ', url("' + safeUrl + '") center/cover no-repeat fixed';
+          document.body.style.background = gradient + ', url("' + customBgUrl + '") center/cover no-repeat fixed';
           return;
         }
         if (type === 'bing') {
@@ -695,21 +710,18 @@
       function setBackgroundType(type) {
         if (type === currentBgType) {
           if (type === 'bing') { applyBackground('bing'); showToast('已刷新 Bing 壁纸'); }
+          if (type === 'custom') {
+            var fileInput = document.getElementById('customBgFile');
+            fileInput.value = '';
+            fileInput.click();
+            return;
+          }
           return;
         }
         if (type === 'custom') {
-          var url = prompt('请输入自定义壁纸的图片 URL（需以 http:// 或 https:// 开头）：', customBgUrl || '');
-          if (url === null) { updateMenuActive(); return; }
-          url = url.trim();
-          if (!url) { showToast('未输入 URL，取消设置'); return; }
-          if (!isValidUrl(url)) { showToast('无效的 URL，请以 http:// 或 https:// 开头'); return; }
-          customBgUrl = url;
-          localStorage.setItem(CUSTOM_BG_KEY, customBgUrl);
-          currentBgType = 'custom';
-          localStorage.setItem(BG_KEY, 'custom');
-          applyBackground('custom');
-          updateMenuActive();
-          showToast('自定义壁纸已应用 ✅');
+          var fileInput = document.getElementById('customBgFile');
+          fileInput.value = '';
+          fileInput.click();
           return;
         }
         currentBgType = type;
@@ -718,6 +730,43 @@
         else { applyBackground('solid'); showToast('已切换到纯色背景'); }
         updateMenuActive();
       }
+
+      // ============================================================
+      //  本地图片上传处理
+      // ============================================================
+      document.getElementById('customBgFile').addEventListener('change', function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+          showToast('请选择图片文件');
+          this.value = '';
+          return;
+        }
+
+        if (file.size > 2 * 1024 * 1024) {
+          showToast('图片过大，请选择小于 2MB 的图片');
+          this.value = '';
+          return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+          var dataUrl = ev.target.result;
+          localStorage.setItem(CUSTOM_BG_KEY, dataUrl);
+          customBgUrl = dataUrl;
+          currentBgType = 'custom';
+          localStorage.setItem(BG_KEY, 'custom');
+          applyBackground('custom');
+          updateMenuActive();
+          showToast('自定义壁纸已应用 ✅（再次点击可更换）');
+          document.getElementById('customBgFile').value = '';
+        };
+        reader.onerror = function() {
+          showToast('读取文件失败，请重试');
+        };
+        reader.readAsDataURL(file);
+      });
 
       // ============================================================
       //  设置面板 UI
@@ -769,7 +818,7 @@
       });
 
       // ============================================================
-      //  磁贴数据管理 + 渲染 (单行 Flex)
+      //  磁贴数据管理 + 渲染
       // ============================================================
       var tilesData = [];
 
@@ -797,7 +846,7 @@
       var editNameInput = document.getElementById('editName');
       var editOkBtn = document.getElementById('editOk');
       var editCancelBtn = document.getElementById('editCancel');
-      var editIndex = -1;  // 当前编辑的磁贴索引
+      var editIndex = -1;
 
       function openEditForm(index) {
         if (index < 0 || index >= tilesData.length) return;
@@ -821,7 +870,6 @@
         if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
         if (!isValidUrl(url)) { showToast('无效的网址'); return; }
         var name = editNameInput.value.trim() || safeGetHostname(url) || url;
-        // 检查是否与其他磁贴重复（排除自身）
         for (var i = 0; i < tilesData.length; i++) {
           if (i !== editIndex && tilesData[i].url === url) {
             showToast('该网址已存在');
@@ -851,7 +899,7 @@
         if (e.key === 'Escape' && editForm.style.display === 'flex') closeEditForm();
       });
 
-      // 渲染网格（单行 Flex）
+      // 渲染网格
       function renderGrid() {
         var grid = document.getElementById('grid');
         grid.innerHTML = '';
@@ -872,7 +920,6 @@
             a.setAttribute('data-index', index);
             a.draggable = true;
 
-            // ---- 拖拽事件 ----
             a.addEventListener('dragstart', function(e) {
               e.dataTransfer.setData('text/plain', index);
               this.classList.add('dragging');
@@ -908,24 +955,32 @@
               showToast('已排序');
             });
 
-            // ---- 右键编辑 ----
             a.addEventListener('contextmenu', function(e) {
               e.preventDefault();
               var idx = parseInt(this.getAttribute('data-index'));
               if (!isNaN(idx)) openEditForm(idx);
             });
 
-            // ---- 图标 ---- 
             var icon = document.createElement('span');
             icon.className = 'fav';
+
             var img = document.createElement('img');
-            img.src = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=40';
+            // 优先使用网站自身的 favicon.ico
+            var baseUrl = t.url.replace(/\/+$/, '');
+            var faviconUrl = baseUrl + '/favicon.ico';
+            img.src = faviconUrl;
             img.loading = 'lazy';
             img.decoding = 'async';
             img.referrerPolicy = 'no-referrer';
             img.alt = '';
+            // 如果失败，回退到 Google 服务
             img.onerror = function() {
-              icon.textContent = (displayName || '?').charAt(0).toUpperCase();
+              // 尝试 Google 服务
+              this.src = 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(host) + '&sz=40';
+              // 如果 Google 也失败，显示首字母
+              this.onerror = function() {
+                icon.textContent = (displayName || '?').charAt(0).toUpperCase();
+              };
             };
             icon.appendChild(img);
 
@@ -955,7 +1010,7 @@
           })(i);
         }
 
-        // 添加磁贴 (不可拖拽)
+        // 添加磁贴
         var addTile = document.createElement('div');
         addTile.className = 'tile add';
         addTile.tabIndex = 0;
@@ -978,10 +1033,25 @@
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAddForm(); }
         });
         grid.appendChild(addTile);
+
+        // 动态判断是否隐藏添加按钮
+        requestAnimationFrame(function() {
+          var containerWidth = grid.clientWidth;
+          var tileWidth = 80;
+          var gap = 14;
+          var maxTiles = Math.floor((containerWidth + gap) / (tileWidth + gap));
+          var currentCount = tilesData.length;
+          var totalNeeded = currentCount + 1;
+          if (totalNeeded > maxTiles) {
+            addTile.classList.add('hidden');
+          } else {
+            addTile.classList.remove('hidden');
+          }
+        });
       }
 
       // ============================================================
-      //  添加表单 (原有)
+      //  添加表单
       // ============================================================
       var addForm = document.getElementById('addForm');
       var addUrlInput = document.getElementById('addUrl');
@@ -991,6 +1061,15 @@
       var lastFocusedElement = null;
 
       function openAddForm() {
+        var grid = document.getElementById('grid');
+        var containerWidth = grid.clientWidth;
+        var tileWidth = 80;
+        var gap = 14;
+        var maxTiles = Math.floor((containerWidth + gap) / (tileWidth + gap));
+        if (tilesData.length + 1 > maxTiles) {
+          showToast('已无空位，无法添加更多磁贴');
+          return;
+        }
         lastFocusedElement = document.activeElement;
         addUrlInput.value = '';
         addNameInput.value = '';
@@ -1005,6 +1084,17 @@
       }
 
       function handleAddOk() {
+        var grid = document.getElementById('grid');
+        var containerWidth = grid.clientWidth;
+        var tileWidth = 80;
+        var gap = 14;
+        var maxTiles = Math.floor((containerWidth + gap) / (tileWidth + gap));
+        if (tilesData.length + 1 > maxTiles) {
+          showToast('已无空位，无法添加更多磁贴');
+          closeAddForm();
+          return;
+        }
+
         var url = addUrlInput.value.trim();
         if (!url) { showToast('请输入网址'); return; }
         if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
@@ -1033,6 +1123,17 @@
       });
       document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && addForm.style.display === 'flex') closeAddForm();
+      });
+
+      // ============================================================
+      //  窗口大小变化
+      // ============================================================
+      var resizeTimer;
+      window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+          renderGrid();
+        }, 200);
       });
 
       // ============================================================
@@ -1096,12 +1197,13 @@
       renderGrid();
 
       if (currentBgType === 'custom') {
-        if (customBgUrl && isValidUrl(customBgUrl)) applyBackground('custom');
-        else {
+        if (customBgUrl && customBgUrl.startsWith('data:image/')) {
+          applyBackground('custom');
+        } else {
           currentBgType = 'solid';
           localStorage.setItem(BG_KEY, 'solid');
           applyBackground('solid');
-          showToast('自定义壁纸 URL 无效，已切换到纯色');
+          showToast('自定义壁纸已失效，已切换到纯色');
         }
       } else if (currentBgType === 'bing') {
         applyBackground('bing');
@@ -1116,7 +1218,7 @@
         setTimeout(function() { qInput.focus(); }, 100);
       }
 
-      console.log('✅ Edge Rebuild 已启动 (单行磁贴)');
+      console.log('✅ Edge Rebuild 已启动 (本地壁纸可更换 + 图标 fallback)');
     })();
   </script>
 
