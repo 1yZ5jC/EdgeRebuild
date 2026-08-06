@@ -268,12 +268,14 @@ namespace EdgeRebuild.Metro
         private void AddressBar_RefreshRequested() => _ = _tabManager.CurrentTab?.RefreshAsync();
         private void AddressBar_HomeRequested() => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
         private void AddressBar_FullscreenRequested() => ToggleFullscreen();
-        private void AddressBar_UrlSubmitted(string input)
+        private async void AddressBar_UrlSubmitted(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return;
-            string url = input.Trim();
-            if (!url.Contains("://") && !url.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
-                url = "https://" + url;
+            // 网页/搜索二合一 + 中文域名 Punycode：无点号单词 → 搜索；www。cn 全角点也可当网址
+            string searchEngine = "Google";
+            try { searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google"; } catch { }
+            string url = UrlInputResolver.Resolve(input, searchEngine);
+            if (string.IsNullOrEmpty(url)) return;
             _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
         }
 

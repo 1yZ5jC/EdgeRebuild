@@ -32,8 +32,6 @@ namespace EdgeRebuild.Controls
         private bool _isSuggestionsVisible;
         private List<SuggestionItem> _currentSuggestions = new List<SuggestionItem>();
 
-        private static readonly IdnMapping _idn = new IdnMapping();
-
         private Brush _foregroundBrush;
         private Brush _mutedForegroundBrush;
         private bool _isDarkTheme;
@@ -467,92 +465,8 @@ namespace EdgeRebuild.Controls
                 }
             }
 
-            if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
-                raw.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||
-                raw.StartsWith("edge:", StringComparison.OrdinalIgnoreCase))
-                return raw;
-
-            raw = raw.Replace('\u3002', '.').Replace('\uFF0E', '.');
-            if (raw.Contains(" "))
-                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
-
-            bool hasDot = raw.Contains('.');
-            bool hasNonAscii = raw.Any(c => c > 127);
-
-            if (!hasDot && !hasNonAscii)
-            {
-                if (raw.Length >= 3 && raw.All(c => char.IsLetterOrDigit(c) || c == '-'))
-                    return "https://" + raw;
-                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
-            }
-
-            if (hasDot)
-            {
-                string converted = ConvertToPunycode(raw);
-                if (!converted.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                    !converted.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    converted = "https://" + converted;
-                if (Uri.TryCreate(converted, UriKind.Absolute, out _)) return converted;
-                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
-            }
-
-            if (!hasDot && hasNonAscii)
-            {
-                string converted = TryConvertDomain(raw);
-                if (converted != null)
-                {
-                    string url = "https://" + converted;
-                    if (Uri.TryCreate(url, UriKind.Absolute, out _)) return url;
-                }
-                return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
-            }
-            return string.Format(GetSearchUrl(raw), Uri.EscapeDataString(raw));
-        }
-
-        private string GetSearchUrl(string query)
-        {
-            return _searchEngine switch
-            {
-                "Bing" => $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}",
-                "DuckDuckGo" => $"https://duckduckgo.com/?q={Uri.EscapeDataString(query)}",
-                _ => $"https://www.google.com/search?q={Uri.EscapeDataString(query)}"
-            };
-        }
-
-        private string ConvertToPunycode(string url)
-        {
-            try
-            {
-                string protocol = "";
-                int protoIdx = url.IndexOf("://");
-                if (protoIdx >= 0)
-                {
-                    protocol = url.Substring(0, protoIdx + 3);
-                    url = url.Substring(protoIdx + 3);
-                }
-                int slashIdx = url.IndexOf('/');
-                string domain = slashIdx >= 0 ? url.Substring(0, slashIdx) : url;
-                string path = slashIdx >= 0 ? url.Substring(slashIdx) : "";
-                if (domain.Any(c => c > 127))
-                    domain = _idn.GetAscii(domain);
-                return protocol + domain + path;
-            }
-            catch { return url; }
-        }
-
-        private string TryConvertDomain(string domain)
-        {
-            try
-            {
-                if (domain.Any(c => c > 127))
-                {
-                    string ascii = _idn.GetAscii(domain);
-                    if (!string.IsNullOrEmpty(ascii)) return ascii;
-                }
-                return null;
-            }
-            catch { return null; }
+            // 智能解析（网页/搜索二合一 + 中文域名 Punycode）见 UrlInputResolver
+            return Services.UrlInputResolver.Resolve(raw, _searchEngine);
         }
 
         private string DecodeUrl(string url)
