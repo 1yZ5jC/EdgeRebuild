@@ -1,263 +1,1377 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Metro IE</title>
-<style>
-  :root {
-    --bg: #1E1E1E;
-    --muted: #8E8E8E;
-    --accent: #0078D7;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    background: var(--bg);
-    color: #fff;
-    font-family: "Segoe UI Light", "Segoe UI", "Microsoft YaHei UI", sans-serif;
-    overflow: hidden;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-  .wrap { height: 100%; display: flex; flex-direction: column; }
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Metro 新标签页</title>
+    <style>
+        /* ===== CSS Variables ===== */
+        :root {
+            --bg: #1E1E1E;
+            --bg-light: #2D2D30;
+            --muted: #8E8E8E;
+            --muted2: #6E6E6E;
+            --accent: #0078D7;
+            --accent-hover: #1A8AD7;
+            --card-bg: rgba(255, 255, 255, 0.06);
+            --text: #FFFFFF;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            --font: "Segoe UI Light", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+            --tile-bg: #767676; /* fallback */
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html,
+        body {
+            height: 100%;
+        }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            transition: background 0.4s ease;
+            display: flex;
+            flex-direction: column;
+        }
 
-  /* 顶栏：时钟 */
-  #clock {
-    text-align: right;
-    font-size: 13px;
-    color: var(--muted);
-    padding: 14px 28px 0 0;
-  }
+        /* ===== 顶部栏 ===== */
+        #topbar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 14px 28px 0 0;
+            flex-shrink: 0;
+            gap: 14px;
+            position: relative;
+            z-index: 10;
+        }
+        #clock {
+            font-size: 13px;
+            color: var(--muted);
+            font-weight: 300;
+            letter-spacing: 0.3px;
+        }
+        #settingsBtn {
+            background: transparent;
+            border: none;
+            color: var(--muted);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 0;
+            transition: color 0.15s, background 0.15s;
+            line-height: 1;
+        }
+        #settingsBtn:hover {
+            color: #fff;
+            background: var(--card-bg);
+        }
+        #settingsBtn:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
 
-  /* 搜索框：Metro 风格，白色大字 + 底部细线，聚焦变 2px 主题蓝 */
-  #searchbox {
-    margin: 34px auto 0 auto;
-    width: 640px;
-    max-width: 88vw;
-  }
-  #search-input {
-    display: block;
-    width: 100%;
-    background: transparent;
-    border: none;
-    outline: none;
-    color: #fff;
-    font-family: inherit;
-    font-size: 28px;
-    font-weight: 300;
-    padding: 6px 2px;
-    border-bottom: 1px solid var(--muted);
-    border-radius: 0;
-    -webkit-appearance: none;
-  }
-  #search-input:focus { border-bottom: 2px solid var(--accent); }
-  #search-input::placeholder { color: #6E6E6E; }
+        /* ===== 设置面板 ===== */
+        #settingsPanel {
+            position: fixed;
+            top: 60px;
+            right: 20px;
+            background: var(--bg-light);
+            border-radius: 0;
+            box-shadow: var(--shadow);
+            padding: 8px 0;
+            min-width: 200px;
+            z-index: 30;
+            visibility: hidden;
+            opacity: 0;
+            transform: scale(0.94) translateY(-8px);
+            transform-origin: top right;
+            transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s 0.18s;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        #settingsPanel.open {
+            visibility: visible;
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            transition: opacity 0.18s ease, transform 0.18s ease, visibility 0s 0s;
+            pointer-events: auto;
+        }
+        #settingsPanel .option {
+            padding: 10px 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 300;
+            transition: background 0.12s, color 0.12s;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+            font-family: var(--font);
+        }
+        #settingsPanel .option:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: #fff;
+        }
+        #settingsPanel .option .indicator {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid var(--muted2);
+            flex-shrink: 0;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        #settingsPanel .option.active .indicator {
+            border-color: var(--accent);
+            background: var(--accent);
+            box-shadow: inset 0 0 0 2px var(--bg-light);
+        }
+        #settingsPanel .option.active {
+            color: #fff;
+        }
+        #settingsPanel .option .label {
+            flex: 1;
+        }
+        #settingsPanel .option .badge {
+            font-size: 11px;
+            color: var(--muted2);
+            background: rgba(255, 255, 255, 0.06);
+            padding: 0 8px;
+            border-radius: 0;
+        }
+        /* 分隔线 */
+        #settingsPanel .divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            margin: 6px 16px;
+        }
+        /* 模式选项的小标签 */
+        #settingsPanel .mode-label {
+            padding: 6px 18px 2px;
+            font-size: 11px;
+            color: var(--muted2);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
 
-  /* 磁贴网格：Win8 开始屏幕形态，支持方/宽磁贴，拖拽排序 */
-  #tiles {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-content: flex-start;
-    max-width: 1104px;
-    margin: 40px auto 0 auto;
-    overflow-y: auto;
-    padding-bottom: 24px;
-  }
-  .tile {
-    position: relative;
-    width: 160px;
-    height: 160px;
-    margin: 12px;
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    transition: filter 0.1s ease;
-  }
-  .tile.wide { width: 344px; flex-direction: row; justify-content: flex-start; padding: 0 28px; }
-  .tile.wide .icon { margin: 0 20px 0 0; }
-  .tile:hover::after { background: rgba(255, 255, 255, 0.09); }
-  .tile:active::after { background: rgba(255, 255, 255, 0.16); }
-  .tile::after {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(255, 255, 255, 0);
-    transition: background 0.1s ease;
-    pointer-events: none;
-  }
-  .tile.dragging { opacity: 0.4; }
-  .tile.drop-target { outline: 3px solid rgba(255, 255, 255, 0.35); }
-  .tile .icon { font-size: 44px; line-height: 1; margin-bottom: 14px; pointer-events: none; }
-  .tile.wide .icon { font-size: 52px; }
-  .tile .name {
-    font-size: 15px;
-    color: #fff;
-    max-width: 130px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    pointer-events: none;
-  }
-  .tile.wide .name { max-width: 240px; font-size: 17px; }
-  .tile .remove {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    font-size: 13px;
-    color: rgba(255, 255, 255, 0.75);
-    visibility: hidden;
-    font-family: "Segoe UI", sans-serif;
-    pointer-events: none;
-  }
-  .tile:hover .remove { visibility: visible; }
-  .tile.add-tile { border: 2px dashed #5A5A5E; }
-  .tile.add-tile .icon { color: var(--muted); margin-bottom: 0; }
-</style>
+        /* ===== 搜索框 ===== */
+        #searchbox {
+            margin: 28px auto 0 auto;
+            width: 640px;
+            max-width: 88vw;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 6;
+        }
+        #search-input {
+            display: block;
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-family: var(--font);
+            font-size: 28px;
+            font-weight: 300;
+            padding: 6px 2px;
+            border-bottom: 1px solid var(--muted2);
+            border-radius: 0;
+            -webkit-appearance: none;
+            transition: border-color 0.2s ease;
+        }
+        #search-input:focus {
+            border-bottom: 2px solid var(--accent);
+        }
+        #search-input::placeholder {
+            color: var(--muted2);
+            font-weight: 300;
+        }
+
+        /* ===== 磁贴容器 ===== */
+        #tiles-wrap {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px 16px 30px 16px;
+            margin-top: 12px;
+            display: flex;
+            justify-content: center;
+        }
+        #tiles {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-content: flex-start;
+            max-width: 1104px;
+            width: 100%;
+            gap: 12px;
+        }
+
+        /* ===== 磁贴（无圆角） ===== */
+        .tile {
+            position: relative;
+            width: 160px;
+            height: 160px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border-radius: 0 !important;
+            transition: transform 0.12s ease, filter 0.12s ease, background 0.2s ease;
+            flex-shrink: 0;
+            background: #767676;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+        }
+        .tile.wide {
+            width: 344px;
+            flex-direction: row;
+            justify-content: flex-start;
+            padding: 0 28px;
+        }
+        .tile.wide .icon {
+            margin: 0 20px 0 0;
+        }
+        .tile.wide .name {
+            max-width: 240px;
+            font-size: 17px;
+        }
+
+        /* 悬停/点击反馈 */
+        .tile::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0);
+            transition: background 0.12s ease;
+            pointer-events: none;
+            border-radius: 0;
+        }
+        .tile:hover::after {
+            background: rgba(255, 255, 255, 0.09);
+        }
+        .tile:active::after {
+            background: rgba(255, 255, 255, 0.18);
+        }
+        .tile.dragging {
+            opacity: 0.35;
+            transform: scale(0.92);
+        }
+        .tile.drop-target {
+            outline: 3px solid rgba(255, 255, 255, 0.35);
+            outline-offset: -3px;
+        }
+
+        /* 图标区域 - 显示 favicon */
+        .tile .icon {
+            width: 48px;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            pointer-events: none;
+            flex-shrink: 0;
+            background: rgba(0, 0, 0, 0.15);
+            border-radius: 0;
+            overflow: hidden;
+        }
+        .tile.wide .icon {
+            width: 52px;
+            height: 52px;
+            margin-bottom: 0;
+        }
+        .tile .icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .tile .icon .fallback {
+            font-size: 24px;
+            font-weight: 600;
+            color: #fff;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .tile .name {
+            font-size: 15px;
+            color: #fff;
+            max-width: 130px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            pointer-events: none;
+            font-weight: 300;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+        }
+        .tile.wide .name {
+            max-width: 240px;
+            font-size: 17px;
+        }
+
+        /* 删除 & 编辑按钮 */
+        .tile .remove,
+        .tile .edit-btn {
+            position: absolute;
+            font-family: "Segoe UI", sans-serif;
+            color: rgba(255, 255, 255, 0.7);
+            visibility: hidden;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: background 0.12s;
+            border-radius: 0;
+        }
+        .tile:hover .remove,
+        .tile:hover .edit-btn {
+            visibility: visible;
+            pointer-events: auto;
+        }
+        .tile .remove {
+            top: 4px;
+            right: 6px;
+            font-size: 13px;
+            width: 20px;
+            height: 20px;
+        }
+        .tile .remove:hover {
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+        }
+        .tile .edit-btn {
+            bottom: 4px;
+            right: 6px;
+            font-size: 11px;
+            width: 18px;
+            height: 18px;
+        }
+        .tile .edit-btn:hover {
+            background: rgba(0, 0, 0, 0.5);
+            color: #fff;
+        }
+
+        /* ===== 添加磁贴 ===== */
+        .tile.add-tile {
+            background: transparent !important;
+            border: 2px dashed #5A5A5E;
+            box-shadow: none;
+            transition: border-color 0.15s, background 0.15s;
+            border-radius: 0 !important;
+        }
+        .tile.add-tile:hover {
+            border-color: var(--accent);
+            background: rgba(0, 120, 215, 0.06);
+        }
+        .tile.add-tile::after {
+            display: none;
+        }
+        .tile.add-tile .icon {
+            color: var(--muted2);
+            margin-bottom: 0;
+            font-size: 32px;
+            font-weight: 300;
+            background: transparent;
+        }
+
+        /* ===== Modal 弹窗（无圆角） ===== */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 40;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.open {
+            display: flex;
+        }
+        .modal-box {
+            background: var(--bg-light);
+            border-radius: 0;
+            padding: 24px 28px 20px;
+            width: 400px;
+            max-width: 92vw;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        .modal-box h3 {
+            font-weight: 300;
+            font-size: 20px;
+            margin-bottom: 16px;
+            color: #fff;
+            letter-spacing: 0.3px;
+        }
+        .modal-box label {
+            display: block;
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 12px;
+            margin-bottom: 4px;
+            font-weight: 300;
+            letter-spacing: 0.3px;
+        }
+        .modal-box input {
+            display: block;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 0;
+            padding: 8px 12px;
+            color: #fff;
+            font-family: var(--font);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .modal-box input:focus {
+            border-color: var(--accent);
+        }
+        .modal-box .row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 18px;
+        }
+        .modal-box .row button {
+            padding: 8px 22px;
+            border: none;
+            border-radius: 0;
+            font-family: var(--font);
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.12s, opacity 0.12s;
+        }
+        .modal-box .btn-cancel {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--muted);
+        }
+        .modal-box .btn-cancel:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+        }
+        .modal-box .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .modal-box .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+        .modal-box .btn-danger {
+            background: #D13438;
+            color: #fff;
+        }
+        .modal-box .btn-danger:hover {
+            background: #E03A3E;
+        }
+
+        /* ===== Toast ===== */
+        #toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: var(--bg-light);
+            color: #fff;
+            padding: 10px 28px;
+            border-radius: 0;
+            box-shadow: var(--shadow);
+            font-size: 13px;
+            font-weight: 300;
+            z-index: 50;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            font-family: var(--font);
+            letter-spacing: 0.3px;
+        }
+        #toast.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+            transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0s;
+        }
+
+        /* ===== 动画 ===== */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+        .tile {
+            animation: fadeUp 0.3s ease both;
+        }
+
+        /* ===== 滚动条 ===== */
+        #tiles-wrap::-webkit-scrollbar {
+            width: 4px;
+        }
+        #tiles-wrap::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #tiles-wrap::-webkit-scrollbar-thumb {
+            background: var(--muted2);
+            border-radius: 0;
+        }
+        #tiles-wrap::-webkit-scrollbar-thumb:hover {
+            background: var(--muted);
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 720px) {
+            #search-input {
+                font-size: 22px;
+            }
+            .tile {
+                width: 120px;
+                height: 120px;
+            }
+            .tile.wide {
+                width: 252px;
+                padding: 0 18px;
+            }
+            .tile.wide .icon {
+                width: 40px;
+                height: 40px;
+                margin-right: 14px;
+            }
+            .tile.wide .name {
+                font-size: 14px;
+                max-width: 180px;
+            }
+            .tile .icon {
+                width: 40px;
+                height: 40px;
+                margin-bottom: 8px;
+            }
+            .tile .name {
+                font-size: 12px;
+                max-width: 100px;
+            }
+            #topbar {
+                padding: 10px 16px 0 0;
+            }
+            #clock {
+                font-size: 11px;
+            }
+        }
+        @media (max-width: 480px) {
+            .tile {
+                width: 90px;
+                height: 90px;
+            }
+            .tile.wide {
+                width: 186px;
+                padding: 0 12px;
+            }
+            .tile.wide .icon {
+                width: 32px;
+                height: 32px;
+                margin-right: 10px;
+            }
+            .tile.wide .name {
+                font-size: 12px;
+                max-width: 130px;
+            }
+            .tile .icon {
+                width: 32px;
+                height: 32px;
+                margin-bottom: 6px;
+            }
+            .tile .name {
+                font-size: 10px;
+                max-width: 72px;
+            }
+            #search-input {
+                font-size: 18px;
+            }
+            #searchbox {
+                margin-top: 18px;
+            }
+            #tiles-wrap {
+                padding: 12px 8px 20px 8px;
+            }
+            #tiles {
+                gap: 8px;
+            }
+            .modal-box {
+                padding: 18px 16px 16px;
+            }
+        }
+    </style>
 </head>
 <body>
-<div class="wrap">
-  <div id="clock"></div>
-  <div id="searchbox"><input id="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="搜索 Web"></div>
-  <div id="tiles"></div>
-</div>
 
-<script>
-(function () {
-  var LS_KEY = "ntp_tiles_metro_v1";
-  var DEFAULT_TILES = [
-    { name: "Bing", url: "https://www.bing.com", icon: "\uD83D\uDD0E", color: "#0078D7", wide: true },
-    { name: "YouTube", url: "https://www.youtube.com", icon: "\uD83C\uDFA5", color: "#D13438" },
-    { name: "\u77E5\u4E4E", url: "https://www.zhihu.com", icon: "\uD83D\uDCD6", color: "#0084FF", wide: true },
-    { name: "\u5FEB\u624B", url: "https://www.bilibili.com", icon: "\uD83D\uDC4B", color: "#FB7299" },
-    { name: "Wikipedia", url: "https://zh.wikipedia.org", icon: "\uD83D\uDD73", color: "#6B69D6" },
-    { name: "GitHub", url: "https://github.com", icon: "\uD83E\uDD9F", color: "#2D2D30" },
-    { name: "\u5FAE\u535A", url: "https://weibo.com", icon: "\uD83D\uDDE3", color: "#E6162D" },
-    { name: "Stack Overflow", url: "https://stackoverflow.com", icon: "\uD83D\uDCC4", color: "#F48024" },
-    { name: "\u7F51\u6613\u4E91\u97F3\u4E50", url: "https://music.163.com", icon: "\uD83C\uDFB5", color: "#C20C0C" },
-    { name: "\u767E\u5EA6", url: "https://www.baidu.com", icon: "\uD83D\uDDA5", color: "#2932E1" }
-  ];
+    <!-- ===== 顶栏 ===== -->
+    <div id="topbar">
+        <span id="clock"></span>
+        <button id="settingsBtn" aria-label="设置" title="设置">⚙</button>
+    </div>
 
-  function loadTiles() {
-    try {
-      var raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {}
-    return DEFAULT_TILES.slice();
-  }
+    <!-- ===== 设置面板 ===== -->
+    <div id="settingsPanel" role="menu">
+        <!-- 背景选项 -->
+        <div class="mode-label">背景壁纸</div>
+        <button class="option" data-type="solid" role="menuitemradio" tabindex="0">
+            <span class="indicator" aria-hidden="true"></span>
+            <span class="label">纯色背景</span>
+        </button>
+        <button class="option" data-type="bing" role="menuitemradio" tabindex="0">
+            <span class="indicator" aria-hidden="true"></span>
+            <span class="label">Bing 每日壁纸</span>
+        </button>
+        <button class="option" data-type="custom" role="menuitemradio" tabindex="0">
+            <span class="indicator" aria-hidden="true"></span>
+            <span class="label">自定义壁纸</span>
+            <span class="badge">上传</span>
+        </button>
 
-  function saveTiles(tiles) {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(tiles)); } catch (e) {}
-  }
+        <div class="divider"></div>
 
-  var tiles = loadTiles();
-  var container = document.getElementById("tiles");
-  var dragFrom = null;
+        <!-- 磁贴模式选项 -->
+        <div class="mode-label">磁贴背景</div>
+        <button class="option mode-option" data-mode="color" role="menuitemradio" tabindex="0">
+            <span class="indicator" aria-hidden="true"></span>
+            <span class="label">取色（默认）</span>
+        </button>
+        <button class="option mode-option" data-mode="transparent" role="menuitemradio" tabindex="0">
+            <span class="indicator" aria-hidden="true"></span>
+            <span class="label">透明（90%）</span>
+        </button>
+    </div>
 
-  function render() {
-    container.innerHTML = "";
-    tiles.forEach(function (tile, i) {
-      var el = document.createElement("div");
-      el.className = "tile" + (tile.wide ? " wide" : "");
-      el.style.background = tile.color || "#767676";
-      el.title = tile.name + " \u2014 " + tile.url;
-      el.innerHTML = '<div class="icon">' + (tile.icon || "\uD83D\uDCC5") +
-        '</div><div class="name"></div><div class="remove">\u2715</div>';
-      el.querySelector(".name").textContent = tile.name;
+    <!-- ===== 搜索框 ===== -->
+    <div id="searchbox">
+        <input id="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="搜索 Web" />
+    </div>
 
-      // 点击打开
-      el.addEventListener("click", function () { window.location.href = tile.url; });
+    <!-- ===== 磁贴区域 ===== -->
+    <div id="tiles-wrap">
+        <div id="tiles"></div>
+    </div>
 
-      // 右键移除
-      el.addEventListener("contextmenu", function (e) {
-        e.preventDefault();
-        if (confirm("\u79FB\u9664\u78C1\u8D34\u201C" + tile.name + "\u201D?")) {
-          tiles.splice(i, 1);
-          saveTiles(tiles);
-          render();
-        }
-      });
+    <!-- ===== 隐藏的文件选择器 ===== -->
+    <input type="file" id="customBgFile" accept="image/*" style="display:none" />
 
-      // 拖拽排序（EdgeHTML/Chromium 均支持 HTML5 DnD）
-      el.draggable = true;
-      el.addEventListener("dragstart", function (e) {
-        dragFrom = i;
-        el.classList.add("dragging");
-        try { e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; } catch (err) {}
-      });
-      el.addEventListener("dragend", function () {
-        el.classList.remove("dragging");
-        render();
-      });
-      el.addEventListener("dragover", function (e) {
-        if (dragFrom === null || dragFrom === i) return;
-        e.preventDefault();
-        el.classList.add("drop-target");
-      });
-      el.addEventListener("dragleave", function () { el.classList.remove("drop-target"); });
-      el.addEventListener("drop", function (e) {
-        e.preventDefault();
-        el.classList.remove("drop-target");
-        if (dragFrom === null || dragFrom === i) { dragFrom = null; return; }
-        var from = dragFrom;
-        dragFrom = null;
-        var moved = tiles.splice(from, 1)[0];
-        var to = from < i ? i - 1 : i;
-        tiles.splice(to, 0, moved);
-        saveTiles(tiles);
-        render();
-      });
+    <!-- ===== 添加/编辑 Modal ===== -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal-box">
+            <h3 id="modalTitle">添加磁贴</h3>
+            <label for="modalUrl">网址</label>
+            <input id="modalUrl" placeholder="https://example.com" spellcheck="false" />
+            <label for="modalName">名称</label>
+            <input id="modalName" placeholder="显示名称（留空自动取域名）" spellcheck="false" />
+            <div class="row">
+                <button class="btn-cancel" id="modalCancel">取消</button>
+                <button class="btn-danger" id="modalDelete" style="display:none">删除</button>
+                <button class="btn-primary" id="modalOk">确定</button>
+            </div>
+        </div>
+    </div>
 
-      container.appendChild(el);
-    });
+    <!-- ===== Toast ===== -->
+    <div id="toast"></div>
 
-    // “+” 添加磁贴
-    var add = document.createElement("div");
-    add.className = "tile add-tile";
-    add.style.background = "transparent";
-    add.innerHTML = '<div class="icon">+</div>';
-    add.addEventListener("click", function () {
-      var url = prompt("\u8F93\u5165\u7F51\u5740\uff08\u542B https:// \u6216 http://\uff09\uff1A");
-      if (!url) return;
-      var clean = url.trim();
-      if (!/^https?:\/\//i.test(clean)) clean = "https://" + clean;
-      var host = "";
-      try { host = clean.replace(/^https?:\/\//i, "").split(/[/?#]/)[0]; } catch (err) {}
-      tiles.push({ name: host || "新磁贴", url: clean, icon: "\uD83C\uDF10", color: "#767676", wide: false });
-      saveTiles(tiles);
-      render();
-    });
-    container.appendChild(add);
-  }
+    <script>
+        (function() {
+            "use strict";
 
-  render();
+            // ============================================================
+            //  常量 & 工具
+            // ============================================================
+            var LS_TILES = "ntp_tiles_metro_v5";
+            var LS_BG = "ntp_bg_metro";
+            var LS_CUSTOM_BG = "ntp_custom_bg_metro";
+            var LS_TILE_MODE = "ntp_tile_mode"; // 'color' 或 'transparent'
 
-  // 搜索：回车 → 跳转 Bing（Metro IE 行为：当前页内导航）
-  document.getElementById("search-input").addEventListener("keydown", function (e) {
-    if (e.key === "Enter" || e.keyCode === 13) {
-      var q = this.value.trim();
-      if (q) window.location.href = "https://www.bing.com/search?q=" + encodeURIComponent(q);
-    }
-  });
+            // 默认无预设磁贴
+            var DEFAULT_TILES = [];
 
-  // 时钟
-  function tick() {
-    var d = new Date();
-    function p(n) { return (n < 10 ? "0" : "") + n; }
-    document.getElementById("clock").textContent =
-      d.getFullYear() + "/" + p(d.getMonth() + 1) + "/" + p(d.getDate()) +
-      " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
-  }
-  tick();
-  setInterval(tick, 1000);
-})();
-</script>
+            var toastEl = document.getElementById('toast');
+            var toastTimer = null;
+
+            function showToast(msg) {
+                if (toastTimer) clearTimeout(toastTimer);
+                toastEl.textContent = msg;
+                toastEl.classList.add('show');
+                toastTimer = setTimeout(function() {
+                    toastEl.classList.remove('show');
+                    toastTimer = null;
+                }, 2800);
+            }
+
+            function isValidUrl(str) {
+                if (!str) return false;
+                try {
+                    var url = new URL(str);
+                    return url.protocol === 'http:' || url.protocol === 'https:';
+                } catch (_) { return false; }
+            }
+
+            function getHostname(str) {
+                try { return new URL(str).hostname || ''; } catch (_) { return ''; }
+            }
+
+            // ============================================================
+            //  基于域名生成稳定颜色（备用方案）
+            // ============================================================
+            function getColorFromDomain(domain) {
+                var hash = 0;
+                for (var i = 0; i < domain.length; i++) {
+                    hash = domain.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                var h = Math.abs(hash) % 360;
+                return 'hsl(' + h + ', 65%, 45%)';
+            }
+
+            // ============================================================
+            //  颜色提取工具（从图像中提取主色）
+            // ============================================================
+            function extractColorFromImage(img) {
+                var canvas = document.createElement('canvas');
+                var ctx = canvas.getContext('2d');
+                var size = 16;
+                canvas.width = size;
+                canvas.height = size;
+                ctx.drawImage(img, 0, 0, size, size);
+                var imageData = ctx.getImageData(0, 0, size, size);
+                var data = imageData.data;
+                var r = 0,
+                    g = 0,
+                    b = 0,
+                    count = 0;
+                for (var i = 0; i < data.length; i += 4) {
+                    r += data[i];
+                    g += data[i + 1];
+                    b += data[i + 2];
+                    count++;
+                }
+                r = Math.round(r / count);
+                g = Math.round(g / count);
+                b = Math.round(b / count);
+                return 'rgb(' + r + ',' + g + ',' + b + ')';
+            }
+
+            // ============================================================
+            //  数据管理
+            // ============================================================
+            var tilesData = [];
+
+            function loadTiles() {
+                try {
+                    var raw = localStorage.getItem(LS_TILES);
+                    if (raw) {
+                        var parsed = JSON.parse(raw);
+                        if (Array.isArray(parsed)) {
+                            tilesData = parsed.filter(function(t) {
+                                return t && t.url && isValidUrl(t.url);
+                            });
+                            return;
+                        }
+                    }
+                } catch (_) {}
+                tilesData = [];
+            }
+
+            function saveTiles() {
+                try { localStorage.setItem(LS_TILES, JSON.stringify(tilesData)); } catch (_) {}
+            }
+
+            // ============================================================
+            //  磁贴模式管理
+            // ============================================================
+            var tileMode = localStorage.getItem(LS_TILE_MODE) || 'color'; // 'color' 或 'transparent'
+
+            function setTileMode(mode) {
+                tileMode = mode;
+                localStorage.setItem(LS_TILE_MODE, mode);
+                // 更新面板高亮
+                updateModeActive();
+                // 重新渲染磁贴
+                render();
+                showToast(mode === 'color' ? '已切换为取色模式' : '已切换为透明模式（90%）');
+            }
+
+            function updateModeActive() {
+                var opts = document.querySelectorAll('#settingsPanel .mode-option');
+                for (var i = 0; i < opts.length; i++) {
+                    var o = opts[i];
+                    var mode = o.getAttribute('data-mode');
+                    if (mode === tileMode) {
+                        o.classList.add('active');
+                        o.setAttribute('aria-checked', 'true');
+                    } else {
+                        o.classList.remove('active');
+                        o.setAttribute('aria-checked', 'false');
+                    }
+                }
+            }
+
+            // ============================================================
+            //  背景管理
+            // ============================================================
+            var bgType = localStorage.getItem(LS_BG) || 'solid';
+            var customBgUrl = localStorage.getItem(LS_CUSTOM_BG) || '';
+
+            function getBingUrl() {
+                return 'https://bing.biturl.top/?resolution=1920&format=image&index=0&mkt=zh-CN&_=' + Date.now();
+            }
+
+            function applyBackground(type) {
+                var body = document.body;
+                if (type === 'solid') {
+                    body.style.background = '#1E1E1E';
+                    return;
+                }
+                if (type === 'custom' && customBgUrl && customBgUrl.startsWith('data:image/')) {
+                    body.style.background = 'url("' + customBgUrl + '") center/cover no-repeat fixed';
+                    return;
+                }
+                if (type === 'bing') {
+                    body.style.background = 'url("' + getBingUrl() + '") center/cover no-repeat fixed';
+                    return;
+                }
+                body.style.background = '#1E1E1E';
+            }
+
+            function updateBgActive() {
+                var opts = document.querySelectorAll('#settingsPanel .option[data-type]');
+                for (var i = 0; i < opts.length; i++) {
+                    var o = opts[i];
+                    var type = o.getAttribute('data-type');
+                    if (type === bgType) {
+                        o.classList.add('active');
+                        o.setAttribute('aria-checked', 'true');
+                    } else {
+                        o.classList.remove('active');
+                        o.setAttribute('aria-checked', 'false');
+                    }
+                }
+            }
+
+            function setBackgroundType(type) {
+                if (type === 'custom') {
+                    document.getElementById('customBgFile').click();
+                    return;
+                }
+                if (type === bgType && type === 'bing') {
+                    applyBackground('bing');
+                    showToast('已刷新 Bing 壁纸');
+                    return;
+                }
+                bgType = type;
+                localStorage.setItem(LS_BG, type);
+                applyBackground(type);
+                updateBgActive();
+                var label = type === 'solid' ? '纯色背景' : 'Bing 每日壁纸';
+                showToast('已切换到 ' + label);
+            }
+
+            document.getElementById('customBgFile').addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if (!file) return;
+                if (!file.type.startsWith('image/')) {
+                    showToast('请选择图片文件');
+                    this.value = '';
+                    return;
+                }
+                if (file.size > 2 * 1024 * 1024) {
+                    showToast('图片过大，请小于 2MB');
+                    this.value = '';
+                    return;
+                }
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    var dataUrl = ev.target.result;
+                    localStorage.setItem(LS_CUSTOM_BG, dataUrl);
+                    customBgUrl = dataUrl;
+                    bgType = 'custom';
+                    localStorage.setItem(LS_BG, 'custom');
+                    applyBackground('custom');
+                    updateBgActive();
+                    showToast('自定义壁纸已应用 ✅');
+                    document.getElementById('customBgFile').value = '';
+                };
+                reader.onerror = function() {
+                    showToast('读取文件失败');
+                };
+                reader.readAsDataURL(file);
+            });
+
+            // ============================================================
+            //  设置面板 UI
+            // ============================================================
+            var settingsBtn = document.getElementById('settingsBtn');
+            var settingsPanel = document.getElementById('settingsPanel');
+
+            function toggleSettings(force) {
+                var isOpen = settingsPanel.classList.contains('open');
+                var next = (force !== undefined) ? force : !isOpen;
+                if (next) {
+                    settingsPanel.classList.add('open');
+                    settingsBtn.setAttribute('aria-expanded', 'true');
+                } else {
+                    settingsPanel.classList.remove('open');
+                    settingsBtn.setAttribute('aria-expanded', 'false');
+                }
+            }
+
+            settingsBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleSettings();
+            });
+            settingsBtn.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault();
+                    toggleSettings(); }
+            });
+            document.addEventListener('click', function(e) {
+                if (!settingsPanel.contains(e.target) && e.target !== settingsBtn) toggleSettings(false);
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && settingsPanel.classList.contains('open')) {
+                    toggleSettings(false);
+                    settingsBtn.focus();
+                }
+            });
+
+            settingsPanel.addEventListener('click', function(e) {
+                var opt = e.target.closest('.option');
+                if (!opt) return;
+
+                // 判断是背景选项还是模式选项
+                if (opt.hasAttribute('data-type')) {
+                    var type = opt.getAttribute('data-type');
+                    setBackgroundType(type);
+                    toggleSettings(false);
+                } else if (opt.hasAttribute('data-mode')) {
+                    var mode = opt.getAttribute('data-mode');
+                    setTileMode(mode);
+                    toggleSettings(false);
+                }
+            });
+
+            settingsPanel.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    var opt = e.target.closest('.option');
+                    if (!opt) return;
+                    e.preventDefault();
+                    if (opt.hasAttribute('data-type')) {
+                        var type = opt.getAttribute('data-type');
+                        setBackgroundType(type);
+                        toggleSettings(false);
+                    } else if (opt.hasAttribute('data-mode')) {
+                        var mode = opt.getAttribute('data-mode');
+                        setTileMode(mode);
+                        toggleSettings(false);
+                    }
+                }
+            });
+
+            // ============================================================
+            //  渲染磁贴（无圆角，使用 keeweb 代理获取图标，支持 CORS）
+            // ============================================================
+            var container = document.getElementById('tiles');
+            var dragFrom = null;
+
+            function render() {
+                container.innerHTML = '';
+
+                tilesData.forEach(function(tile, index) {
+                    var el = document.createElement('div');
+                    el.className = 'tile' + (tile.wide ? ' wide' : '');
+                    el.style.background = '#767676'; // 临时背景，后续替换
+                    el.title = tile.name + ' — ' + tile.url;
+                    el.setAttribute('data-index', index);
+
+                    // ---- 图标区域 ----
+                    var iconDiv = document.createElement('div');
+                    iconDiv.className = 'icon';
+
+                    var img = document.createElement('img');
+                    var host = getHostname(tile.url);
+                    var iconUrl = 'https://services.keeweb.info/favicon/' + host;
+                    img.crossOrigin = 'anonymous';
+                    img.src = iconUrl;
+                    img.alt = '';
+                    img.loading = 'lazy';
+                    img.referrerPolicy = 'no-referrer';
+
+                    // 存储提取的颜色（用于取色模式）
+                    var extractedColor = null;
+
+                    img.onload = function() {
+                        try {
+                            var color = extractColorFromImage(this);
+                            if (color) {
+                                extractedColor = color;
+                            }
+                        } catch (e) {
+                            // 跨域或其他错误
+                        }
+                        // 根据当前模式设置背景
+                        applyTileBackground(el, extractedColor, host);
+                    };
+                    img.onerror = function() {
+                        // 图标加载失败，使用域名颜色或透明
+                        applyTileBackground(el, null, host);
+                        // 显示首字母
+                        var fallback = document.createElement('span');
+                        fallback.className = 'fallback';
+                        fallback.textContent = (tile.name || '?').charAt(0).toUpperCase();
+                        if (!iconDiv.querySelector('.fallback')) {
+                            iconDiv.appendChild(fallback);
+                        }
+                        this.style.display = 'none';
+                    };
+
+                    iconDiv.appendChild(img);
+
+                    // ---- 名称 ----
+                    var nameSpan = document.createElement('span');
+                    nameSpan.className = 'name';
+                    nameSpan.textContent = tile.name;
+
+                    // ---- 删除按钮 ----
+                    var removeBtn = document.createElement('span');
+                    removeBtn.className = 'remove';
+                    removeBtn.textContent = '✕';
+                    removeBtn.setAttribute('aria-label', '删除 ' + tile.name);
+
+                    // ---- 编辑按钮 ----
+                    var editBtn = document.createElement('span');
+                    editBtn.className = 'edit-btn';
+                    editBtn.textContent = '✎';
+                    editBtn.setAttribute('aria-label', '编辑 ' + tile.name);
+
+                    el.appendChild(removeBtn);
+                    el.appendChild(editBtn);
+                    el.appendChild(iconDiv);
+                    el.appendChild(nameSpan);
+
+                    // 点击打开
+                    el.addEventListener('click', function(e) {
+                        if (e.target.closest('.remove') || e.target.closest('.edit-btn')) return;
+                        window.location.href = tile.url;
+                    });
+
+                    // 删除
+                    removeBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        if (confirm('确定删除 "' + tile.name + '" ?')) {
+                            tilesData.splice(index, 1);
+                            saveTiles();
+                            render();
+                            showToast('已删除 "' + tile.name + '"');
+                        }
+                    });
+
+                    // 编辑
+                    editBtn.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        openModal(index);
+                    });
+
+                    // 右键菜单：编辑
+                    el.addEventListener('contextmenu', function(e) {
+                        e.preventDefault();
+                        openModal(index);
+                    });
+
+                    // 拖拽排序
+                    el.draggable = true;
+                    el.addEventListener('dragstart', function(e) {
+                        dragFrom = index;
+                        el.classList.add('dragging');
+                        try { e.dataTransfer.setData('text/plain', String(index));
+                            e.dataTransfer.effectAllowed = 'move'; } catch (_) {}
+                    });
+                    el.addEventListener('dragend', function() {
+                        el.classList.remove('dragging');
+                        document.querySelectorAll('.tile.drop-target').forEach(function(t) {
+                            t.classList.remove('drop-target');
+                        });
+                    });
+                    el.addEventListener('dragover', function(e) {
+                        if (dragFrom === null || dragFrom === index) return;
+                        e.preventDefault();
+                        document.querySelectorAll('.tile.drop-target').forEach(function(t) {
+                            t.classList.remove('drop-target');
+                        });
+                        el.classList.add('drop-target');
+                    });
+                    el.addEventListener('dragleave', function() {
+                        el.classList.remove('drop-target');
+                    });
+                    el.addEventListener('drop', function(e) {
+                        e.preventDefault();
+                        el.classList.remove('drop-target');
+                        if (dragFrom === null || dragFrom === index) { dragFrom = null; return; }
+                        var from = dragFrom;
+                        dragFrom = null;
+                        var moved = tilesData.splice(from, 1)[0];
+                        var to = from < index ? index - 1 : index;
+                        tilesData.splice(to, 0, moved);
+                        saveTiles();
+                        render();
+                        showToast('已排序');
+                    });
+
+                    container.appendChild(el);
+
+                    // 如果图片已经加载完成（缓存），则 onload 可能已触发，但此时 el 还未添加到 DOM
+                    // 为确保颜色应用，如果图片已完成加载且提取了颜色，直接应用
+                    if (img.complete && img.naturalWidth > 0) {
+                        try {
+                            var color = extractColorFromImage(img);
+                            if (color) {
+                                extractedColor = color;
+                            }
+                        } catch (e) {}
+                        applyTileBackground(el, extractedColor, host);
+                    }
+                });
+
+                // 添加磁贴（始终显示）
+                var addEl = document.createElement('div');
+                addEl.className = 'tile add-tile';
+                addEl.style.background = 'transparent';
+                addEl.innerHTML = '<span class="icon" style="font-size:32px;font-weight:300;">+</span>';
+                addEl.setAttribute('role', 'button');
+                addEl.setAttribute('aria-label', '添加新磁贴');
+                addEl.addEventListener('click', function() {
+                    openModal(-1);
+                });
+                container.appendChild(addEl);
+            }
+
+            // ===== 辅助函数：根据模式设置磁贴背景 =====
+            function applyTileBackground(el, extractedColor, host) {
+                if (tileMode === 'transparent') {
+                    // 透明模式：使用 rgba(255,255,255,0.1) 即不透明度10%，透明度90%
+                    el.style.background = 'rgba(255,255,255,0.1)';
+                } else {
+                    // 取色模式：优先使用提取的颜色，否则使用域名颜色
+                    if (extractedColor) {
+                        el.style.background = extractedColor;
+                    } else {
+                        el.style.background = getColorFromDomain(host);
+                    }
+                }
+            }
+
+            // ============================================================
+            //  Modal 管理 (添加 / 编辑)
+            // ============================================================
+            var modal = document.getElementById('modal');
+            var modalTitle = document.getElementById('modalTitle');
+            var modalUrl = document.getElementById('modalUrl');
+            var modalName = document.getElementById('modalName');
+            var modalOk = document.getElementById('modalOk');
+            var modalCancel = document.getElementById('modalCancel');
+            var modalDelete = document.getElementById('modalDelete');
+            var editIndex = -1;
+
+            function openModal(index) {
+                var isEdit = index >= 0 && index < tilesData.length;
+                editIndex = index;
+
+                if (isEdit) {
+                    var t = tilesData[index];
+                    modalTitle.textContent = '编辑磁贴';
+                    modalUrl.value = t.url;
+                    modalName.value = t.name || '';
+                    modalDelete.style.display = 'inline-block';
+                } else {
+                    modalTitle.textContent = '添加磁贴';
+                    modalUrl.value = '';
+                    modalName.value = '';
+                    modalDelete.style.display = 'none';
+                }
+
+                modal.classList.add('open');
+                setTimeout(function() { modalUrl.focus(); }, 60);
+            }
+
+            function closeModal() {
+                modal.classList.remove('open');
+                editIndex = -1;
+            }
+
+            function handleModalOk() {
+                var url = modalUrl.value.trim();
+                if (!url) { showToast('请输入网址'); return; }
+                if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+                if (!isValidUrl(url)) { showToast('无效的网址'); return; }
+
+                var name = modalName.value.trim() || getHostname(url) || url;
+
+                if (editIndex >= 0 && editIndex < tilesData.length) {
+                    var oldUrl = tilesData[editIndex].url;
+                    if (url !== oldUrl) {
+                        for (var i = 0; i < tilesData.length; i++) {
+                            if (i !== editIndex && tilesData[i].url === url) {
+                                showToast('该网址已存在');
+                                return;
+                            }
+                        }
+                    }
+                    tilesData[editIndex].url = url;
+                    tilesData[editIndex].name = name;
+                    showToast('已更新 "' + name + '"');
+                } else {
+                    for (var j = 0; j < tilesData.length; j++) {
+                        if (tilesData[j].url === url) {
+                            showToast('该网址已存在');
+                            return;
+                        }
+                    }
+                    tilesData.push({
+                        name: name,
+                        url: url,
+                        wide: false
+                    });
+                    showToast('已添加 "' + name + '"');
+                }
+
+                saveTiles();
+                render();
+                closeModal();
+            }
+
+            function handleModalDelete() {
+                if (editIndex < 0 || editIndex >= tilesData.length) return;
+                var name = tilesData[editIndex].name;
+                if (confirm('确定删除 "' + name + '" ?')) {
+                    tilesData.splice(editIndex, 1);
+                    saveTiles();
+                    render();
+                    closeModal();
+                    showToast('已删除 "' + name + '"');
+                }
+            }
+
+            modalOk.addEventListener('click', handleModalOk);
+            modalCancel.addEventListener('click', closeModal);
+            modalDelete.addEventListener('click', handleModalDelete);
+
+            modalUrl.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault();
+                    modalName.focus(); }
+            });
+            modalName.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault();
+                    handleModalOk(); }
+            });
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) closeModal();
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+            });
+
+            // ============================================================
+            //  搜索
+            // ============================================================
+            var searchInput = document.getElementById('search-input');
+
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    var q = this.value.trim();
+                    if (q) {
+                        if (/^(https?:\/\/|about:|edge:|ms-appx)/i.test(q)) {
+                            try {
+                                var url = new URL(q);
+                                if (url.protocol === 'http:' || url.protocol === 'https:') {
+                                    window.location.href = url.href;
+                                    return;
+                                }
+                            } catch (_) {}
+                        }
+                        window.location.href = 'https://www.bing.com/search?q=' + encodeURIComponent(q);
+                    }
+                }
+            });
+
+            searchInput.addEventListener('focus', function() {
+                this.select();
+            });
+
+            // ============================================================
+            //  时钟
+            // ============================================================
+            function tick() {
+                var d = new Date();
+                function p(n) { return (n < 10 ? '0' : '') + n; }
+                document.getElementById('clock').textContent =
+                    d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) +
+                    ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+            }
+            tick();
+            setInterval(tick, 1000);
+
+            // ============================================================
+            //  窗口大小变化重绘
+            // ============================================================
+            var resizeTimer;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function() {
+                    render();
+                }, 300);
+            });
+
+            // ============================================================
+            //  初始化
+            // ============================================================
+            loadTiles();
+            render();
+            applyBackground(bgType);
+            updateBgActive();
+            updateModeActive();
+
+            if (document.hasFocus()) {
+                setTimeout(function() { searchInput.focus(); }, 120);
+            }
+
+            console.log('✅ Metro 新标签页（取色/透明切换，keeweb代理）已启动');
+        })();
+    </script>
+
 </body>
 </html>
