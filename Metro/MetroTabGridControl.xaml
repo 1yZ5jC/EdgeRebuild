@@ -18,10 +18,39 @@
                     Width="44" Height="44" HorizontalAlignment="Right" Click="CloseBtn_Click"/>
         </Grid>
 
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="40,8,40,96">
-            <ItemsWrapGrid x:Name="GridHost" Orientation="Horizontal"
-                           MaximumRowsOrColumns="3" ItemWidth="360" ItemHeight="250"/>
-        </ScrollViewer>
+        <!-- 标签卡片网格：GridView 自带折行(ItemsWrapGrid 3 列)+垂直滚动+虚拟化。
+             不用 ScrollViewer+WrapGrid——该组合(HorizontalScrollMode=Disabled 折行数学)
+             在这个 AppWindow 内首次真实测量即冻结 UI 线程(无异常、布局通道全灭)。
+             GridView 模板内置的 ScrollViewer 走的是标准虚拟化路径,无此问题。 -->
+        <GridView x:Name="GridHost" Grid.Row="1"
+                  IsItemClickEnabled="True" SelectionMode="None"
+                  Padding="40,8,40,96"
+                  ItemClick="GridHost_ItemClick"
+                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                  ScrollViewer.HorizontalScrollMode="Disabled"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <GridView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="3"
+                                   ItemWidth="360" ItemHeight="250"/>
+                </ItemsPanelTemplate>
+            </GridView.ItemsPanel>
+            <GridView.ItemContainerStyle>
+                <Style TargetType="GridViewItem">
+                    <Setter Property="Margin" Value="0"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                    <Setter Property="UseSystemFocusVisuals" Value="False"/>
+                </Style>
+            </GridView.ItemContainerStyle>
+        </GridView>
+
+        <!-- 空状态提示（无标签时显示,与真实 Metro IE 无标签页视图一致） -->
+        <TextBlock x:Name="EmptyHint" Grid.Row="1" Text="没有打开的标签页&#x0a;点击右下角「新建标签」开始浏览"
+                   FontFamily="Segoe UI Light" FontSize="24" Foreground="#FF8E8E8E"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"/>
 
         <!-- 新建标签磁贴 -->
         <Button x:Name="NewTabTile" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="20"

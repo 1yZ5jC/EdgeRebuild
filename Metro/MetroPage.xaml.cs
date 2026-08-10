@@ -635,24 +635,46 @@ namespace EdgeRebuild.Metro
         }
 
         // ---- 缩略图网格（淡入动画） ----
+        // 诊断输出：VS 输出窗口即时可见 + crash.log 落盘（含完整堆栈）
+        private static void MetroDebug(string msg)
+        {
+            System.Diagnostics.Debug.WriteLine("[Metro] " + msg);
+            Services.Diagnostics.Log("[Metro] " + msg);
+        }
+
         private void ToggleGrid()
         {
+            MetroDebug($"ToggleGrid: 当前状态={(_gridOpen ? "开" : "关")}");
             if (_gridOpen) CloseGrid();
             else OpenGrid();
         }
 
         private void OpenGrid()
         {
+            MetroDebug($"OpenGrid: 标签数={_tabManager.Tabs.Count} 当前={( _tabManager.CurrentTab == null ? "null" : _tabManager.CurrentTab.Title)}");
             _gridOpen = true;
-            TabGridOverlay.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
-            TabGridOverlay.Visibility = Visibility.Visible;
-            TabGridOverlay.Opacity = 0;
+            // 覆盖层始终 Visible(构造即可见,窗口显示时完成首次布局——延迟可见化的
+            // ScrollViewer 首次真实布局会冻结本 AppWindow 的 UI 线程),这里只恢复
+            // 命中与透明度。打开期间收起网页容器,避免 EdgeHTML WebView 气泡区遮挡。
+            SetWebContentVisible(false);
+            TabGridOverlay.IsHitTestVisible = true;
+            MetroDebug($"OpenGrid 可见后: Overlay Actual={TabGridOverlay.ActualWidth}x{TabGridOverlay.ActualHeight}");
+            try
+            {
+                TabGridOverlay.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
+            }
+            catch (Exception ex)
+            {
+                MetroDebug($"标签网格刷新异常: {ex}");
+            }
             var sb = new Storyboard();
             var fade = new DoubleAnimation { From = 0, To = 1, Duration = TimeSpan.FromMilliseconds(160) };
             Storyboard.SetTarget(fade, TabGridOverlay);
             Storyboard.SetTargetProperty(fade, "Opacity");
             sb.Children.Add(fade);
+            sb.Completed += (s, e) => MetroDebug("标签视图淡入完成");
             sb.Begin();
+            MetroDebug("OpenGrid 完成");
         }
 
         private void CloseGrid()
@@ -662,15 +684,45 @@ namespace EdgeRebuild.Metro
             var fade = new DoubleAnimation { From = 1, To = 0, Duration = TimeSpan.FromMilliseconds(120) };
             Storyboard.SetTarget(fade, TabGridOverlay);
             Storyboard.SetTargetProperty(fade, "Opacity");
-            sb.Children.Add(fade);
-            sb.Completed += (s, e) => TabGridOverlay.Visibility = Visibility.Collapsed;
+            sb.Completed += (s, e) =>
+            {
+                // 淡出完成后恢复网页容器并取消命中(控件保持 Visible,避免触发延迟布局)
+                SetWebContentVisible(true);
+                TabGridOverlay.IsHitTestVisible = false;
+                TabGridOverlay.Opacity = 0;
+            };
             sb.Begin();
         }
 
         private void RefreshGridIfOpen()
         {
             if (_gridOpen)
+            {
+                MetroDebug("RefreshGridIfOpen: 重建网格");
                 TabGridOverlay.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
+            }
+        }
+
+        // 标签视图开启期间收起全部网页容器(当前标签也收起,由 TabManager 的切换语义恢复),
+        // 避免 EdgeHTML WebView 气泡区问题影响覆盖层渲染;关闭时仅恢复当前标签可见
+        private void SetWebContentVisible(bool show)
+        {
+            try
+            {
+                foreach (var item in _tabManager.Tabs)
+                {
+                    var c = item.ContentContainer;
+                    if (c == null) continue;
+                    c.Visibility = show
+                        ? (item == FindViewItem(_tabManager?.CurrentTab) ? Visibility.Visible : Visibility.Collapsed)
+                        : Visibility.Collapsed;
+                }
+                MetroDebug($"SetWebContentVisible({show}): 已切 {_tabManager.Tabs.Count} 个网页容器");
+            }
+            catch (Exception ex)
+            {
+                MetroDebug($"SetWebContentVisible 异常: {ex}");
+            }
         }
 
         private void FadeContentIn()
@@ -694,18 +746,21 @@ namespace EdgeRebuild.Metro
 
         private void TabGrid_TabSelected(TabViewItem viewItem)
         {
+            MetroDebug($"网格选择标签: {viewItem.Tab.Title}");
             CloseGrid();
             _ = _tabManager.SwitchToTabAsync(viewItem);
         }
 
         private void TabGrid_TabCloseRequested(TabViewItem viewItem)
         {
+            MetroDebug($"网格关闭标签: {viewItem.Tab.Title}");
             _ = _tabManager.CloseTabAsync(viewItem);
             RefreshGridIfOpen();
         }
 
         private void TabGrid_NewTabRequested()
         {
+            MetroDebug("网格新建标签");
             CloseGrid();
             _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
         }
@@ -717,12 +772,18 @@ namespace EdgeRebuild.Metro
         {
             var ctrl = Windows.UI.Core.CoreWindow.GetForCurrentThread()?.GetKeyState(VirtualKey.Control)
                 .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down) ?? false;
+            var shift = Windows.UI.Core.CoreWindow.GetForCurrentThread()?.GetKeyState(VirtualKey.Shift)
+                .HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down) ?? false;
 
             if (ctrl)
             {
                 if (TryHandleCtrlNumber(e.Key)) { e.Handled = true; return; }
                 switch (e.Key)
                 {
+                    case VirtualKey.Tab:
+                        e.Handled = true;
+                        CycleTab(shift ? -1 : 1);
+                        break;
                     case VirtualKey.T:
                         e.Handled = true;
                         _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
@@ -783,6 +844,17 @@ namespace EdgeRebuild.Metro
                     ToggleFullscreen();
                 }
             }
+        }
+
+        // Ctrl+Tab / Ctrl+Shift+Tab → 循环切换标签（与主窗口 ShortcutManager 一致）
+        private void CycleTab(int delta)
+        {
+            var list = _tabManager.Tabs;
+            if (list.Count == 0) return;
+            int idx = _tabManager.GetTabIndex(FindViewItem(_tabManager.CurrentTab));
+            if (idx < 0) idx = 0;
+            else idx = (idx + delta + list.Count) % list.Count;
+            _ = _tabManager.SwitchToTabAsync(list[idx]);
         }
 
         // Ctrl+1..8 → 第 N 个标签；Ctrl+9 → 最后一个标签

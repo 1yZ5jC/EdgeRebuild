@@ -71,9 +71,10 @@
             ZoomResetRequested="SettingsPanel_ZoomResetRequested"
             ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"/>
 
-        <!-- 全屏缩略图网格覆盖层 -->
+        <!-- 全屏缩略图网格覆盖层(常驻可见,Opacity=0+不命中:确保 ScrollViewer 在窗口
+             显示时就完成首次真实布局——延迟到打开时才布局会在本 AppWindow 内冻结 UI 线程) -->
         <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="4"
-            Visibility="Collapsed"
+            Opacity="0" IsHitTestVisible="False"
             TabSelected="TabGrid_TabSelected"
             TabCloseRequested="TabGrid_TabCloseRequested"
             NewTabRequested="TabGrid_NewTabRequested"
