@@ -20,6 +20,7 @@ namespace EdgeRebuild.Core
         private bool _needScroll;
         private double _tabWidth;
         private int _tabCount;
+        private bool _recalcQueued;
 
         // UI 引用
         private UIElement _container;
@@ -63,6 +64,29 @@ namespace EdgeRebuild.Core
         public void Recalculate(double containerWidth, int tabCount, int pinnedCount = 0)
         {
             if (containerWidth <= 0 || tabCount == 0) return;
+
+            // 原实现直接同步执行并在 UpdateRightPanelMargin 里强制 UpdateLayout()：
+            // 当 Recalculate 来自 XamlRoot.Changed 等布局敏感回调时,会在布局过程中
+            // 触发重入布局 → 嵌套 MeasureOverride → COMException 0x8000FFFF(E_UNEXPECTED),
+            // 表现为调试器中断/整窗冻结。改为排到调度器低压队列,保证绝不在布局栈内执行,
+            // 并用合并标记吸收高频连续调用。
+            if (_recalcQueued) return;
+            var dispatcher = Windows.UI.Core.CoreWindow.GetForCurrentThread()?.Dispatcher;
+            if (dispatcher == null)
+            {
+                RecalculateCore(containerWidth, tabCount, pinnedCount);
+                return;
+            }
+            _recalcQueued = true;
+            _ = dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
+            {
+                _recalcQueued = false;
+                RecalculateCore(containerWidth, tabCount, pinnedCount);
+            });
+        }
+
+        private void RecalculateCore(double containerWidth, int tabCount, int pinnedCount = 0)
+        {
 
             _tabCount = tabCount;
 
@@ -160,7 +184,11 @@ namespace EdgeRebuild.Core
         {
             if (_rightSidePanel == null) return;
 
-            _rightSidePanel.UpdateLayout();
+            // 注意:不要在这里调 _rightSidePanel.UpdateLayout() 强制布局——
+            // 主窗口树中存在某些原生元素(WebView2 等)在强制布局时测量必抛
+            // COMException 0x8000FFFF(E_UNEXPECTED,三层嵌套 MeasureOverride)。
+            // 打开副窗口/改尺寸 → XamlRoot.Changed → 重算 → 强制布局 = 必炸。
+            // ActualWidth 在系统下一次正常布局后即为最新值,延迟一帧无碍。
             double rightFixed = _rightSidePanel.ActualWidth
                 + _rightSidePanel.Margin.Left
                 + _rightSidePanel.Margin.Right;
@@ -174,7 +202,6 @@ namespace EdgeRebuild.Core
             double extraOffset = Math.Max(0, requiredForDrag - (contentWidth - leftFixed));
 
             _rightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset + extraOffset, 0);
-            _rightSidePanel.UpdateLayout();
         }
 
         private void OnScrollViewerChanged(object sender, ScrollViewerViewChangedEventArgs e)
