@@ -116,6 +116,33 @@
     .logo b { font-weight: 600; color: var(--accent2); }
     .logo .globe { font-size: 30px; margin-right: 8px; }
 
+    /* ===== InPrivate 横幅（inprivate=1 时显示） ===== */
+    #inprivateBanner {
+      max-width: 640px;
+      width: calc(100% - 48px);
+      margin: 0 auto 28px;
+      padding: 18px 24px;
+      border-radius: 12px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+      animation: fadeUp .45s ease both;
+    }
+    #inprivateBanner .ipv-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent2);
+      margin-bottom: 6px;
+    }
+    #inprivateBanner .ipv-desc {
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text);
+      opacity: .85;
+    }
+
     /* ===== 设置按钮 ===== */
     #settingsBtn {
       position: fixed;
@@ -517,6 +544,12 @@
 
   <!-- Logo -->
   <div class="logo"><span class="globe" aria-hidden="true">&#x1F310;</span> Edge <b>Rebuild</b></div>
+
+  <!-- InPrivate 横幅 -->
+  <div id="inprivateBanner" hidden>
+    <div class="ipv-head"><span aria-hidden="true">&#x1F441;</span> InPrivate 浏览</div>
+    <div class="ipv-desc">InPrivate 模式下：浏览历史、Cookie、站点数据和表单输入不会被保存，关闭所有 InPrivate 窗口后即被清除。快速磁贴已隐藏。</div>
+  </div>
 
   <!-- 搜索框 -->
   <div id="searchBox">
@@ -1191,6 +1224,14 @@
         var theme = new URLSearchParams(location.search).get('theme');
         if (theme === 'dark') document.documentElement.classList.add('dark');
         else if (theme === 'light') document.documentElement.classList.add('light');
+      } catch (_) { /* ignore */ }
+
+      try {
+        if (new URLSearchParams(location.search).get('inprivate') === '1') {
+          document.getElementById('inprivateBanner').hidden = false;
+          document.getElementById('grid').style.display = 'none';
+          document.getElementById('q').placeholder = '搜索或输入网址';
+        }
       } catch (_) { /* ignore */ }
 
       loadTiles();

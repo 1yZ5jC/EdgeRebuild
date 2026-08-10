@@ -16,6 +16,7 @@ namespace EdgeRebuild.Core
         private bool _httpsFailed = false;
         private bool _disposed = false;
         private bool _metroHome = false;
+        private bool _inPrivate = false;
 
         public static event Action<string> DownloadRequested;
 
@@ -204,6 +205,30 @@ namespace EdgeRebuild.Core
             LoadingChanged?.Invoke(false);
             // 失败时也尝试获取 favicon
             TryExtractFavicon();
+            ShowErrorPage(e);
+        }
+
+        // ---- 导航失败 → 本地错误页(参考规范 §5.5),EdgeHTML 直接走 ms-appx-web 资源 ----
+        private void ShowErrorPage(WebViewNavigationFailedEventArgs e)
+        {
+            if (_disposed) return;
+            string url = e.Uri?.ToString() ?? "";
+            if (string.IsNullOrEmpty(url)) return;
+            Uri uri;
+            try { uri = new Uri(url); } catch { return; }
+            if (uri.Scheme != "http" && uri.Scheme != "https") return;
+            if (url.Contains("/ErrorPages/error.html")) return;
+
+            try
+            {
+                if (_webView == null) return;
+                string page = "ms-appx-web:///Assets/ErrorPages/error.html?kind=other#" + Uri.EscapeDataString(url);
+                _webView.Navigate(new Uri(page));
+            }
+            catch (Exception ex)
+            {
+                EdgeRebuild.Services.Diagnostics.Log($"[错误页] EdgeHTML 导航失败: {ex.Message}");
+            }
         }
 
         private void UpdateTitle()
@@ -281,6 +306,8 @@ namespace EdgeRebuild.Core
 
         public void SetMetroHome() => _metroHome = true;
 
+        public void SetInPrivate() => _inPrivate = true;
+
         public async Task NavigateAsync(string url)
         {
             if (string.IsNullOrWhiteSpace(url)) url = "about:blank";
@@ -288,7 +315,13 @@ namespace EdgeRebuild.Core
             // prefers-color-scheme 支持，主题经查询参数显式传入）
             if (url == "about:blank")
             {
-                if (_metroHome)
+                if (_inPrivate)
+                {
+                    // InPrivate：隐身专属新标签页（无磁贴、无历史，防泄漏）
+                    string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
+                    url = $"ms-appx-web:///Assets/Ntp/index.html?theme={theme}&inprivate=1";
+                }
+                else if (_metroHome)
                 {
                     // Metro IE 窗口：磁贴风格主页，深色固定主题
                     url = "ms-appx-web:///Assets/NtpMetro/index.html?theme=dark";

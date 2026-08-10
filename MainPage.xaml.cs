@@ -54,6 +54,10 @@ namespace EdgeRebuild
         // ---- 拖拽状态 ----
         private bool _isDragging;
         private bool _isNewWindow;
+        private bool _isInPrivate;
+
+        // ---- 收藏夹栏状态 ----
+        private bool _favoritesBarVisible;
 
         // ---- 阅读模式：tab -> 原始 URL ----
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
@@ -112,6 +116,7 @@ namespace EdgeRebuild
             DownloadManager.RetryDownloadRequested -= OnRetryDownloadRequested;
             EdgeHtmlTab.DownloadRequested -= OnEdgeHtmlDownloadRequested;
             SettingsManager.SettingChanged -= OnSettingChanged;
+            FavoritesManager.Instance.Favorites.CollectionChanged -= OnFavoritesCollectionChanged;
 
             ShortcutManager.OnNewTab -= _shortcutNewTab;
             ShortcutManager.OnCloseTab -= _shortcutCloseTab;
@@ -162,8 +167,15 @@ namespace EdgeRebuild
                 _layoutManager.LayoutUpdated += OnLayoutUpdated;
 
                 // ---- 标签管理器 ----
-                _tabManager = new TabManager();
+                _tabManager = new TabManager { IsInPrivateWindow = _isInPrivate };
                 _tabManager.Initialize(TabBarPanel, ContentContainer);
+                if (_isInPrivate)
+                {
+                    InPrivateBadge.Visibility = Visibility.Visible;
+                    toolbarControl.InPrivateMode = true;
+                    hubPane.SuppressHistory = true;
+                    Services.Diagnostics.Log("[InPrivate] InPrivate 窗口已启用（不写历史、不存会话）");
+                }
                 _tabManager.TabOrderChanged += OnTabOrderChanged;
                 _tabManager.TabCreated += OnTabManagerTabCreated;
                 _tabManager.TabChanged += OnTabManagerTabChanged;
@@ -216,6 +228,9 @@ namespace EdgeRebuild
                     BookmarkAllTabs,
                     ShowAboutDialog,
                     async () => { if (!await WindowManager.OpenNewWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开新窗口", "创建窗口失败"); },
+                    async () => { if (!await WindowManager.OpenInPrivateWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开 InPrivate 窗口", "创建窗口失败"); },
+                    ToggleInPrivateMode,
+                    () => _isInPrivate,
                     async () => { if (!await WindowManager.OpenMetroWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开 Metro IE 窗口", "创建窗口失败"); },
                     AdjustZoom,
                     ResetZoom,
@@ -293,6 +308,12 @@ namespace EdgeRebuild
                 EdgeHtmlTab.DownloadRequested += OnEdgeHtmlDownloadRequested;
                 SettingsManager.SettingChanged += OnSettingChanged;
 
+                // ---- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行)----
+                string favBarSetting = await SettingsManager.GetAsync("ShowFavoritesBar") ?? "False";
+                ShowFavoritesBar(favBarSetting == "True" || favBarSetting == "true");
+                FavoritesManager.Instance.Favorites.CollectionChanged += OnFavoritesCollectionChanged;
+                RefreshFavoritesBar();
+
                 // ---- 创建首页标签 / 恢复会话 ----
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 if (_tabManager.TabCount == 0)
@@ -303,9 +324,10 @@ namespace EdgeRebuild
                     }
                     else
                     {
-                        string restoreSetting = await SettingsManager.GetAsync("RestoreSession") ?? "True";
+                        string restoreSetting = _isInPrivate ? "False"
+                            : await SettingsManager.GetAsync("RestoreSession") ?? "True";
                         bool restoreSession = (restoreSetting == "True" || restoreSetting == "true");
-                        var sessionTabs = await SessionManager.LoadTabsAsync();
+                        var sessionTabs = _isInPrivate ? new List<SessionTabRecord>() : await SessionManager.LoadTabsAsync();
 
                         if (restoreSession && sessionTabs.Count > 0)
                         {
@@ -1357,6 +1379,9 @@ namespace EdgeRebuild
             toolbarControl.ApplySkin(colors, isDark);
             HubSplitView.PaneBackground = colors.ToolbarBackground;
             SettingsSplitView.PaneBackground = colors.ToolbarBackground;
+            FavoritesBar.Background = colors.ToolbarBackground;
+            FavoritesBarEmpty.Foreground = colors.MutedForegroundBrush;
+            RefreshFavoritesBar();
 
             hubPane.ApplySkinColors(colors.ForegroundBrush, colors.MutedForegroundBrush, isDark);
             SettingsPaneControl.ApplySkinColors(colors.ToolbarBackground);
@@ -1503,6 +1528,9 @@ namespace EdgeRebuild
                     case "DownloadFolder":
                         DownloadManager.SetCustomDownloadPath(newValue);
                         break;
+                    case "ShowFavoritesBar":
+                        ShowFavoritesBar(newValue == "True" || newValue == "true");
+                        break;
                     case "DoNotTrack":
                         foreach (var item in _tabManager.Tabs)
                         {
@@ -1523,6 +1551,74 @@ namespace EdgeRebuild
         private void OnWebResourceRequestedForDNT(object sender, CoreWebView2WebResourceRequestedEventArgs e)
         {
             e.Request.Headers.SetHeader("DNT", "1");
+        }
+
+        // ---- 收藏夹栏(参考规范 §6.1)----
+        private void OnFavoritesCollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshFavoritesBar);
+        }
+
+        private void ShowFavoritesBar(bool visible)
+        {
+            _favoritesBarVisible = visible;
+            if (FavoritesBar == null) return;
+            FavoritesBar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void RefreshFavoritesBar()
+        {
+            if (FavoritesBarPanel == null) return;
+            FavoritesBarPanel.Children.Clear();
+            bool isEmpty = true;
+            foreach (var fav in FavoritesManager.Instance.Favorites)
+            {
+                isEmpty = false;
+                var star = new FontIcon
+                {
+                    Glyph = "\uE734",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(Colors.Gold),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 6, 0)
+                };
+                var title = new TextBlock
+                {
+                    Text = fav.Title ?? fav.Url,
+                    FontSize = 13,
+                    MaxWidth = 110,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = ThemeManager.Colors.ForegroundBrush,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+                stack.Children.Add(star);
+                stack.Children.Add(title);
+                var btn = new Button
+                {
+                    Content = stack,
+                    Background = new SolidColorBrush(Colors.Transparent),
+                    BorderThickness = new Thickness(0),
+                    Padding = new Thickness(6, 3, 6, 3),
+                    Margin = new Thickness(0, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                btn.Click += (s, args) => { if (FavoritesBar != null) _ = _tabManager.CurrentTab?.NavigateAsync(fav.Url); };
+                btn.RightTapped += (s, args) =>
+                {
+                    var menu = new MenuFlyout();
+                    var openItem = new MenuFlyoutItem { Text = "打开" };
+                    openItem.Click += (_, _) => { if (FavoritesBar != null) _ = _tabManager.CurrentTab?.NavigateAsync(fav.Url); };
+                    menu.Items.Add(openItem);
+                    var removeItem = new MenuFlyoutItem { Text = "从收藏夹移除" };
+                    removeItem.Click += (_, _) => _ = FavoritesManager.Instance.RemoveAsync(fav);
+                    menu.Items.Add(removeItem);
+                    menu.ShowAt(btn, args.GetPosition(btn));
+                };
+                FavoritesBarPanel.Children.Add(btn);
+            }
+            FavoritesBarEmpty.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
         }
 
         // ---- 下载事件 ----
@@ -1875,6 +1971,7 @@ namespace EdgeRebuild
                 _defaultEngine = args.Engine;
                 _appWindow = args.AppWindow;
                 _isNewWindow = true;
+                _isInPrivate = args.IsInPrivate;
                 string windowId = _appWindow != null ? "AppWindow" : "main";
                 Services.Diagnostics.Log($"[窗口] OnNavigatedTo window={windowId} url={args.Url}");
             }
@@ -1888,6 +1985,36 @@ namespace EdgeRebuild
         {
             await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
             toolbarControl.FocusAddressBarAndClear();
+        }
+
+        /// 进入/退出 InPrivate 模式（当前窗口内切换，不依赖 AppWindow 子窗口）：
+        /// 进入——不写历史、不存会话、新标签页为隐身主页；退出——关闭全部标签，
+        /// 相当于结束一次隐身会话。
+        private void ToggleInPrivateMode()
+        {
+            _isInPrivate = !_isInPrivate;
+            _tabManager.IsInPrivateWindow = _isInPrivate;
+            toolbarControl.InPrivateMode = _isInPrivate;
+            hubPane.SuppressHistory = _isInPrivate;
+            InPrivateBadge.Visibility = _isInPrivate ? Visibility.Visible : Visibility.Collapsed;
+
+            if (_isInPrivate)
+            {
+                Services.Diagnostics.Log("[InPrivate] 已进入 InPrivate 模式");
+            }
+            else
+            {
+                Services.Diagnostics.Log("[InPrivate] 已退出 InPrivate 模式，清除会话标签");
+                _tabManager.ClearClosedTabs();
+                _ = ClearInPrivateTabsAsync();
+            }
+        }
+
+        private async Task ClearInPrivateTabsAsync()
+        {
+            foreach (var viewItem in _tabManager.Tabs.ToList())
+                await _tabManager.CloseTabAsync(viewItem, false);
+            await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
         }
     }
 

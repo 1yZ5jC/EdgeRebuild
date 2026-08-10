@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>无法访问此页面</title>
+<style>
+    html { height: 100%; }
+    body {
+        margin: 0;
+        min-height: 100%;
+        font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        background: #ffffff;
+        color: #171717;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+    .error-layout {
+        position: absolute;
+        left: 35.15%;
+        top: 72px;
+        width: 620px;
+        max-width: 90vw;
+    }
+    .error-icon {
+        font-family: "Segoe MDL2 Assets", "Segoe UI Symbol", sans-serif;
+        font-size: 80px;
+        line-height: 88px;
+        height: 88px;
+        width: 88px;
+        color: #171717;
+    }
+    h1 {
+        font-size: 24px;
+        font-weight: 400;
+        margin: 16px 0 8px 0;
+    }
+    p {
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 0 0 16px 0;
+        color: #555555;
+    }
+    .failed-url {
+        font-size: 13px;
+        color: #777777;
+        word-break: break-all;
+        margin: 0 0 24px 0;
+    }
+    .buttons { display: flex; gap: 8px; }
+    .btn {
+        font-size: 14px;
+        padding: 8px 22px;
+        border: 1px solid #d0d0d0;
+        border-radius: 2px;
+        background: #f2f2f2;
+        color: #171717;
+        cursor: pointer;
+    }
+    .btn:hover { background: #e5e5e5; }
+    .btn-primary {
+        background: #0078d7;
+        border-color: #0078d7;
+        color: #ffffff;
+    }
+    .btn-primary:hover { background: #0067b8; }
+    @media (prefers-color-scheme: dark) {
+        body { background: #171717; color: #f2f2f2; }
+        .error-icon { color: #f2f2f2; }
+        p { color: #bdbdbd; }
+        .failed-url { color: #999999; }
+        .btn { background: #2b2b2b; border-color: #555555; color: #f2f2f2; }
+        .btn:hover { background: #3b3b3b; }
+        .btn-primary { background: #0078d7; border-color: #0078d7; }
+        .btn-primary:hover { background: #0067b8; }
+    }
+</style>
+</head>
+<body>
+<div class="error-layout">
+    <div class="error-icon" id="errorIcon">&#xEB7D;</div>
+    <h1 id="errorTitle">无法访问此页面</h1>
+    <p id="errorDesc">该网站可能暂时无法访问，请稍后重试。</p>
+    <p class="failed-url" id="failedUrl"></p>
+    <div class="buttons">
+        <button class="btn btn-primary" id="retryBtn">重试</button>
+        <button class="btn" id="searchBtn">搜索</button>
+    </div>
+</div>
+<script>
+(function () {
+    "use strict";
+    var kind = "other";
+    var httpCode = "";
+    var query = location.search || "";
+    if (query.charAt(0) === "?") query = query.substring(1);
+    var parts = query.split("&");
+    for (var i = 0; i < parts.length; i++) {
+        var kv = parts[i].split("=");
+        var key = decodeURIComponent(kv[0] || "");
+        var value = kv.length > 1 ? decodeURIComponent(kv[1] || "") : "";
+        if (key === "kind") kind = value;
+        if (key === "code") httpCode = value;
+    }
+
+    var failedUrl = "";
+    try {
+        failedUrl = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+    } catch (e) { failedUrl = ""; }
+
+    var titles = {
+        offline: "你已离线",
+        dns: "找不到你的网站",
+        cert: "此网站的安全证书无效",
+        http: "无法访问此页面",
+        other: "无法访问此页面"
+    };
+    var descs = {
+        offline: "请检查你的网络连接，然后重试。",
+        dns: "无法解析此地址的服务器名称（DNS 查找失败）。请检查地址是否输入正确。",
+        cert: "此网站的安全证书已过期或无效，浏览器停止了连接以保护你的安全。",
+        http: "服务器返回了错误。" + (httpCode ? "（错误代码 " + httpCode + "）" : "这可能是暂时的，请稍后重试。"),
+        other: "该网站可能暂时无法访问，请稍后重试。"
+    };
+
+    document.getElementById("errorTitle").textContent = titles[kind] || titles.other;
+    document.getElementById("errorDesc").textContent = descs[kind] || descs.other;
+    if (kind === "offline") document.getElementById("errorIcon").innerHTML = "&#xEB7C;";
+    if (failedUrl) {
+        document.getElementById("failedUrl").textContent = failedUrl;
+        document.getElementById("failedUrl").title = failedUrl;
+    }
+
+    document.getElementById("retryBtn").addEventListener("click", function () {
+        if (failedUrl) location.href = failedUrl;
+    });
+    document.getElementById("searchBtn").addEventListener("click", function () {
+        location.href = "https://www.bing.com/search?q=" + encodeURIComponent(failedUrl || "");
+    });
+})();
+</script>
+</body>
+</html>

@@ -74,10 +74,14 @@ namespace EdgeRebuild.Core
             _enableTabSuspend = (setting == "True" || setting == "true");
         }
 
+        /// InPrivate 窗口：不写历史、不存会话，所有标签使用隐身主页
+        public bool IsInPrivateWindow { get; set; }
+
         public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false)
         {
             IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
             if (isMetroHome) tab.SetMetroHome();
+            if (IsInPrivateWindow) tab.SetInPrivate();
 
             if (tab is WebView2Tab wv2Tab)
             {
@@ -116,7 +120,7 @@ namespace EdgeRebuild.Core
             if (isPinned && !viewItem.IsPinned)
                 await TogglePinTabAsync(viewItem);
 
-            SessionManager.ScheduleSave(_tabs);
+            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
 
             return viewItem;
         }
@@ -304,8 +308,8 @@ namespace EdgeRebuild.Core
             tab.UrlChanged += (url) =>
             {
                 TabUrlChanged?.Invoke(tab, url);
-                SessionManager.ScheduleSave(_tabs);
-                if (!string.IsNullOrEmpty(url) && url != "about:blank")
+                if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
+                if (!IsInPrivateWindow && !string.IsNullOrEmpty(url) && url != "about:blank")
                     _ = HistoryManager.AddAsync(tab.Title ?? url, url);
             };
 
@@ -471,7 +475,7 @@ namespace EdgeRebuild.Core
 
             TabClosed?.Invoke(viewItem);
             TabCountChanged?.Invoke(_tabs.Count);
-            SessionManager.ScheduleSave(_tabs);
+            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
         }
 
         public bool TryReopenClosedTab(out EngineType engine, out string url, out string title)
@@ -585,7 +589,7 @@ namespace EdgeRebuild.Core
             _tabs.Insert(adjustedIndex, item);
 
             TabOrderChanged?.Invoke();
-            SessionManager.ScheduleSave(_tabs);
+            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
         }
 
         public int GetTabIndex(TabViewItem item) => _tabs.IndexOf(item);
@@ -641,7 +645,7 @@ namespace EdgeRebuild.Core
 
             TabOrderChanged?.Invoke();
             TabCountChanged?.Invoke(_tabs.Count);
-            SessionManager.ScheduleSave(_tabs);
+            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
         }
 
         private void ReorderTabToPinnedSection(TabViewItem viewItem)

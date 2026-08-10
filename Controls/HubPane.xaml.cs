@@ -17,9 +17,32 @@ using Windows.UI.Xaml.Media;
 
 namespace EdgeRebuild.Controls
 {
+    public sealed class HistoryTemplateSelector : DataTemplateSelector
+    {
+        public DataTemplate HeaderTemplate { get; set; }
+        public DataTemplate ItemTemplate { get; set; }
+
+        protected override DataTemplate SelectTemplateCore(object item)
+            => item is HistoryGroup ? HeaderTemplate : ItemTemplate;
+    }
+
+    /// <summary>历史分组键(参考规范 §7.7:past-hour/today/yesterday/date-YYYY-M-D/earlier)。</summary>
+    public sealed class HistoryGroup
+    {
+        public string Key { get; set; }
+        public string HeaderText { get; set; }
+        public List<HistoryItem> Items { get; } = new List<HistoryItem>();
+        public bool IsExpanded { get; set; }
+
+        public string CountText => Items.Count > 0 ? $"{Items.Count} 项" : "";
+    }
+
     public sealed partial class HubPane : UserControl
     {
         public event Action<string> NavigateRequested;
+
+        /// InPrivate 模式：历史面板内显示“不记录历史”提示，不加载列表
+        public bool SuppressHistory { get; set; }
 
         public SolidColorBrush ForegroundBrush { get; set; } = new SolidColorBrush(Colors.Black);
         public SolidColorBrush MutedForegroundBrush { get; set; } = new SolidColorBrush(Colors.DimGray);
@@ -29,6 +52,12 @@ namespace EdgeRebuild.Controls
         // 搜索过滤
         private string _historySearchFilter = "";
         private string _favoritesSearchFilter = "";
+
+        // 历史分组展开状态(参考规范:默认仅展开 past-hour)
+        private readonly HashSet<string> _expandedHistoryGroups = new HashSet<string> { "past-hour" };
+
+        // 历史项 → 组 映射,供虚拟化容器回收后恢复折叠状态
+        private readonly Dictionary<HistoryItem, HistoryGroup> _historyGroupByItem = new Dictionary<HistoryItem, HistoryGroup>();
 
         public HubPane()
         {
@@ -99,22 +128,111 @@ namespace EdgeRebuild.Controls
 
         public void RefreshHistory()
         {
+            if (SuppressHistory) return;   // InPrivate：面板显示提示，不加载列表
             if (HistoryListView == null) return;
             HistoryListView.Items.Clear();
-            var items = string.IsNullOrEmpty(_historySearchFilter)
+            _historyGroupByItem.Clear();
+
+            var filtered = string.IsNullOrEmpty(_historySearchFilter)
                 ? HistoryManager.History
                 : HistoryManager.History.Where(h =>
                     h.Title?.Contains(_historySearchFilter, StringComparison.OrdinalIgnoreCase) == true ||
                     h.Url?.Contains(_historySearchFilter, StringComparison.OrdinalIgnoreCase) == true);
+
+            // 搜索时平铺显示;否则按时间分组(过去 1 小时/今天/昨天/各日期/更早)
+            if (!string.IsNullOrEmpty(_historySearchFilter))
+            {
+                foreach (var item in filtered)
+                    HistoryListView.Items.Add(item);
+                return;
+            }
+
+            foreach (var group in BuildHistoryGroups(filtered))
+            {
+                HistoryListView.Items.Add(group);
+                if (!group.IsExpanded) continue;
+                foreach (var item in group.Items)
+                {
+                    HistoryListView.Items.Add(item);
+                    _historyGroupByItem[item] = group;
+                }
+            }
+        }
+
+        private static readonly string[] WeekdayNames = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
+
+        private static string GetGroupKey(DateTime t)
+        {
+            var now = DateTime.Now;
+            if (t >= now.AddHours(-1)) return "past-hour";
+            if (t.Date == now.Date) return "today";
+            if (t.Date == now.Date.AddDays(-1)) return "yesterday";
+            return t.Date >= now.Date.AddDays(-5) ? $"date-{t:yyyy-M-d}" : "earlier";
+        }
+
+        private static string GetGroupHeaderText(DateTime t)
+        {
+            var now = DateTime.Now;
+            string key = GetGroupKey(t);
+            if (key == "past-hour") return "过去 1 小时";
+            if (key == "today") return $"今天 - {now.Month}/{now.Day}";
+            if (key == "yesterday") return "昨天";
+            if (key.StartsWith("date-"))
+            {
+                var day = t.DayOfWeek;
+                return $"{WeekdayNames[(int)day]} - {t.Month}/{t.Day}";
+            }
+            return "更早";
+        }
+
+        private List<HistoryGroup> BuildHistoryGroups(IEnumerable<HistoryItem> items)
+        {
+            var groups = new Dictionary<string, HistoryGroup>();
             foreach (var item in items)
-                HistoryListView.Items.Add(item);
+            {
+                string key = GetGroupKey(item.VisitTime);
+                if (!groups.TryGetValue(key, out var group))
+                    groups[key] = group = new HistoryGroup { Key = key, HeaderText = GetGroupHeaderText(item.VisitTime) };
+                group.Items.Add(item);
+            }
+            var ordered = groups.Values
+                .OrderBy(g => g.Key == "past-hour" ? 0 : g.Key == "today" ? 1 : g.Key == "yesterday" ? 2 : g.Key.StartsWith("date-") ? 3 : 4)
+                .ThenByDescending(g => g.Key)
+                .ToList();
+            foreach (var g in ordered)
+            {
+                g.Items.Sort((a, b) => b.VisitTime.CompareTo(a.VisitTime));
+                g.IsExpanded = _expandedHistoryGroups.Contains(g.Key) || g.Key == "past-hour";
+            }
+            return ordered;
+        }
+
+        private void ToggleHistoryGroup(HistoryGroup group)
+        {
+            group.IsExpanded = !group.IsExpanded;
+            if (group.IsExpanded) _expandedHistoryGroups.Add(group.Key);
+            else _expandedHistoryGroups.Remove(group.Key);
+
+            // 就地更新已实现的容器,避免整体重渲染丢滚动位置
+            if (HistoryListView.ItemContainerGenerator.ContainerFromItem(group) is ListViewItem headerContainer
+                && headerContainer.ContentTemplateRoot is Grid headerRoot
+                && headerRoot.FindName("ChevronText") is TextBlock chevron)
+            {
+                chevron.Text = group.IsExpanded ? "\uE70E" : "\uE76C";
+            }
+            foreach (var item in group.Items)
+            {
+                if (HistoryListView.ItemContainerGenerator.ContainerFromItem(item) is ListViewItem itemContainer)
+                    itemContainer.Visibility = group.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+            }
         }
 
         public void ShowHistory()
         {
             if (HubNavView.MenuItems.Count > 1)
                 HubNavView.SelectedItem = HubNavView.MenuItems[1];
-            RefreshHistory();
+            if (!SuppressHistory)
+                RefreshHistory();
         }
 
         public void ShowDownloads()
@@ -313,23 +431,58 @@ namespace EdgeRebuild.Controls
 
         private void HistoryListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
-            if (args.InRecycleQueue) return;
+            if (args.InRecycleQueue)
+            {
+                args.ItemContainer.Visibility = Visibility.Visible;
+                return;
+            }
+
+            if (args.Item is HistoryGroup group)
+            {
+                args.ItemContainer.DataContext = group;
+                var headerRoot = args.ItemContainer.ContentTemplateRoot as Grid;
+                if (headerRoot != null)
+                {
+                    if (headerRoot.FindName("ChevronText") is TextBlock chevron)
+                    {
+                        chevron.Text = group.IsExpanded ? "\uE70E" : "\uE76C";
+                        chevron.Foreground = MutedForegroundBrush;
+                    }
+                    if (headerRoot.FindName("HeaderTitleText") is TextBlock titleText)
+                    {
+                        titleText.Text = group.HeaderText;
+                        titleText.Foreground = ForegroundBrush;
+                    }
+                    if (headerRoot.FindName("HeaderCountText") is TextBlock countText)
+                    {
+                        countText.Text = group.CountText;
+                        countText.Foreground = MutedForegroundBrush;
+                    }
+                }
+                args.Handled = true;
+                return;
+            }
+
             var hist = args.Item as HistoryItem;
             if (hist == null) return;
             args.ItemContainer.DataContext = hist;
 
             var root = args.ItemContainer.ContentTemplateRoot as Grid;
-            if (root == null) return;
-            var titleText = root.FindName("TitleText") as TextBlock;
-            var urlText = root.FindName("UrlText") as TextBlock;
-            var timeText = root.FindName("TimeText") as TextBlock;
-
-            if (titleText != null) { titleText.Text = hist.Title ?? ""; titleText.Foreground = ForegroundBrush; }
-            if (urlText != null) { urlText.Text = hist.Url ?? ""; urlText.Foreground = MutedForegroundBrush; }
-            if (timeText != null)
+            if (root != null)
             {
-                timeText.Text = hist.VisitTime != DateTime.MinValue ? hist.VisitTime.ToString("yyyy-MM-dd HH:mm") : "";
-                timeText.Foreground = MutedForegroundBrush;
+                var titleText = root.FindName("TitleText") as TextBlock;
+                var urlText = root.FindName("UrlText") as TextBlock;
+                var timeText = root.FindName("TimeText") as TextBlock;
+
+                if (titleText != null) { titleText.Text = hist.Title ?? ""; titleText.Foreground = ForegroundBrush; }
+                if (urlText != null) { urlText.Text = hist.Url ?? ""; urlText.Foreground = MutedForegroundBrush; }
+                if (timeText != null)
+                {
+                    timeText.Text = hist.VisitTime != DateTime.MinValue ? hist.VisitTime.ToString("yyyy-MM-dd HH:mm") : "";
+                    timeText.Foreground = MutedForegroundBrush;
+                }
+                if (_historyGroupByItem.TryGetValue(hist, out var itemGroup) && !itemGroup.IsExpanded)
+                    args.ItemContainer.Visibility = Visibility.Collapsed;
             }
             args.Handled = true;
         }
@@ -342,8 +495,33 @@ namespace EdgeRebuild.Controls
 
         private void HistoryListView_ItemClick(object sender, ItemClickEventArgs e)
         {
-            if (e.ClickedItem is HistoryItem hist)
+            if (e.ClickedItem is HistoryGroup group)
+                ToggleHistoryGroup(group);
+            else if (e.ClickedItem is HistoryItem hist)
                 NavigateRequested?.Invoke(hist.Url);
+        }
+
+        private void HistoryHeader_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var headerRoot = sender as Grid;
+            if (headerRoot == null) return;
+            var group = headerRoot.DataContext as HistoryGroup;
+            if (group == null) return;
+
+            var menu = new MenuFlyout();
+            var toggleItem = new MenuFlyoutItem { Text = group.IsExpanded ? "折叠" : "展开" };
+            toggleItem.Click += (s, args) => ToggleHistoryGroup(group);
+            menu.Items.Add(toggleItem);
+
+            var deleteGroupItem = new MenuFlyoutItem { Text = $"清除此分组 ({group.Items.Count} 项)" };
+            deleteGroupItem.Click += async (s, args) =>
+            {
+                await HistoryManager.RemoveManyAsync(group.Items.Select(i => i.Id).ToList());
+                RefreshHistory();
+            };
+            menu.Items.Add(deleteGroupItem);
+
+            menu.ShowAt(headerRoot, e.GetPosition(headerRoot));
         }
 
         public void UpdateDownloadItem(DownloadItem item)
@@ -623,6 +801,17 @@ namespace EdgeRebuild.Controls
         {
             if (args.SelectedItem is Microsoft.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
             {
+                if (SuppressHistory && tag == "History")
+                {
+                    // InPrivate 模式：不加载历史列表，面板内显示提示
+                    FavPanel.Visibility = Visibility.Collapsed;
+                    HistoryPanel.Visibility = Visibility.Visible;
+                    DownloadsContainer.Visibility = Visibility.Collapsed;
+                    HistoryToolbar.Visibility = Visibility.Collapsed;
+                    HistoryListView.Visibility = Visibility.Collapsed;
+                    InPrivateNotice.Visibility = Visibility.Visible;
+                    return;
+                }
                 FavPanel.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
                 HistoryPanel.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
                 DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;

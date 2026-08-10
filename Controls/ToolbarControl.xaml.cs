@@ -495,10 +495,20 @@ namespace EdgeRebuild.Controls
         {
             var accentColor = (Color)Application.Current.Resources["SystemAccentColor"];
             UrlBox.BorderBrush = new SolidColorBrush(accentColor);
+            if (InPrivateMode) UrlBox.Opacity = 1.0;
         }
         private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
         {
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
+            if (InPrivateMode) UrlBox.Opacity = 0.3;
+        }
+
+        /// InPrivate 窗口：地址栏失焦时半透明（提示隐身状态）
+        private bool _inPrivateMode;
+        public bool InPrivateMode
+        {
+            get => _inPrivateMode;
+            set { _inPrivateMode = value; UrlBox.Opacity = value ? 0.3 : 1.0; }
         }
 
         // ---- 文本变化（核心：包含自动补全） ----
@@ -866,7 +876,6 @@ namespace EdgeRebuild.Controls
 
         private void ShowSuggestionsManually()
         {
-            if (string.IsNullOrWhiteSpace(UrlBox.Text)) { CloseSuggestions(); return; }
             UpdateSuggestions();
             if (_currentSuggestions.Count > 0)
             {
@@ -903,7 +912,7 @@ namespace EdgeRebuild.Controls
 
             var icon = new FontIcon
             {
-                Glyph = item.IsFavorite ? "\uE734" : "\uE81C",
+                Glyph = item.IsPopular ? "\uE721" : item.IsFavorite ? "\uE734" : "\uE81C",
                 FontSize = 14,
                 Foreground = _mutedForegroundBrush,
                 VerticalAlignment = VerticalAlignment.Center,
@@ -939,8 +948,37 @@ namespace EdgeRebuild.Controls
         private List<SuggestionItem> GetSuggestions(string query)
         {
             var results = new List<SuggestionItem>();
-            if (string.IsNullOrWhiteSpace(query)) return results;
-            string lq = query.ToLower();
+            string q = query.Trim();
+
+            // 空查询 → 搜索提供程序主页(参考规范 §7.1:空查询显示「热门站点」)
+            if (string.IsNullOrWhiteSpace(q))
+            {
+                var homes = new (string name, string url)[]
+                {
+                    ("Google", "https://www.google.com"),
+                    ("Bing", "https://www.bing.com"),
+                    ("DuckDuckGo", "https://duckduckgo.com")
+                };
+                int currentIndex = Array.FindIndex(homes, h => h.name.Equals(_searchEngine, StringComparison.OrdinalIgnoreCase));
+                if (currentIndex > 0)
+                {
+                    var current = homes[currentIndex];
+                    homes[currentIndex] = homes[0];
+                    homes[0] = current;
+                }
+                foreach (var h in homes)
+                {
+                    results.Add(new SuggestionItem
+                    {
+                        DisplayTitle = $"{h.name} 主页",
+                        Url = h.url,
+                        IsPopular = true
+                    });
+                }
+                return results;
+            }
+
+            string lq = q.ToLower();
 
             var favs = FavoritesManager.Instance.Favorites
                 .Where(f => f.Title.ToLower().Contains(lq) || f.Url.ToLower().Contains(lq))
@@ -995,6 +1033,7 @@ namespace EdgeRebuild.Controls
             public string DisplayTitle { get; set; }
             public string Url { get; set; }
             public bool IsFavorite { get; set; }
+            public bool IsPopular { get; set; }
         }
     }
 }

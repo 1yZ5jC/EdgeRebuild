@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    xmlns:local="using:EdgeRebuild.Controls"
     Background="Transparent"
     IsHitTestVisible="True"
     HorizontalAlignment="Stretch"
@@ -118,6 +119,39 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 历史分组表头模板 -->
+        <DataTemplate x:Key="HistoryHeaderTemplate">
+            <Grid Padding="12,6,12,6" Background="Transparent" RightTapped="HistoryHeader_RightTapped">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="ChevronText" Text="&#xE70E;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock x:Name="HeaderTitleText" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="HeaderCountText" Grid.Column="2" FontSize="11" VerticalAlignment="Center"/>
+            </Grid>
+        </DataTemplate>
+
+        <!-- 历史项模板(与表头分离,供模板选择器使用) -->
+        <DataTemplate x:Key="HistoryItemTemplate">
+            <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
+                  RightTapped="HistoryItem_RightTapped">
+                <StackPanel Spacing="3" VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
+                               TextTrimming="CharacterEllipsis"/>
+                    <TextBlock x:Name="UrlText" FontSize="11"
+                               TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                    <TextBlock x:Name="TimeText" FontSize="10"/>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <local:HistoryTemplateSelector x:Key="HistoryListTemplateSelector"
+                                       HeaderTemplate="{StaticResource HistoryHeaderTemplate}"
+                                       ItemTemplate="{StaticResource HistoryItemTemplate}"/>
     </UserControl.Resources>
 
     <Grid Background="Transparent" IsHitTestVisible="True">
@@ -234,7 +268,7 @@
 
                     <!-- 历史记录面板 -->
                     <StackPanel x:Name="HistoryPanel" Visibility="Collapsed">
-                        <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                        <StackPanel x:Name="HistoryToolbar" Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
                             <!-- 新增：历史记录搜索框 -->
                             <TextBox x:Name="HistorySearchBox" 
                                      PlaceholderText="搜索历史..." 
@@ -248,29 +282,29 @@
                                     Click="ClearHistoryBtn_Click"/>
                         </StackPanel>
 
+                        <!-- InPrivate：不展示历史列表，改为面板内提示 -->
+                        <StackPanel x:Name="InPrivateNotice" Visibility="Collapsed"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Margin="0,80,0,0">
+                            <TextBlock Text="&#xEC25;" FontFamily="Segoe MDL2 Assets"
+                                       FontSize="28" HorizontalAlignment="Center"
+                                       Foreground="Gray" Margin="0,0,0,12"/>
+<TextBlock Text="InPrivate 模式下不会记录历史记录"
+                           FontSize="14" Foreground="Gray"
+                           HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                           MaxWidth="260"/>
+                        </StackPanel>
+
                         <ListView x:Name="HistoryListView" 
                                   SelectionMode="None"
                                   IsItemClickEnabled="True" 
                                   ItemClick="HistoryListView_ItemClick"
+                                  ItemTemplateSelector="{StaticResource HistoryListTemplateSelector}"
                                   ContainerContentChanging="HistoryListView_ContainerContentChanging"
                                   Background="Transparent"
                                   MinHeight="300"
-                                  HorizontalAlignment="Stretch">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
-                                          RightTapped="HistoryItem_RightTapped">
-                                        <StackPanel Spacing="3" VerticalAlignment="Center">
-                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
-                                                       TextTrimming="CharacterEllipsis"/>
-                                            <TextBlock x:Name="UrlText" FontSize="11"
-                                                       TextTrimming="CharacterEllipsis" MaxWidth="300"/>
-                                            <TextBlock x:Name="TimeText" FontSize="10"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
+                                  HorizontalAlignment="Stretch"
+                                  Visibility="Collapsed"/>
                     </StackPanel>
 
                     <!-- 下载面板 -->

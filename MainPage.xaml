@@ -63,7 +63,7 @@
                                     </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
-                            <Border x:Name="HoverBorder" Background="Transparent" CornerRadius="2">
+                            <Border x:Name="HoverBorder" Background="Transparent">
                                 <ContentPresenter x:Name="ContentPresenter" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                             </Border>
                         </Grid>
@@ -190,6 +190,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="32"/>
             <RowDefinition Height="40"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
@@ -203,6 +204,18 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
+
+                <!-- InPrivate 徽标（仅隐身窗口显示） -->
+                <Border x:Name="InPrivateBadge" Grid.Column="0" Visibility="Collapsed"
+                        Background="#2D2D30" Height="22" Padding="8,0"
+                        VerticalAlignment="Center" Margin="6,0,4,0"
+                        ToolTipService.ToolTip="InPrivate 浏览：不保存历史记录、Cookie 与站点数据">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="&#xEC25;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                   Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="InPrivate" FontSize="11" Foreground="White" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
 
                 <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
                         Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
@@ -251,15 +264,32 @@
                                  MenuClicked="ToolbarControl_MenuClicked"
                                  EngineSwitched="ToolbarControl_EngineSwitched"/>
 
+        <!-- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行) -->
+        <Border x:Name="FavoritesBar" Grid.Row="2" Visibility="Collapsed"
+                Background="{StaticResource ToolbarAcrylicBrush}" Height="44">
+            <Grid>
+                <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled"
+                              HorizontalScrollMode="Enabled"
+                              VerticalAlignment="Center">
+                    <StackPanel x:Name="FavoritesBarPanel" Orientation="Horizontal" Margin="12,0"/>
+                </ScrollViewer>
+                <TextBlock x:Name="FavoritesBarEmpty" Text="将网页加入收藏后即可在此栏快速访问"
+                           FontSize="12" VerticalAlignment="Center" Margin="14,0"
+                           Foreground="{StaticResource MutedForegroundBrush}"
+                           IsHitTestVisible="False"/>
+            </Grid>
+        </Border>
+
         <!-- 网页区域 -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <SplitView x:Name="HubSplitView" DisplayMode="Overlay"
-                       OpenPaneLength="420" PanePlacement="Right"
+                       OpenPaneLength="520" PanePlacement="Right"
                        PaneBackground="{StaticResource ToolbarAcrylicBrush}">
                 <SplitView.Pane>
                     <controls:HubPane x:Name="hubPane"
                                       NavigateRequested="HubPane_NavigateRequested"
-                                      Width="420"
+                                      Width="520"
                                       HorizontalAlignment="Stretch"
                                       VerticalAlignment="Stretch"/>
                 </SplitView.Pane>
@@ -267,7 +297,7 @@
             </SplitView>
 
             <SplitView x:Name="SettingsSplitView" DisplayMode="Overlay"
-                       OpenPaneLength="420" PanePlacement="Right"
+                       OpenPaneLength="520" PanePlacement="Right"
                        PaneBackground="{StaticResource ToolbarAcrylicBrush}"
                        Canvas.ZIndex="60">
                 <SplitView.Content>
@@ -309,7 +339,7 @@
 
         <!-- 网页捕获覆盖层：截图 + 画笔批注（保留在可视树中以便 RenderTargetBitmap 合成） -->
         <!-- 网页捕获覆盖层：只覆盖网页区域（Row 2），地址栏/标签栏保持可见，如同旧版 Edge 批注模式 -->
-        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="2" Canvas.ZIndex="90"
+        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="3" Canvas.ZIndex="90"
               Background="#A0000000" Tapped="CaptureOverlay_Tapped">
                 <Border x:Name="CaptureBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
                         BorderBrush="Gray" BorderThickness="1" Padding="12">
@@ -343,11 +373,11 @@
                 </Border>
         </Grid>
 
-        <Canvas x:Name="DragCanvas" Grid.RowSpan="3" Background="Transparent"
+        <Canvas x:Name="DragCanvas" Grid.RowSpan="4" Background="Transparent"
                 IsHitTestVisible="False" Canvas.ZIndex="1000"/>
 
         <!-- 大声朗读控制浮层：网页/EPUB 朗读时的播放控制（直角 + 主题化，颜色由 ApplyTheme 提供） -->
-        <Border x:Name="ReadAloudBar" Visibility="Collapsed" Grid.Row="2"
+        <Border x:Name="ReadAloudBar" Visibility="Collapsed" Grid.Row="3"
                 HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,20"
                 Padding="14,6" BorderThickness="1"
                 Canvas.ZIndex="95">

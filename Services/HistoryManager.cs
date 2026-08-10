@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
@@ -39,6 +40,17 @@ namespace EdgeRebuild.Services
         {
             History.Remove(item);
             await DatabaseService.Database.DeleteAsync(item);
+        }
+
+        public static async Task RemoveManyAsync(List<int> ids)
+        {
+            if (ids == null || ids.Count == 0) return;
+            foreach (var id in ids)
+            {
+                var item = History.FirstOrDefault(h => h.Id == id);
+                if (item != null) History.Remove(item);
+                await DatabaseService.Database.DeleteAsync<HistoryItem>(id);
+            }
         }
     }
 }

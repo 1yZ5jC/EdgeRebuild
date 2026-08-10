@@ -32,6 +32,7 @@ namespace EdgeRebuild.Core
         Task RefreshAsync();
         Task StopAsync();
         void SetMetroHome();   // 新标签页改用 Metro 磁贴主页（仅 Metro IE 窗口）
+        void SetInPrivate();   // InPrivate 模式：新标签页为隐身专用主页，不写历史
         void Dispose();
 
         event Action<string> TitleChanged;

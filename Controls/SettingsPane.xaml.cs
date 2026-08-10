@@ -13,7 +13,7 @@ namespace EdgeRebuild.Controls
         public event EventHandler CloseRequested;
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle;
+        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle;
         private ComboBox _ntpTypeCombo;
         private TextBox _homePageBox;
         private ComboBox _searchEngineCombo;
@@ -98,6 +98,8 @@ namespace EdgeRebuild.Controls
             _modernIERadio = new RadioButton { Content = "Modern IE", GroupName = "Skin", Margin = new Thickness(0, 4, 0, 0) };
             appearancePanel.Children.Add(_spartanRadio);
             appearancePanel.Children.Add(_modernIERadio);
+            _favoritesBarToggle = new ToggleSwitch { Header = "显示收藏夹栏", Margin = new Thickness(0, 10, 0, 0) };
+            appearancePanel.Children.Add(_favoritesBarToggle);
             _panels[1] = appearancePanel;
 
             // 下载 (2)
@@ -180,6 +182,9 @@ namespace EdgeRebuild.Controls
                 _spartanRadio.IsChecked = (skin != "ModernIE");
                 _modernIERadio.IsChecked = (skin == "ModernIE");
 
+                string favoritesBar = await SettingsManager.GetAsync("ShowFavoritesBar") ?? "False";
+                _favoritesBarToggle.IsOn = (favoritesBar == "True" || favoritesBar == "true");
+
                 string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
                 _askToggle.IsOn = (ask == "True" || ask == "true");
                 string autoClean = await SettingsManager.GetAsync("AutoCleanDownload") ?? "False";
@@ -235,6 +240,7 @@ namespace EdgeRebuild.Controls
                 _doNotTrackToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("DoNotTrack", _doNotTrackToggle.IsOn.ToString());
                 _homePageBox.TextChanged += async (s, e) => await SettingsManager.SetAsync("HomePage", _homePageBox.Text);
                 _restoreToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("RestoreSession", _restoreToggle.IsOn.ToString());
+                _favoritesBarToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("ShowFavoritesBar", _favoritesBarToggle.IsOn.ToString());
                 _ntpTypeCombo.SelectionChanged += async (s, e) =>
                 {
                     string value = _ntpTypeCombo.SelectedIndex switch

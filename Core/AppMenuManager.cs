@@ -22,6 +22,9 @@ namespace EdgeRebuild.Core
         private readonly Action _onBookmarkAll;
         private readonly Action _onAbout;
         private readonly Action _onNewWindow;
+        private readonly Action _onNewInPrivateWindow;
+        private readonly Action _onToggleInPrivate;
+        private readonly Func<bool> _getIsInPrivate;
         private readonly Action _onOpenMetroWindow;
         private readonly Action<double> _onZoomAdjust;
         private readonly Action _onZoomReset;
@@ -51,6 +54,9 @@ namespace EdgeRebuild.Core
             Action onBookmarkAll,
             Action onAbout,
             Action onNewWindow,
+            Action onNewInPrivateWindow,
+            Action onToggleInPrivate,
+            Func<bool> getIsInPrivate,
             Action onOpenMetroWindow,
             Action<double> onZoomAdjust,
             Action onZoomReset,
@@ -79,6 +85,9 @@ namespace EdgeRebuild.Core
             _onBookmarkAll = onBookmarkAll;
             _onAbout = onAbout;
             _onNewWindow = onNewWindow;
+            _onNewInPrivateWindow = onNewInPrivateWindow;
+            _onToggleInPrivate = onToggleInPrivate;
+            _getIsInPrivate = getIsInPrivate;
             _onOpenMetroWindow = onOpenMetroWindow;
             _onZoomAdjust = onZoomAdjust;
             _onZoomReset = onZoomReset;
@@ -116,6 +125,19 @@ namespace EdgeRebuild.Core
             var newWindowItem = new MenuFlyoutItem { Text = "新建窗口" };
             newWindowItem.Click += (_, _) => _onNewWindow?.Invoke();
             menu.Items.Add(newWindowItem);
+
+            // 新建 InPrivate 窗口（独立窗口：不写历史、不存会话）
+            var inPrivateWindowItem = new MenuFlyoutItem { Text = "新建 InPrivate 窗口" };
+            inPrivateWindowItem.Click += (_, _) => _onNewInPrivateWindow?.Invoke();
+            menu.Items.Add(inPrivateWindowItem);
+
+            // InPrivate 模式（当前窗口内切换，不依赖子窗口）
+            var inPrivateItem = new MenuFlyoutItem
+            {
+                Text = (_getIsInPrivate?.Invoke() ?? false) ? "退出 InPrivate 模式" : "进入 InPrivate 模式"
+            };
+            inPrivateItem.Click += (_, _) => _onToggleInPrivate?.Invoke();
+            menu.Items.Add(inPrivateItem);
 
             // Metro IE 窗口（无标签条 + 缩略图网格 + 磁贴主页）
             var metroWindowItem = new MenuFlyoutItem { Text = "打开 Metro IE 窗口" };

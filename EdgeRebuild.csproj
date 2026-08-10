@@ -58,10 +58,20 @@
     <Content Include="Assets\EpubReader\**" />
     <Content Include="Assets\Ntp\**" />
     <Content Include="Assets\NtpMetro\**" />
+    <Content Include="Assets\ErrorPages\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="docs\**" />
+    <EmbeddedResource Remove="docs\**" />
+    <None Remove="docs\**" />
+    <Page Remove="docs\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+  </ItemGroup>
+  <ItemGroup>
+    <PRIResource Remove="docs\**" />
   </ItemGroup>
 </Project>

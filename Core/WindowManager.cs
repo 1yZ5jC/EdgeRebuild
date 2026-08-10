@@ -15,6 +15,7 @@ namespace EdgeRebuild.Core
         public string Url { get; set; }
         public Windows.UI.WindowManagement.AppWindow AppWindow { get; set; }
         public bool IsMetro { get; set; }
+        public bool IsInPrivate { get; set; }
     }
 
     /// <summary>
@@ -25,7 +26,15 @@ namespace EdgeRebuild.Core
     {
         public static async Task<bool> OpenNewWindowAsync(EngineType engine, string url)
         {
-            return await OpenWindowCoreAsync(engine, url, typeof(MainPage), false);
+            return await OpenWindowCoreAsync(engine, url, typeof(MainPage), false, false);
+        }
+
+        /// <summary>
+        /// 打开 InPrivate 窗口：不写历史、不存会话，新标签页为隐身专属主页。
+        /// </summary>
+        public static async Task<bool> OpenInPrivateWindowAsync(EngineType engine, string url)
+        {
+            return await OpenWindowCoreAsync(engine, url, typeof(MainPage), false, true);
         }
 
         /// <summary>
@@ -33,10 +42,10 @@ namespace EdgeRebuild.Core
         /// </summary>
         public static async Task<bool> OpenMetroWindowAsync(EngineType engine, string url)
         {
-            return await OpenWindowCoreAsync(engine, url, typeof(MetroPage), true);
+            return await OpenWindowCoreAsync(engine, url, typeof(MetroPage), true, false);
         }
 
-        private static async Task<bool> OpenWindowCoreAsync(EngineType engine, string url, Type pageType, bool isMetro)
+        private static async Task<bool> OpenWindowCoreAsync(EngineType engine, string url, Type pageType, bool isMetro, bool isInPrivate)
         {
             try
             {
@@ -56,7 +65,7 @@ namespace EdgeRebuild.Core
                 }
 
                 var frame = new Frame();
-                frame.Navigate(pageType, new NewWindowArgs { Engine = engine, Url = url, AppWindow = appWindow, IsMetro = isMetro });
+                frame.Navigate(pageType, new NewWindowArgs { Engine = engine, Url = url, AppWindow = appWindow, IsMetro = isMetro, IsInPrivate = isInPrivate });
 
                 ElementCompositionPreview.SetAppWindowContent(appWindow, frame);
                 Services.Diagnostics.Log($"[NewWindow] 视图创建完成 uiContext={frame.UIContext}");

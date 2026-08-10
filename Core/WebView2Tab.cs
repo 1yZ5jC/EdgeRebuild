@@ -24,6 +24,7 @@ namespace EdgeRebuild.Core
         private bool _httpsFailed = false;
         private bool _disposed = false;
         private bool _metroHome = false;
+        private bool _inPrivate = false;
         private string _currentDocSource = null;
 
         public string Id { get; } = Guid.NewGuid().ToString();
@@ -492,6 +493,80 @@ namespace EdgeRebuild.Core
             {
                 string currentUrl = sender.Source?.ToString() ?? "";
                 UrlChanged?.Invoke(currentUrl);
+                ShowErrorPage(currentUrl, e.WebErrorStatus, e.HttpStatusCode);
+            }
+        }
+
+        // ---- 导航失败 → 本地错误页(参考规范 §5.5:offline/dns/cert/http + #failed-url 传参)----
+        private void ShowErrorPage(string currentUrl, CoreWebView2WebErrorStatus status, int httpStatusCode)
+        {
+            if (_disposed || _isSuspended) return;
+            if (string.IsNullOrEmpty(currentUrl)) return;
+            if (status == CoreWebView2WebErrorStatus.OperationCanceled) return;
+            if (!currentUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !currentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return;
+
+            Uri uri;
+            try { uri = new Uri(currentUrl); } catch { return; }
+            if (uri.Host.EndsWith("contentcache.local", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.EndsWith("epubreader.local", StringComparison.OrdinalIgnoreCase)) return;
+
+            string kind = "other";
+            switch (status)
+            {
+                case CoreWebView2WebErrorStatus.HostNameNotResolved:
+                    kind = "dns";
+                    break;
+                case CoreWebView2WebErrorStatus.CertificateCommonNameIsIncorrect:
+                case CoreWebView2WebErrorStatus.CertificateExpired:
+                case CoreWebView2WebErrorStatus.CertificateRevoked:
+                case CoreWebView2WebErrorStatus.CertificateIsInvalid:
+                case CoreWebView2WebErrorStatus.ClientCertificateContainsErrors:
+                    kind = "cert";
+                    break;
+                default:
+                    if (httpStatusCode >= 400 && httpStatusCode < 600)
+                        kind = "http";
+                    break;
+            }
+
+            try
+            {
+                EnsureErrorPagesLocalFile();
+                string url = $"https://contentcache.local/errorpages/error.html?kind={kind}";
+                if (httpStatusCode >= 400 && httpStatusCode < 600)
+                    url += $"&code={httpStatusCode}";
+                url += "#" + Uri.EscapeDataString(currentUrl);
+                _webView.CoreWebView2?.Navigate(url);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[错误页] 导航失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 把包内错误页复制到 LocalFolder（contentcache.local 映射目录）。
+        /// </summary>
+        private static void EnsureErrorPagesLocalFile()
+        {
+            try
+            {
+                var dir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", "errorpages");
+                Directory.CreateDirectory(dir);
+                var dest = Path.Combine(dir, "error.html");
+                string srcPath = Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "ErrorPages", "error.html");
+                if (File.Exists(dest))
+                {
+                    if (new FileInfo(dest).Length == new FileInfo(srcPath).Length) return;
+                }
+                byte[] bytes = File.ReadAllBytes(srcPath);
+                File.WriteAllBytes(dest, bytes);
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[错误页] 复制失败: {ex.Message}");
             }
         }
 
@@ -567,6 +642,8 @@ namespace EdgeRebuild.Core
 
         public void SetMetroHome() => _metroHome = true;
 
+        public void SetInPrivate() => _inPrivate = true;
+
         public async Task NavigateAsync(string url)
         {
             if (_disposed) return;
@@ -574,7 +651,14 @@ namespace EdgeRebuild.Core
             // 新标签页（about:blank）→ 本地 NTP 页面（设置里可改回真空白页）
             if (url == "about:blank")
             {
-                if (_metroHome)
+                if (_inPrivate)
+                {
+                    // InPrivate：隐身专属新标签页（无磁贴、无历史，防泄漏）
+                    EnsureNtpLocalFile();
+                    string theme = Services.ThemeManager.IsDarkTheme ? "dark" : "light";
+                    url = $"https://contentcache.local/ntp/index.html?theme={theme}&inprivate=1";
+                }
+                else if (_metroHome)
                 {
                     // Metro IE 窗口：磁贴风格主页，深色固定主题
                     EnsureNtpMetroLocalFile();
