@@ -17,7 +17,11 @@ namespace EdgeRebuild.Services
             foreach (var item in items) History.Add(item);
         }
 
-        public static async Task AddAsync(string title, string url)
+        /// <summary>
+        /// 先以 URL 作占位标题入库（导航瞬间真实标题尚未解析），返回记录供
+        /// TitleChanged 到来后经 UpdateTitleAsync 修正，避免"旧页标题配新网址"。
+        /// </summary>
+        public static async Task<HistoryItem> AddAsync(string title, string url)
         {
             var item = new HistoryItem { Title = title ?? url, Url = url, VisitTime = DateTime.Now };
             await DatabaseService.Database.InsertAsync(item);
@@ -28,6 +32,14 @@ namespace EdgeRebuild.Services
                 await DatabaseService.Database.DeleteAsync(last);
                 History.Remove(last);
             }
+            return item;
+        }
+
+        public static async Task UpdateTitleAsync(HistoryItem item, string title)
+        {
+            if (item == null || string.IsNullOrEmpty(title) || item.Title == title) return;
+            item.Title = title;
+            try { await DatabaseService.Database.UpdateAsync(item); } catch { }
         }
 
         public static async Task ClearAsync()

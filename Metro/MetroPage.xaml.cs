@@ -34,6 +34,8 @@ namespace EdgeRebuild.Metro
         private bool _isFullscreen;
         private bool _isReadingAloud;
         private double _zoomFactor = 1.0;
+        private uint? _edgeSwipePointerId;   // A3 底缘上滑手势跟踪
+        private double _edgeSwipeStartY;
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
@@ -51,6 +53,11 @@ namespace EdgeRebuild.Metro
             };
             _ctxPollTimer.Tick += CtxPollTimer_Tick;
             _ctxPollTimer.Start();
+            Loaded += (s, e) =>
+            {
+                // FindBar 底边距 = 标签条 + 地址栏实际高度（避免与布局常量硬编码耦合）
+                FindBar.Margin = new Thickness(0, 0, 0, TabStrip.ActualHeight + AddressBar.ActualHeight);
+            };
         }
 
         // 标签条内容变化（标题/图标/URL/加载态）防抖刷新，避免高频事件刷屏重建
@@ -78,6 +85,7 @@ namespace EdgeRebuild.Metro
             string url = args?.Url ?? "about:blank";
 
             _tabManager = new TabManager(() => MetroColorPalette.GetSkinColors());
+            _tabManager.ParticipatesInSession = false;   // Metro 独立窗口不写共享会话，避免覆盖主窗口恢复快照
             _tabManager.Initialize(null, ContentPanel);
             _tabManager.TabCreated += AttachStripRefresh;
             _tabManager.TabClosed += viewItem => _readerModeUrls.Remove(viewItem.Tab);
@@ -96,6 +104,8 @@ namespace EdgeRebuild.Metro
                     AddressBar.SetUrl(tabUrl);
             };
             _tabManager.ContextMenuRequested += OnTabContextMenuRequested;
+            _tabManager.NtpSearchRequested += OnNtpSearchRequested;   // 经典 NTP 搜索（WebView2 postMessage 通道）
+            _tabManager.PageKeyPressed += OnMetroPageKey;             // 焦点在网页内容内的快捷键（WebView2 消息桥）
 
             if (_appWindow != null)
             {
@@ -257,9 +267,16 @@ namespace EdgeRebuild.Metro
 
         private async void SettingsPanel_ClearHistoryRequested()
         {
+            // 与主窗口「清除浏览数据」同范围：历史 + Cookie + 已完成下载 + 关闭的标签
             await HistoryManager.ClearAsync();
             _tabManager.ClearClosedTabs();
-            NotificationService.ShowToast("设置", "已清除浏览历史与关闭的标签页");
+            DownloadManager.ClearCompleted();
+            foreach (var item in _tabManager.Tabs)
+            {
+                if (item.Tab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                    wv2.CoreWebView2.Profile.CookieManager.DeleteAllCookies();
+            }
+            NotificationService.ShowToast("设置", "已清除浏览历史、Cookie 与已完成的下载");
         }
 
         // ---- 地址栏 ----
@@ -277,7 +294,20 @@ namespace EdgeRebuild.Metro
             string url = UrlInputResolver.Resolve(input, searchEngine);
             if (string.IsNullOrEmpty(url)) return;
             _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
+            FocusCurrentTabContent();   // 焦点还给页面，地址栏不再滞留
         }
+
+        // 把焦点移出地址栏：优先聚焦当前标签的 WebView 控件（Grid 等 Panel 不可聚焦）
+        private void FocusCurrentTabContent()
+        {
+            var view = _tabManager?.CurrentTab?.ViewElement;
+            if (view is Control c)
+                c.Focus(FocusState.Programmatic);
+            else
+                FocusManager.TryMoveFocus(FocusNavigationDirection.Next);
+        }
+
+        private void AddressBar_ContentAreaFocusRequested() => FocusCurrentTabContent();
 
         // ---- 底部标签条 ----
         private void TabStrip_TabSelected(TabViewItem viewItem) => _ = _tabManager.SwitchToTabAsync(viewItem);
@@ -351,6 +381,14 @@ namespace EdgeRebuild.Metro
             };
             favItem.Click += (s, a) => AddCurrentToFavorites();
             menu.Items.Add(favItem);
+
+            var readLaterItem = new MenuFlyoutItem
+            {
+                Text = "添加到稍后读",
+                Icon = new FontIcon { Glyph = "\xE8A5", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            readLaterItem.Click += (s, a) => AddCurrentToReadingList();
+            menu.Items.Add(readLaterItem);
 
             var copyItem = new MenuFlyoutItem
             {
@@ -473,6 +511,21 @@ namespace EdgeRebuild.Metro
             NotificationService.ShowToast("已复制", "网址已复制到剪贴板");
         }
 
+        // 稍后读（旧版 Edge 阅读列表）：与收藏分离的一次性阅读队列
+        private async void AddCurrentToReadingList()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            string url = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                NotificationService.ShowToast("稍后读", "当前页面不可添加");
+                return;
+            }
+            await ReadingListManager.Instance.AddAsync(tab.Title ?? url, url);
+            NotificationService.ShowToast("已加入稍后读", tab.Title ?? url);
+        }
+
         // ---- 页内查找（Ctrl+F，双引擎经 FindService 注入；Esc 关闭） ----
         private void FindBar_CloseRequested()
         {
@@ -499,11 +552,11 @@ namespace EdgeRebuild.Metro
             }
         }
 
-        // ---- 右键：Chrome 区（标题栏/标签条/地址栏/空白）→ 设置面板开着则收起，否则切换命令栏 ----
+        // ---- 右键：设置面板/网格开着则先收面板，否则切换命令栏 ----
         private void Root_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             if (_settingsOpen) CloseSettingsPanel();
-            else ToggleCommandBar();
+            else if (!_gridOpen) ToggleCommandBar();   // 网格覆盖全屏，命令栏开在其下不可见
             e.Handled = true;
         }
 
@@ -511,7 +564,22 @@ namespace EdgeRebuild.Metro
         // HWND 不进 XAML，仅 EdgeHTML 内容与 Chrome 区可触发，与真实 Metro 行为一致）
         private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
         {
-            if (e.Pointer.PointerDeviceType != Windows.Devices.Input.PointerDeviceType.Mouse) return;
+            // A3：触摸自窗口底缘 24px 内起步 → 开始跟踪，上滑超阈值唤出命令栏
+            if (e.Pointer.PointerDeviceType == Windows.Devices.Input.PointerDeviceType.Touch)
+            {
+                Point pos = e.GetCurrentPoint(this).Position;
+                if (pos.Y >= ActualHeight - 24)
+                {
+                    _edgeSwipePointerId = e.Pointer.PointerId;
+                    _edgeSwipeStartY = pos.Y;
+                }
+                else
+                {
+                    _edgeSwipePointerId = null;
+                }
+                return;   // 触摸不参与 light-dismiss（避免误收面板）
+            }
+
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
             if (_settingsOpen && !IsWithinElement(e.OriginalSource as DependencyObject, SettingsPanel))
             {
@@ -520,6 +588,24 @@ namespace EdgeRebuild.Metro
             }
             if (_commandBarOpen && !IsWithinElement(e.OriginalSource as DependencyObject, CommandBar))
                 CloseCommandBar();
+        }
+
+        private void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+        {
+            // A3：底缘上滑手势（替代 Win8 边缘滑入；仅覆盖 XAML 可达区域）
+            if (_edgeSwipePointerId == null || _edgeSwipePointerId != e.Pointer.PointerId) return;
+            double dy = e.GetCurrentPoint(this).Position.Y - _edgeSwipeStartY;
+            if (dy < -40)
+            {
+                _edgeSwipePointerId = null;
+                OpenCommandBar();
+            }
+        }
+
+        private void Root_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            if (_edgeSwipePointerId == e.Pointer.PointerId)
+                _edgeSwipePointerId = null;
         }
 
         private static bool IsWithinElement(DependencyObject src, DependencyObject target)
@@ -545,10 +631,76 @@ namespace EdgeRebuild.Metro
         {
             if (_tabManager?.CurrentTab is EdgeHtmlTab edge)
             {
+                // EdgeHTML 无消息通道，快捷键/搜索/右键都走 marker 轮询；每轮只处理一个
+                // marker，避免串音
+                string pageKey = await edge.PollPageKeyAsync();
+                if (!string.IsNullOrEmpty(pageKey))
+                {
+                    var parsed = PageKeyMarkers.Parse(pageKey);
+                    if (parsed != null)
+                    {
+                        OnMetroPageKey(parsed.Value);
+                        return;
+                    }
+                }
+
+                string ntpQuery = await edge.PollNtpSearchAsync();
+                if (!string.IsNullOrEmpty(ntpQuery))
+                {
+                    OnNtpSearchRequested(ntpQuery);
+                    return;
+                }
+
                 string raw = await edge.PollContextMenuAsync();
                 if (!string.IsNullOrEmpty(raw))
                     ShowEdgeHtmlContextMenu(raw);
             }
+        }
+
+        // 焦点在网页内容内时的快捷键（WebView2 走事件桥、EdgeHTML 走上方轮询；
+        // 焦点在 Chrome 区时由 Page_KeyDown 处理，两条路径不会重叠）
+        private void OnMetroPageKey(PageShortcutKey key)
+        {
+            switch (key)
+            {
+                case PageShortcutKey.Find:
+                    FindBar.Show();
+                    break;
+                case PageShortcutKey.FindNext:
+                    if (FindBar.Visibility == Visibility.Visible)
+                        _ = RunFindAsync(FindBar.Query, "next");
+                    break;
+                case PageShortcutKey.FindPrevious:
+                    if (FindBar.Visibility == Visibility.Visible)
+                        _ = RunFindAsync(FindBar.Query, "prev");
+                    break;
+                case PageShortcutKey.CloseFind:
+                    if (FindBar.Visibility == Visibility.Visible)
+                        FindBar_CloseRequested();
+                    break;
+                case PageShortcutKey.NewTab:
+                    _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+                    break;
+                case PageShortcutKey.CloseTab:
+                    _ = _tabManager.CloseTabAsync(FindViewItem(_tabManager.CurrentTab));
+                    break;
+                case PageShortcutKey.FocusUrl:
+                    AddressBar.FocusUrl();
+                    break;
+                case PageShortcutKey.ToggleFullscreen:
+                    ToggleFullscreen();
+                    break;
+            }
+        }
+
+        // 经典 NTP 页提交搜索词 → 当前标签导航到搜索引擎（与主窗口行为一致）
+        private async void OnNtpSearchRequested(string query)
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null || string.IsNullOrWhiteSpace(query)) return;
+            string searchEngine = "Google";
+            try { searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google"; } catch { }
+            await tab.NavigateAsync(UrlInputResolver.BuildSearchUrl(query, searchEngine));
         }
 
         private void ShowEdgeHtmlContextMenu(string raw)

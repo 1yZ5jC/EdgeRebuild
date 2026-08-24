@@ -15,7 +15,9 @@ namespace EdgeRebuild.Controls
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
         private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle;
         private ComboBox _ntpTypeCombo;
+        private ComboBox _readerFontSizeCombo;
         private TextBox _homePageBox;
+        private DispatcherTimer _homePageDebounce;
         private ComboBox _searchEngineCombo;
         private TextBlock _downloadPathBlock;
         private string _currentDownloadPath;
@@ -100,6 +102,15 @@ namespace EdgeRebuild.Controls
             appearancePanel.Children.Add(_modernIERadio);
             _favoritesBarToggle = new ToggleSwitch { Header = "显示收藏夹栏", Margin = new Thickness(0, 10, 0, 0) };
             appearancePanel.Children.Add(_favoritesBarToggle);
+
+            // 阅读视图默认字号（旧版 Edge 阅读排版设置；页内 A-/A+ 即时微调不持久化）
+            appearancePanel.Children.Add(new TextBlock { Text = "阅读视图字号", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 8) });
+            _readerFontSizeCombo = new ComboBox();
+            _readerFontSizeCombo.Items.Add("小（15px）");
+            _readerFontSizeCombo.Items.Add("标准（18px）");
+            _readerFontSizeCombo.Items.Add("大（21px）");
+            _readerFontSizeCombo.Items.Add("特大（24px）");
+            appearancePanel.Children.Add(_readerFontSizeCombo);
             _panels[1] = appearancePanel;
 
             // 下载 (2)
@@ -185,6 +196,15 @@ namespace EdgeRebuild.Controls
                 string favoritesBar = await SettingsManager.GetAsync("ShowFavoritesBar") ?? "False";
                 _favoritesBarToggle.IsOn = (favoritesBar == "True" || favoritesBar == "true");
 
+                string readerFontSize = await SettingsManager.GetAsync("ReaderFontSize") ?? "18";
+                _readerFontSizeCombo.SelectedIndex = readerFontSize switch
+                {
+                    "15" => 0,
+                    "21" => 2,
+                    "24" => 3,
+                    _ => 1
+                };
+
                 string ask = await SettingsManager.GetAsync("AskBeforeDownload") ?? "False";
                 _askToggle.IsOn = (ask == "True" || ask == "true");
                 string autoClean = await SettingsManager.GetAsync("AutoCleanDownload") ?? "False";
@@ -238,9 +258,32 @@ namespace EdgeRebuild.Controls
                 _askToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AskBeforeDownload", _askToggle.IsOn.ToString());
                 _autoCleanDownloadToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("AutoCleanDownload", _autoCleanDownloadToggle.IsOn.ToString());
                 _doNotTrackToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("DoNotTrack", _doNotTrackToggle.IsOn.ToString());
-                _homePageBox.TextChanged += async (s, e) => await SettingsManager.SetAsync("HomePage", _homePageBox.Text);
+                _homePageBox.TextChanged += (s, e) =>
+                {
+                    // 防抖：每键写 SQLite 太频；停输 500ms 后再持久化
+                    if (_homePageDebounce == null)
+                        _homePageDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+                    _homePageDebounce.Stop();
+                    _homePageDebounce.Tick += async (s2, e2) =>
+                    {
+                        _homePageDebounce.Stop();
+                        await SettingsManager.SetAsync("HomePage", _homePageBox.Text);
+                    };
+                    _homePageDebounce.Start();
+                };
                 _restoreToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("RestoreSession", _restoreToggle.IsOn.ToString());
                 _favoritesBarToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("ShowFavoritesBar", _favoritesBarToggle.IsOn.ToString());
+                _readerFontSizeCombo.SelectionChanged += async (s, e) =>
+                {
+                    string size = _readerFontSizeCombo.SelectedIndex switch
+                    {
+                        0 => "15",
+                        2 => "21",
+                        3 => "24",
+                        _ => "18"
+                    };
+                    await SettingsManager.SetAsync("ReaderFontSize", size);
+                };
                 _ntpTypeCombo.SelectionChanged += async (s, e) =>
                 {
                     string value = _ntpTypeCombo.SelectedIndex switch

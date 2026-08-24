@@ -29,10 +29,10 @@
 
                     <!-- 清除浏览数据 -->
                     <TextBlock Text="清除浏览数据" FontSize="12" Foreground="#FF7A7A7A" Margin="0,0,0,8"/>
-                    <Button Content="清除历史记录" HorizontalAlignment="Left"
+                    <Button Content="清除浏览数据" HorizontalAlignment="Left"
                             Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
                             Padding="16,10" MinWidth="160" Click="ClearHistoryBtn_Click"/>
-                    <TextBlock Text="删除浏览历史与最近关闭的标签页" FontSize="12"
+                    <TextBlock Text="删除浏览历史、Cookie、已完成的下载与关闭的标签页" FontSize="12"
                                Foreground="#FF7A7A7A" Margin="0,6,0,20" TextWrapping="Wrap"/>
 
                     <!-- 位置权限 -->

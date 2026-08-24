@@ -175,7 +175,8 @@ namespace EdgeRebuild.Controls
                 var u = new Uri(url);
                 if (u.Host?.EndsWith("ntp.local", StringComparison.OrdinalIgnoreCase) == true) return true;
                 if (u.Host?.EndsWith("contentcache.local", StringComparison.OrdinalIgnoreCase) == true
-                    && url.Contains("/ntp/", StringComparison.OrdinalIgnoreCase)) return true;
+                    && (url.Contains("/ntp/", StringComparison.OrdinalIgnoreCase)
+                        || url.Contains("/ntpmetro/", StringComparison.OrdinalIgnoreCase))) return true;
                 if (u.Scheme == "ms-appx-web" && url.Contains("Assets/Ntp", StringComparison.OrdinalIgnoreCase)) return true;
             }
             catch { }

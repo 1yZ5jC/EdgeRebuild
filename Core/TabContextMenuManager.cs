@@ -38,8 +38,18 @@ namespace EdgeRebuild.Core
             _onWebCapture = onWebCapture;
         }
 
-        public void ShowTabRightClickMenu(Border tabBorder, TabViewItem viewItem)
+        // 搜索项文案带当前引擎名；引擎名异步读取，菜单弹出后原地更新
+        private static async Task LoadSearchItemLabelAsync(MenuFlyoutItem item)
         {
+            try
+            {
+                string engineName = await Services.SettingsManager.GetAsync("SearchEngine") ?? "Google";
+                item.Text = $"用 {engineName} 搜索";
+            }
+            catch { }
+        }
+
+        public void ShowTabRightClickMenu(Border tabBorder, TabViewItem viewItem)        {
             if (viewItem == null) return;
 
             var menu = new MenuFlyout();
@@ -144,6 +154,23 @@ namespace EdgeRebuild.Core
             };
             flyout.Items.Add(copyItem);
 
+            // ---- 用搜索引擎搜索选中内容（旧版 Edge 交互：选区右键直达搜索，新标签打开） ----
+            if (args.MenuType == ContextMenuType.Selection && !string.IsNullOrEmpty(args.SelectionText))
+            {
+                string searchText = args.SelectionText;
+                var searchItem = new MenuFlyoutItem { Text = "搜索选中内容" };
+                searchItem.Click += async (_, _) =>
+                {
+                    string engineName = "Google";
+                    try { engineName = await Services.SettingsManager.GetAsync("SearchEngine") ?? "Google"; } catch { }
+                    await _tabManager.CreateTabAsync(
+                        _defaultEngine,
+                        Services.UrlInputResolver.BuildSearchUrl(searchText, engineName));
+                };
+                _ = LoadSearchItemLabelAsync(searchItem);
+                flyout.Items.Add(searchItem);
+            }
+
             // ---- 粘贴 ----
             var pasteItem = new MenuFlyoutItem { Text = "粘贴", IsEnabled = args.IsEditable };
             pasteItem.Click += async (_, _) =>
@@ -186,6 +213,21 @@ namespace EdgeRebuild.Core
             var clearMarksItem = new MenuFlyoutItem { Text = "清除本页标记" };
             clearMarksItem.Click += async (_, _) => await PageMarkManager.ClearPageAsync(_tabManager.CurrentTab);
             flyout.Items.Add(clearMarksItem);
+
+            // ---- 稍后读（旧版 Edge 阅读列表：一次性阅读队列） ----
+            var readLaterItem = new MenuFlyoutItem { Text = "添加到稍后读" };
+            readLaterItem.Click += async (_, _) =>
+            {
+                var tab = _tabManager.CurrentTab;
+                if (tab == null || string.IsNullOrEmpty(tab.CurrentUrl) || tab.CurrentUrl == "about:blank")
+                {
+                    NotificationService.ShowToast("稍后读", "当前页面不可添加");
+                    return;
+                }
+                await ReadingListManager.Instance.AddAsync(tab.Title ?? tab.CurrentUrl, tab.CurrentUrl);
+                NotificationService.ShowToast("已加入稍后读", tab.Title ?? tab.CurrentUrl);
+            };
+            flyout.Items.Add(readLaterItem);
 
             // ---- 网页捕获（截图批注） ----
             var captureItem = new MenuFlyoutItem { Text = "网页捕获" };

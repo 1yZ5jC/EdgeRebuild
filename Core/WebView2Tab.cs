@@ -21,7 +21,6 @@ namespace EdgeRebuild.Core
         private string _title = "";
         private bool _isSuspended = false;
         private string _suspendedUrl = "";
-        private bool _httpsFailed = false;
         private bool _disposed = false;
         private bool _metroHome = false;
         private bool _inPrivate = false;
@@ -47,7 +46,6 @@ namespace EdgeRebuild.Core
         public event Action<string> FaviconChanged;
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action<string> NewWindowRequested;
-        public event Action<string, StorageFolder, string> DownloadRequested;
         public event Action<bool> LoadingChanged;
         public event Action<PageShortcutKey> PageShortcutKeyPressed;
         public event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
@@ -69,21 +67,13 @@ namespace EdgeRebuild.Core
             + " if (!c && !s && k===27) { send('esc'); return; }"
             + " if (c && s && k===77) { send('hm'); e.preventDefault(); return; }"
             + " if (c && s && k===83) { send('cs'); e.preventDefault(); return; }"
+            + " if (c && !s && k===84) { send('ct'); e.preventDefault(); return; }"
+            + " if (c && !s && k===87) { send('cw'); e.preventDefault(); return; }"
+            + " if (c && !s && k===76) { send('cl'); e.preventDefault(); return; }"
+            + " if (!c && !s && k===122) { send('f11'); e.preventDefault(); return; }"
             + " }, false); })();";
 
-        private static PageShortcutKey? ParsePageKey(string msg)
-        {
-            switch (msg)
-            {
-                case "cf": return PageShortcutKey.Find;
-                case "f3":
-                case "cg": return PageShortcutKey.FindNext;
-                case "sf3":
-                case "scg": return PageShortcutKey.FindPrevious;
-                case "esc": return PageShortcutKey.CloseFind;
-                default: return null;
-            }
-        }
+        private static PageShortcutKey? ParsePageKey(string msg) => PageKeyMarkers.Parse(msg);
 
         public WebView2Tab()
         {
@@ -483,7 +473,6 @@ namespace EdgeRebuild.Core
 
             if (e.IsSuccess)
             {
-                _httpsFailed = false;
                 UrlChanged?.Invoke(sender.Source?.ToString() ?? "");
                 UpdateTitleFromDocument();
                 CheckNavigationState();
@@ -702,7 +691,6 @@ namespace EdgeRebuild.Core
                     return;
                 }
 
-                _httpsFailed = false;
                 if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
                 {
                     string candidate = "https://" + url;
@@ -827,7 +815,6 @@ namespace EdgeRebuild.Core
             FaviconChanged = null;
             ContextMenuRequested = null;
             NewWindowRequested = null;
-            DownloadRequested = null;
             LoadingChanged = null;
         }
     }

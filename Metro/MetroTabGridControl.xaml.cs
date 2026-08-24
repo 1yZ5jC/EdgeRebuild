@@ -30,6 +30,7 @@ namespace EdgeRebuild.Metro
         private readonly Dictionary<TabViewItem, Border> _cards = new Dictionary<TabViewItem, Border>();
         private readonly Dictionary<TabViewItem, bool> _thumbReady = new Dictionary<TabViewItem, bool>();
         private const int CaptureTimeoutMs = 3500;
+        private int _generation;   // Refresh 递增：旧一轮捕获作废，防止切标签重入导致重复捕获/回写旧卡片
 
         // 诊断输出：VF 输出窗口即时可见 + crash.log 落盘（含完整堆栈）
         private static void GridDebug(string msg)
@@ -69,7 +70,8 @@ namespace EdgeRebuild.Metro
             EmptyHint.Visibility = (tabs == null || tabs.Count == 0)
                 ? Visibility.Visible : Visibility.Collapsed;
 
-            _ = CaptureAllAsync(tabs, current);
+            int gen = ++_generation;
+            _ = CaptureAllAsync(tabs, current, gen);
         }
 
         // 点击卡片 → 选中标签（GridViewItem 点击；关闭按钮会吞掉自己的点击,不触发本事件）
@@ -186,13 +188,13 @@ namespace EdgeRebuild.Metro
         // ---- 缩略图捕获：并行 + 每标签超时，避免单个标签卡死整张网格 ----
         // 全程 try/catch + 日志：捕获触发的中断（未观察任务异常 / 标签关闭后旧任务
         // KeyNotFound / EdgeHTML 捕获空转）都不会再向上传播。
-        private async Task CaptureAllAsync(IReadOnlyList<TabViewItem> tabs, TabViewItem current)
+        private async Task CaptureAllAsync(IReadOnlyList<TabViewItem> tabs, TabViewItem current, int gen)
         {
             try
             {
                 var tasks = new List<Task>();
                 foreach (var item in tabs)
-                    tasks.Add(CaptureOneWithTimeoutAsync(item, item == current));
+                    tasks.Add(CaptureOneWithTimeoutAsync(item, item == current, gen));
                 await Task.WhenAll(tasks);
             }
             catch (Exception ex)
@@ -201,17 +203,17 @@ namespace EdgeRebuild.Metro
             }
         }
 
-        private async Task CaptureOneWithTimeoutAsync(TabViewItem item, bool isCurrent)
+        private async Task CaptureOneWithTimeoutAsync(TabViewItem item, bool isCurrent, int gen)
         {
             try
             {
-                var capture = CaptureOneAsync(item, isCurrent);
+                var capture = CaptureOneAsync(item, isCurrent, gen);
                 var done = await Task.WhenAny(capture, Task.Delay(CaptureTimeoutMs));
                 // 超时 → 放弃，保留 favicon 卡片；字典可能已被 Refresh 重建（标签已关闭），须 ContainsKey
                 if (done != capture)
                 {
                     GridDebug($"捕获超时放弃: {(item.Tab.Title ?? item.Tab.CurrentUrl)}");
-                    if (_thumbReady.ContainsKey(item))
+                    if (gen == _generation && _thumbReady.ContainsKey(item))
                         _thumbReady[item] = true;
                 }
             }
@@ -221,7 +223,7 @@ namespace EdgeRebuild.Metro
             }
         }
 
-        private async Task CaptureOneAsync(TabViewItem item, bool isCurrent)
+        private async Task CaptureOneAsync(TabViewItem item, bool isCurrent, int gen)
         {
             GridDebug($"开始捕获: {item.Tab.Title ?? item.Tab.CurrentUrl} 引擎={item.Tab.Engine} 挂起={item.Tab.IsSuspended}");
             try
@@ -257,6 +259,13 @@ namespace EdgeRebuild.Metro
                             container.Visibility = Visibility.Collapsed;
                     }
                     catch { }
+                }
+
+                // Refresh 已重建（切标签/关标签）→ 旧一轮作废，不再回写旧卡片
+                if (gen != _generation)
+                {
+                    GridDebug("捕获完成但轮次已过期，丢弃结果");
+                    return;
                 }
 
                 GridDebug($"捕获结果: 字节={(png == null ? 0 : png.Length)}");

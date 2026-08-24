@@ -13,7 +13,6 @@ namespace EdgeRebuild.Core
         private WebView _webView;
         private string _faviconUri = "";
         private string _title = "";
-        private bool _httpsFailed = false;
         private bool _disposed = false;
         private bool _metroHome = false;
         private bool _inPrivate = false;
@@ -36,13 +35,10 @@ namespace EdgeRebuild.Core
         public event Action<bool> CanGoBackChanged;
         public event Action<bool> CanGoForwardChanged;
         public event Action<string> FaviconChanged;
-        public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action<string> NewWindowRequested;
         public event Action<bool> LoadingChanged;
-        public event Action<PageShortcutKey> PageShortcutKeyPressed;
-        public event Action<string> PageMarkActionRequested;
-        public event Action<string> TtsTextRequested;
-        public event Action<string> NtpSearchRequested;
+        // 快捷键/标记/朗读/NTP 搜索/右键不走事件：EdgeHTML 无消息通道，
+        // 由宿主轮询 PollPageKeyAsync / PollNtpSearchAsync / PollContextMenuAsync 等 marker 读取。
 
         // 页面内快捷键桥（EdgeHTML 版）：外部网站的 window.external.notify 会被
         // ApplicationContentUriRules 白名单拦截（且不允许域通配），AddWebAllowedObject
@@ -61,6 +57,10 @@ namespace EdgeRebuild.Core
             + " if (!c && !s && k===27) { mark('esc'); return; }"
             + " if (c && s && k===77) { mark('hm'); e.preventDefault(); return; }"
             + " if (c && s && k===83) { mark('cs'); e.preventDefault(); return; }"
+            + " if (c && !s && k===84) { mark('ct'); e.preventDefault(); return; }"
+            + " if (c && !s && k===87) { mark('cw'); e.preventDefault(); return; }"
+            + " if (c && !s && k===76) { mark('cl'); e.preventDefault(); return; }"
+            + " if (!c && !s && k===122) { mark('f11'); e.preventDefault(); return; }"
             + " }, false); })();";
 
         private void InjectPageKeyBridge()
@@ -186,7 +186,6 @@ namespace EdgeRebuild.Core
 
             if (args.IsSuccess)
             {
-                _httpsFailed = false;
                 UrlChanged?.Invoke(args.Uri?.ToString() ?? "");
                 UpdateTitle();
                 CheckNavigationState();
@@ -354,7 +353,6 @@ namespace EdgeRebuild.Core
                 !url.Contains("://"))
                 url = "https://" + url;
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) uri = new Uri("about:blank");
-            _httpsFailed = false;
             _webView.Navigate(uri);
         }
 
@@ -378,7 +376,6 @@ namespace EdgeRebuild.Core
             CanGoBackChanged = null;
             CanGoForwardChanged = null;
             FaviconChanged = null;
-            ContextMenuRequested = null;
             NewWindowRequested = null;
             LoadingChanged = null;
 

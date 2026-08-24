@@ -27,6 +27,8 @@ namespace EdgeRebuild.Metro
             };
         }
 
+        public string Query => FindBox.Text;
+
         public void Show()
         {
             Visibility = Visibility.Visible;

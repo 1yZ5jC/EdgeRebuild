@@ -2,6 +2,7 @@
 using EdgeRebuild.Services;
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 using Windows.Storage;
@@ -44,23 +45,39 @@ namespace EdgeRebuild
                     try
                     {
                         await DatabaseService.InitializeAsync();
-                        await FavoritesManager.Instance.LoadAsync();
-                        await HistoryManager.LoadAsync();
-                        await DownloadManager.LoadDownloadsAsync();
-                        ThemeManager.Initialize();
                     }
                     catch (Exception ex)
                     {
-                        var errorDialog = new ContentDialog
+                        // 数据库打不开属致命错误：先落日志，再提示；此时窗口尚未 Activate，
+                        // ContentDialog 无 XamlRoot 可挂会抛"Only a single ContentDialog"，改用 MessageDialog
+                        Services.Diagnostics.Log($"[启动失败] {ex}");
+                        try
                         {
-                            Title = "启动失败",
-                            Content = $"数据库初始化错误：{ex.Message}",
-                            CloseButtonText = "退出"
-                        };
-                        await errorDialog.ShowAsync();
+                            var dialog = new Windows.UI.Popups.MessageDialog(
+                                $"数据库初始化失败：{ex.Message}", "EdgeRebuild 启动失败");
+                            await dialog.ShowAsync();
+                        }
+                        catch (Exception dialogEx)
+                        {
+                            Services.Diagnostics.Log($"[启动失败] 错误对话框显示失败: {dialogEx.Message}");
+                        }
                         Application.Current.Exit();
                         return;
                     }
+
+                    // 各数据源加载互相独立：单项失败只降级该功能，不阻断启动
+                    foreach (var (name, load) in new (string, Func<Task>)[]
+                    {
+                        ("收藏夹", () => FavoritesManager.Instance.LoadAsync()),
+                        ("稍后读", () => ReadingListManager.Instance.LoadAsync()),
+                        ("历史记录", () => HistoryManager.LoadAsync()),
+                        ("下载记录", () => DownloadManager.LoadDownloadsAsync())
+                    })
+                    {
+                        try { await load(); }
+                        catch (Exception ex) { Services.Diagnostics.Log($"[启动] {name}加载失败（已降级）: {ex.Message}"); }
+                    }
+                    ThemeManager.Initialize();
 
                     rootFrame.Navigate(typeof(MainPage), e.Arguments);
                 }

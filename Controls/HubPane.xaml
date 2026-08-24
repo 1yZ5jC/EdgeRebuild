@@ -179,6 +179,11 @@
                         <FontIcon Glyph="&#xE81C;" FontFamily="Segoe MDL2 Assets"/>
                     </muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="稍后读" Tag="ReadingList">
+                    <muxc:NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets"/>
+                    </muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
                 <muxc:NavigationViewItem Content="下载" Tag="Downloads">
                     <muxc:NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE896;" FontFamily="Segoe MDL2 Assets"/>
@@ -305,6 +310,42 @@
                                   MinHeight="300"
                                   HorizontalAlignment="Stretch"
                                   Visibility="Collapsed"/>
+                    </StackPanel>
+
+                    <!-- 稍后读面板（旧版 Edge 阅读列表：一次性阅读队列） -->
+                    <StackPanel x:Name="ReadingPanel" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                            <TextBlock Text="读完即删，长期保存请用收藏夹" FontSize="12"
+                                       Foreground="Gray" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ListView x:Name="ReadingListView"
+                                  SelectionMode="None"
+                                  IsItemClickEnabled="True"
+                                  ItemClick="ReadingListView_ItemClick"
+                                  Background="Transparent"
+                                  MinHeight="300"
+                                  HorizontalAlignment="Stretch">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
+                                          RightTapped="ReadingItem_RightTapped">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                                  Foreground="#FF0078D7" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                            <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock x:Name="UrlText" FontSize="11"
+                                                       TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                                            <TextBlock x:Name="DateText" FontSize="10"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                     </StackPanel>
 
                     <!-- 下载面板 -->

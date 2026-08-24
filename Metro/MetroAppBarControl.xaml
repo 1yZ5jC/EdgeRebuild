@@ -4,15 +4,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- 底部命令栏（Windows 8.1 AppBar 形态）：平时隐藏，右键/命令唤出；
-         图标+文字平铺全宽，48px 高，无边框深色。 -->
+         布局遵循 8.1 规范——左侧全局命令 / 右侧上下文命令贴边分组，中部留白；
+         按钮为 8.1 式「图标上、小字标签下」垂直组合。 -->
     <UserControl.Resources>
         <Style x:Key="CommandBarButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
-            <Setter Property="FontSize" Value="14"/>
             <Setter Property="Height" Value="48"/>
-            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="MinWidth" Value="76"/>
+            <Setter Property="Padding" Value="10,4,10,2"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
@@ -38,7 +39,7 @@
                                     </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
-                            <Border x:Name="Bg" Background="{TemplateBinding Background}">
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
                                 <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
                             </Border>
                         </Grid>
@@ -49,56 +50,48 @@
     </UserControl.Resources>
 
     <Grid Height="48" Background="#FF2D2D30">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+        <!-- 左：全局命令（新建/导航类） -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Stretch" Margin="4,0,0,0">
+            <Button Click="NewTabBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+                <StackPanel VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="新建标签" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
 
-        <Button Grid.Column="0" Click="NewTabBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
-            <StackPanel Orientation="Horizontal">
-                <FontIcon Glyph="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
-                <TextBlock Text="新建标签" Margin="8,0,0,0"/>
-            </StackPanel>
-        </Button>
-
-        <Button Grid.Column="1" Click="TabsBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
-            <StackPanel Orientation="Horizontal">
-                <FontIcon Glyph="&#xE78C;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
-                <TextBlock Text="标签视图" Margin="8,0,0,0"/>
-                <TextBlock x:Name="TabCountText" Text="" Margin="6,0,0,0" Opacity="0.6"/>
-            </StackPanel>
-        </Button>
-
-        <Button Grid.Column="2" Click="RefreshBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
-            <StackPanel Orientation="Horizontal">
-                <FontIcon Glyph="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
-                <TextBlock Text="刷新" Margin="8,0,0,0"/>
-            </StackPanel>
-        </Button>
-
-        <Button Grid.Column="3" Click="FullscreenBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
-            <StackPanel Orientation="Horizontal">
-                <FontIcon Glyph="&#xE740;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
-                <TextBlock x:Name="FullscreenText" Text="全屏" Margin="8,0,0,0"/>
-            </StackPanel>
-        </Button>
-
-        <Button Grid.Column="4" Click="SettingsBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
-            <StackPanel Orientation="Horizontal">
-                <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
-                <TextBlock Text="设置" Margin="8,0,0,0"/>
-            </StackPanel>
-        </Button>
-
-        <Button Grid.Column="5" Click="MoreBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
-            <StackPanel Orientation="Horizontal">
-                <FontIcon Glyph="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="16"/>
-                <TextBlock Text="更多" Margin="8,0,0,0"/>
-            </StackPanel>
-        </Button>
+        <!-- 右：上下文命令（视图/刷新/全屏/设置/溢出），「更多」固定最右缘（8.1 溢出约定） -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Stretch" Margin="0,0,4,0">
+            <Button Click="TabsBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+                <StackPanel VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE78C;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock FontSize="11" Margin="0,3,0,0" TextAlignment="Center"><Run Text="标签视图 "/><Run x:Name="TabCountText" Text=""/></TextBlock>
+                </StackPanel>
+            </Button>
+            <Button Click="RefreshBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+                <StackPanel VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="刷新" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Click="FullscreenBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+                <StackPanel VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE740;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock FontSize="11" Margin="0,3,0,0" TextAlignment="Center"><Run x:Name="FullscreenText" Text="全屏"/></TextBlock>
+                </StackPanel>
+            </Button>
+            <Button Click="SettingsBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+                <StackPanel VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="设置" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
+                </StackPanel>
+            </Button>
+            <Button Click="MoreBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+                <StackPanel VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
+                    <TextBlock Text="更多" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
     </Grid>
 </UserControl>

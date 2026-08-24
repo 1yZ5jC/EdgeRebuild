@@ -51,7 +51,21 @@ namespace EdgeRebuild.Services
                     return false;
                 }
 
-                string html = BuildReaderHtml(article);
+                // 字号/行距：设置持久化默认值，阅读页内还可 A-/A+ 即时微调
+                int fontSize = 18;
+                double lineHeight = 1.75;
+                try
+                {
+                    string fsSetting = await Services.SettingsManager.GetAsync("ReaderFontSize");
+                    if (int.TryParse(fsSetting, out int f)) fontSize = Math.Min(28, Math.Max(12, f));
+                    string lhSetting = await Services.SettingsManager.GetAsync("ReaderLineHeight");
+                    if (double.TryParse(lhSetting, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double l))
+                        lineHeight = Math.Min(2.6, Math.Max(1.2, l));
+                }
+                catch { }
+
+                string html = BuildReaderHtml(article, fontSize, lineHeight);
                 Diagnostics.Log($"[阅读模式] 提取成功 title=\"{article.Title}\" 正文长度={article.Content.Length}，切换阅读视图");
                 await tab.NavigateToHtmlAsync(html);
                 return true;
@@ -168,10 +182,12 @@ namespace EdgeRebuild.Services
             }
         }
 
-        private static string BuildReaderHtml(ArticleResult article)
+        private static string BuildReaderHtml(ArticleResult article, int fontSize, double lineHeight)
         {
             string title = System.Net.WebUtility.HtmlEncode(article.Title ?? "");
             string byline = System.Net.WebUtility.HtmlEncode(article.Byline ?? "");
+            // InvariantCulture：避免 zh-CN 环境输出 "1,75" 破坏 CSS
+            string lh = lineHeight.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             return @"<!DOCTYPE html>
 <html>
@@ -184,7 +200,7 @@ namespace EdgeRebuild.Services
     .reader-container { max-width: 760px; margin: 0 auto; padding: 48px 24px 72px 24px; }
     h1.reader-title { font-family: Georgia, 'Times New Roman', serif; font-size: 32px; line-height: 1.25; font-weight: 400; margin: 0 0 12px 0; }
     .reader-byline { font-family: 'Segoe UI', sans-serif; font-size: 13px; color: #6b6b6b; margin-bottom: 28px; }
-    .reader-content { font-family: Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.75; }
+    .reader-content { font-family: Georgia, 'Times New Roman', serif; font-size: " + fontSize + @"px; line-height: " + lh + @"; }
     .reader-content p { margin: 0 0 1.2em 0; }
     .reader-content img { max-width: 100%; height: auto; }
     .reader-content h1, .reader-content h2, .reader-content h3,
@@ -196,9 +212,19 @@ namespace EdgeRebuild.Services
     .reader-content td, .reader-content th { border: 1px solid #ccc; padding: 6px 10px; }
     .reader-content figure { margin: 1.2em 0; }
     .reader-content figcaption { font-size: 13px; color: #777; text-align: center; }
+    /* 字号调节器（旧版 Edge 阅读视图排版按钮的简化形态；即时生效，默认值在设置里改） */
+    .reader-typebar { position: fixed; top: 12px; right: 12px; display: flex; gap: 6px;
+                      font-family: 'Segoe UI', sans-serif; z-index: 9999; }
+    .reader-typebar button { width: 36px; height: 32px; border: 1px solid #cfcabd; background: rgba(255,255,255,.92);
+                             color: #444; font-size: 15px; cursor: pointer; }
+    .reader-typebar button:hover { background: #fff; }
 </style>
 </head>
 <body>
+<div class=""reader-typebar"">
+    <button title=""缩小字号"" onclick=""(function(){var el=document.querySelector('.reader-content');var s=parseFloat(getComputedStyle(el).fontSize);el.style.fontSize=Math.max(12,s-2)+'px';})()"">A−</button>
+    <button title=""放大字号"" onclick=""(function(){var el=document.querySelector('.reader-content');var s=parseFloat(getComputedStyle(el).fontSize);el.style.fontSize=Math.min(30,s+2)+'px';})()"">A+</button>
+</div>
 <div class=""reader-container"">
     <h1 class=""reader-title"">" + title + @"</h1>
     <div class=""reader-byline"">" + byline + @"</div>

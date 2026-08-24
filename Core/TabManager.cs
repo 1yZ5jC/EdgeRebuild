@@ -10,6 +10,7 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using EdgeRebuild.Services;
+using EdgeRebuild.Controls;   // ToolbarControl.IsNtpUrl（历史记录过滤 NTP 地址）
 
 namespace EdgeRebuild.Core
 {
@@ -46,6 +47,8 @@ namespace EdgeRebuild.Core
         public event Action<string> PageMarkActionRequested;
         public event Action<string> TtsTextRequested;
         public event Action<string> NtpSearchRequested;
+        public event Action<TabViewItem> TabHoverStarted;   // 标签悬停（缩略图预览用）
+        public event Action<TabViewItem> TabHoverEnded;
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         public IBrowserTab CurrentTab => _currentTab;
@@ -76,6 +79,18 @@ namespace EdgeRebuild.Core
 
         /// InPrivate 窗口：不写历史、不存会话，所有标签使用隐身主页
         public bool IsInPrivateWindow { get; set; }
+
+        /// <summary>
+        /// 是否把标签列表写入共享会话（SessionTabs）。Metro IE 独立窗口必须置 false，
+        /// 否则两个窗口互相覆盖对方恢复快照（ScheduleSave 是全量替换）。
+        /// </summary>
+        public bool ParticipatesInSession { get; set; } = true;
+
+        private bool CanPersistSession => !IsInPrivateWindow && ParticipatesInSession;
+
+        // 历史标题待修正表：导航瞬间以 URL 占位入库，TitleChanged 后回填真实标题
+        private readonly Dictionary<IBrowserTab, (string Url, HistoryItem Item)> _pendingHistoryTitles
+            = new Dictionary<IBrowserTab, (string, HistoryItem)>();
 
         public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false)
         {
@@ -120,7 +135,7 @@ namespace EdgeRebuild.Core
             if (isPinned && !viewItem.IsPinned)
                 await TogglePinTabAsync(viewItem);
 
-            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
 
             return viewItem;
         }
@@ -270,6 +285,10 @@ namespace EdgeRebuild.Core
             viewItem.LoadingRing = loadingRing;
             viewItem.TabAccentBar = accentBar;
             closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
+
+            // 悬停缩略图预览（旧版 Edge 标签悬停卡片）：宿主决定是否展示
+            tabBorder.PointerEntered += (s, e) => TabHoverStarted?.Invoke(viewItem);
+            tabBorder.PointerExited += (s, e) => TabHoverEnded?.Invoke(viewItem);
             }
 
             var contentBorder = new Border
@@ -289,6 +308,17 @@ namespace EdgeRebuild.Core
             _ = dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => action());
         }
 
+        // 历史占位入库：标题先记 URL，TitleChanged 后修正（见 BindTabEvents）
+        private async Task RecordHistoryPlaceholderAsync(IBrowserTab tab, string url)
+        {
+            try
+            {
+                var item = await HistoryManager.AddAsync(url, url);
+                _pendingHistoryTitles[tab] = (url, item);
+            }
+            catch { }
+        }
+
         private void BindTabEvents(TabViewItem viewItem)
         {
             var tab = viewItem.Tab;
@@ -303,14 +333,28 @@ namespace EdgeRebuild.Core
                     viewItem.TitleText.Text = displayTitle;
                     ToolTipService.SetToolTip(viewItem.TitleText, displayTitle);
                 });
+
+                // 真实标题到达 → 修正占位历史记录（URL 未再变化才修正）
+                if (_pendingHistoryTitles.TryGetValue(tab, out var pending)
+                    && !IsInPrivateWindow
+                    && !string.IsNullOrEmpty(title)
+                    && pending.Url == tab.CurrentUrl)
+                {
+                    _pendingHistoryTitles.Remove(tab);
+                    _ = HistoryManager.UpdateTitleAsync(pending.Item, title);
+                }
             };
 
             tab.UrlChanged += (url) =>
             {
                 TabUrlChanged?.Invoke(tab, url);
-                if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
-                if (!IsInPrivateWindow && !string.IsNullOrEmpty(url) && url != "about:blank")
-                    _ = HistoryManager.AddAsync(tab.Title ?? url, url);
+                if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
+                // 历史统一在此记录（主窗口地址栏提交处不再重复添加）；NTP/磁贴主页不入库
+                if (!IsInPrivateWindow && !string.IsNullOrEmpty(url)
+                    && url != "about:blank" && !Controls.ToolbarControl.IsNtpUrl(url))
+                {
+                    _ = RecordHistoryPlaceholderAsync(tab, url);
+                }
             };
 
             tab.CanGoBackChanged += (can) => TabCanGoBackChanged?.Invoke(tab, can);
@@ -318,15 +362,16 @@ namespace EdgeRebuild.Core
 
             tab.FaviconChanged += (faviconUrl) => UpdateFavicon(viewItem, faviconUrl);
 
-            tab.PageShortcutKeyPressed += (key) => PageKeyPressed?.Invoke(key);
-
-            tab.PageMarkActionRequested += (payload) => PageMarkActionRequested?.Invoke(payload);
-
-            tab.TtsTextRequested += (text) => TtsTextRequested?.Invoke(text);
-
-            tab.NtpSearchRequested += (query) => NtpSearchRequested?.Invoke(query);
-
-            tab.ContextMenuRequested += (args) => ContextMenuRequested?.Invoke(args);
+            // 消息通道事件仅 WebView2Tab 具备（EdgeHTML 由宿主轮询 marker，见 IBrowserTab 注），
+            // 中继到 TabManager 级事件供页面订阅
+            if (tab is WebView2Tab wv2Tab)
+            {
+                wv2Tab.PageShortcutKeyPressed += (key) => PageKeyPressed?.Invoke(key);
+                wv2Tab.PageMarkActionRequested += (payload) => PageMarkActionRequested?.Invoke(payload);
+                wv2Tab.TtsTextRequested += (text) => TtsTextRequested?.Invoke(text);
+                wv2Tab.NtpSearchRequested += (query) => NtpSearchRequested?.Invoke(query);
+                wv2Tab.ContextMenuRequested += (args) => ContextMenuRequested?.Invoke(args);
+            }
 
             tab.NewWindowRequested += (url) => NewWindowRequested?.Invoke(url);
 
@@ -472,10 +517,11 @@ namespace EdgeRebuild.Core
 
             viewItem.Tab.Dispose();
             CleanupSuspendTimer(viewItem.Tab);
+            _pendingHistoryTitles.Remove(viewItem.Tab);
 
             TabClosed?.Invoke(viewItem);
             TabCountChanged?.Invoke(_tabs.Count);
-            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
         }
 
         public bool TryReopenClosedTab(out EngineType engine, out string url, out string title)
@@ -589,7 +635,7 @@ namespace EdgeRebuild.Core
             _tabs.Insert(adjustedIndex, item);
 
             TabOrderChanged?.Invoke();
-            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
         }
 
         public int GetTabIndex(TabViewItem item) => _tabs.IndexOf(item);
@@ -645,7 +691,7 @@ namespace EdgeRebuild.Core
 
             TabOrderChanged?.Invoke();
             TabCountChanged?.Invoke(_tabs.Count);
-            if (!IsInPrivateWindow) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
         }
 
         private void ReorderTabToPinnedSection(TabViewItem viewItem)

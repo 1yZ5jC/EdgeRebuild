@@ -140,8 +140,13 @@ namespace EdgeRebuild
                 _tabManager.PageMarkActionRequested -= OnPageMarkActionRequested;
                 _tabManager.TtsTextRequested -= OnTtsTextRequested;
                 _tabManager.NtpSearchRequested -= OnNtpSearchRequested;
+                _tabManager.TabHoverStarted -= OnTabHoverStarted;
+                _tabManager.TabHoverEnded -= OnTabHoverEnded;
+                _tabManager.TabUrlChanged -= OnPreviewCacheInvalidate;
                 ReadAloudService.StateChanged -= OnReadAloudStateChanged;
             }
+            _hoverTimer?.Stop();
+            if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
             _pageKeyTimer?.Stop();
@@ -167,7 +172,9 @@ namespace EdgeRebuild
                 _layoutManager.LayoutUpdated += OnLayoutUpdated;
 
                 // ---- 标签管理器 ----
-                _tabManager = new TabManager { IsInPrivateWindow = _isInPrivate };
+                // ParticipatesInSession=false：SessionTabs 是单快照表，仅主窗口持久化，
+                // 否则多个主窗口（AppWindow 副窗）互相覆盖对方的恢复快照
+                _tabManager = new TabManager { IsInPrivateWindow = _isInPrivate, ParticipatesInSession = !_isNewWindow };
                 _tabManager.Initialize(TabBarPanel, ContentContainer);
                 if (_isInPrivate)
                 {
@@ -186,6 +193,9 @@ namespace EdgeRebuild
                 _tabManager.TabCanGoForwardChanged += OnTabManagerCanGoForwardChanged;
                 _tabManager.TabSuspendedChanged += OnTabManagerTabSuspendedChanged;
                 _tabManager.NewWindowRequested += OnTabManagerNewWindowRequested;
+                _tabManager.TabHoverStarted += OnTabHoverStarted;      // 标签悬停缩略图预览（旧版 Edge 交互）
+                _tabManager.TabHoverEnded += OnTabHoverEnded;
+                _tabManager.TabUrlChanged += OnPreviewCacheInvalidate;
                 _tabManager.ContextMenuRequested += OnTabManagerContextMenuRequested;
 
                 // ---- 拖拽管理器 ----
@@ -542,6 +552,19 @@ namespace EdgeRebuild
                 case PageShortcutKey.WebCapture:
                     _ = WebCaptureCurrentAsync();
                     break;
+                case PageShortcutKey.NewTab:
+                    _ = CreateNewTabAndFocusAsync();
+                    break;
+                case PageShortcutKey.CloseTab:
+                {
+                    var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
+                    if (viewItem != null) _ = _tabManager.CloseTabAsync(viewItem);
+                    break;
+                }
+                case PageShortcutKey.FocusUrl:
+                    toolbarControl.FocusAddressBarAndClear();
+                    break;
+                // 主窗口无全屏模式，忽略
             }
         }
 
@@ -578,22 +601,15 @@ namespace EdgeRebuild
                 }
                 string key = await edgeTab.PollPageKeyAsync();
                 if (string.IsNullOrEmpty(key)) return;
-                switch (key)
+                var parsedKey = PageKeyMarkers.Parse(key);
+                if (parsedKey != null)
                 {
-                    case "cf": HandlePageKey(PageShortcutKey.Find); break;
-                    case "f3":
-                    case "cg": HandlePageKey(PageShortcutKey.FindNext); break;
-                    case "sf3":
-                    case "scg": HandlePageKey(PageShortcutKey.FindPrevious); break;
-                    case "esc": HandlePageKey(PageShortcutKey.CloseFind); break;
-                    case "hm": HandlePageKey(PageShortcutKey.HighlightMark); break;
-                    case "cs": HandlePageKey(PageShortcutKey.WebCapture); break;
-                    default:
-                        if (key.StartsWith("mark:remove:", StringComparison.Ordinal)
-                            && int.TryParse(key.Substring("mark:remove:".Length), out int markId))
-                            _ = HandleMarkRemovedAsync(markId);
-                        break;
+                    HandlePageKey(parsedKey.Value);
+                    return;
                 }
+                if (key.StartsWith("mark:remove:", StringComparison.Ordinal)
+                    && int.TryParse(key.Substring("mark:remove:".Length), out int markId))
+                    _ = HandleMarkRemovedAsync(markId);
             }
             catch { }
             finally { _pageKeyPolling = false; }
@@ -1196,6 +1212,136 @@ namespace EdgeRebuild
             }
         }
 
+        // ---- 标签悬停缩略图预览（旧版 Edge 交互：悬停 250ms 出预览卡） ----
+        private Windows.UI.Xaml.Controls.Primitives.Popup _tabPreviewPopup;
+        private Border _tabPreviewCard;
+        private Image _tabPreviewImage;
+        private TextBlock _tabPreviewTitle;
+        private Windows.UI.Xaml.Controls.ProgressRing _tabPreviewRing;
+        private TabViewItem _tabPreviewTarget;
+        private readonly Dictionary<IBrowserTab, byte[]> _previewCache = new Dictionary<IBrowserTab, byte[]>();
+        private DispatcherTimer _hoverTimer;
+        private const double PreviewW = 240, PreviewH = 150;
+
+        private void BuildTabPreviewPopup()
+        {
+            _tabPreviewImage = new Image { Width = PreviewW - 2, Height = PreviewH - 2, Stretch = Stretch.Uniform };
+            _tabPreviewRing = new Windows.UI.Xaml.Controls.ProgressRing { IsActive = true, Width = 28, Height = 28 };
+            var thumbHost = new Grid { Width = PreviewW - 2, Height = PreviewH - 2, Background = ThemeManager.GetToolbarBackground() };
+            thumbHost.Children.Add(_tabPreviewImage);
+            thumbHost.Children.Add(_tabPreviewRing);
+            _tabPreviewTitle = new TextBlock
+            {
+                FontSize = 11,
+                Margin = new Thickness(8, 5, 8, 7),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxLines = 1
+            };
+            var stack = new StackPanel { Orientation = Orientation.Vertical };
+            stack.Children.Add(thumbHost);
+            stack.Children.Add(_tabPreviewTitle);
+            _tabPreviewCard = new Border
+            {
+                Child = stack,
+                Background = ThemeManager.GetToolbarBackground(),
+                BorderBrush = ThemeManager.GetSeparatorBrush(),
+                BorderThickness = new Thickness(1),
+                Width = PreviewW
+            };
+            _tabPreviewPopup = new Windows.UI.Xaml.Controls.Primitives.Popup { IsLightDismissEnabled = false, Child = _tabPreviewCard };
+            _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            _hoverTimer.Tick += async (s, e) => { _hoverTimer.Stop(); await ShowTabPreviewAsync(); };
+        }
+
+        private void OnTabHoverStarted(TabViewItem viewItem)
+        {
+            if (_isInPrivate || viewItem == null) return;   // 隐身窗口不预览
+            if (_tabPreviewPopup == null) BuildTabPreviewPopup();
+            _tabPreviewTarget = viewItem;
+            _hoverTimer.Stop();
+            _hoverTimer.Start();
+        }
+
+        private void OnTabHoverEnded(TabViewItem viewItem)
+        {
+            if (_tabPreviewTarget != null && _tabPreviewTarget == viewItem)
+            {
+                _hoverTimer.Stop();
+                _tabPreviewTarget = null;
+                _tabPreviewPopup.IsOpen = false;
+            }
+        }
+
+        // 导航后旧缩略图作废
+        private void OnPreviewCacheInvalidate(IBrowserTab tab, string url) => _previewCache.Remove(tab);
+
+        private async Task ShowTabPreviewAsync()
+        {
+            var target = _tabPreviewTarget;
+            if (target == null || target.Container == null || !_tabManager.Tabs.Contains(target)) return;
+
+            // 定位：标签上方居中，夹在窗口内（XamlRoot 尺寸对 AppWindow 副窗同样正确）
+            try
+            {
+                var topLeft = target.Container.TransformToVisual(null).TransformPoint(new Point(0, 0));
+                double maxW = XamlRoot?.Size.Width ?? Window.Current.Bounds.Width;
+                _tabPreviewPopup.HorizontalOffset = Math.Max(8,
+                    Math.Min(topLeft.X + target.Container.ActualWidth / 2 - PreviewW / 2, maxW - PreviewW - 8));
+                _tabPreviewPopup.VerticalOffset = Math.Max(8, topLeft.Y - PreviewH - 34);
+            }
+            catch { }
+            _tabPreviewTitle.Text = target.Tab.Title ?? "";
+            _tabPreviewRing.Visibility = Visibility.Visible;
+            _tabPreviewImage.Source = null;
+            _tabPreviewPopup.IsOpen = true;
+
+            string url = target.Tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank" || ToolbarControl.IsNtpUrl(url))
+            {
+                _tabPreviewRing.Visibility = Visibility.Collapsed;   // 空白/主页无内容可截
+                return;
+            }
+
+            try
+            {
+                if (!_previewCache.TryGetValue(target.Tab, out byte[] png))
+                {
+                    // 后台标签容器 Collapsed → 捕获前临时置可见；期间切到该标签则不还原
+                    var container = target.ContentContainer;
+                    bool restore = container != null && container.Visibility != Visibility.Visible;
+                    if (restore) container.Visibility = Visibility.Visible;
+                    try { png = await WebCaptureService.CapturePagePngAsync(target.Tab); }
+                    finally
+                    {
+                        if (restore && container != null && _tabManager.CurrentTab != target.Tab)
+                            container.Visibility = Visibility.Collapsed;
+                    }
+                    if (png != null && png.Length > 0 && _tabPreviewTarget == target)
+                        _previewCache[target.Tab] = png;
+                }
+                if (_tabPreviewTarget != target || png == null || png.Length == 0) return;
+
+                var bmp = new BitmapImage();
+                var ras = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                using (var writer = new Windows.Storage.Streams.DataWriter(ras))
+                {
+                    writer.WriteBytes(png);
+                    await writer.StoreAsync();
+                    await writer.FlushAsync();
+                }
+                ras.Seek(0);
+                await bmp.SetSourceAsync(ras);
+                if (_tabPreviewTarget != target) return;
+                _tabPreviewImage.Source = bmp;
+                _tabPreviewRing.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[标签预览] 捕获失败: {ex.Message}");
+                if (_tabPreviewTarget == target) _tabPreviewRing.Visibility = Visibility.Collapsed;
+            }
+        }
+
         // ---- 阅读模式 ----
         private async void ToggleReaderMode()
         {
@@ -1418,9 +1564,8 @@ namespace EdgeRebuild
         {
             if (_tabManager.CurrentTab != null)
             {
+                // 历史由 TabManager.UrlChanged 统一记录（占位标题 + TitleChanged 修正），此处不重复添加
                 await _tabManager.CurrentTab.NavigateAsync(url);
-                if (!string.IsNullOrEmpty(url) && url != "about:blank")
-                    await HistoryManager.AddAsync(_tabManager.CurrentTab.Title ?? url, url);
                 SetFocusToCurrentTabContent();
             }
         }
@@ -1862,19 +2007,21 @@ namespace EdgeRebuild
         private void AdjustZoom(double delta)
         {
             _zoomFactor = Math.Max(0.25, Math.Min(5.0, _zoomFactor + delta));
+            // InvariantCulture：zh-CN 环境下浮点会输出 "1,25"，CSS zoom 解析失败
+            string z = _zoomFactor.ToString(System.Globalization.CultureInfo.InvariantCulture);
             if (_tabManager.CurrentTab is EdgeHtmlTab edgeTab)
-                _ = edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';");
+                _ = edgeTab.ExecuteScriptAsync($"document.body.style.zoom = '{z}';");
             else if (_tabManager.CurrentTab is WebView2Tab wv2)
-                _ = wv2.ExecuteScriptAsync($"document.body.style.zoom = '{_zoomFactor}';");
+                _ = wv2.ExecuteScriptAsync($"document.body.style.zoom = '{z}';");
         }
 
         private void ResetZoom()
         {
-            _zoomFactor = 1.0;
             if (_tabManager.CurrentTab is EdgeHtmlTab edgeTab)
                 _ = edgeTab.ExecuteScriptAsync("document.body.style.zoom = '1';");
             else if (_tabManager.CurrentTab is WebView2Tab wv2)
                 _ = wv2.ExecuteScriptAsync("document.body.style.zoom = '1';");
+            _zoomFactor = 1.0;
         }
 
         private async void BookmarkAllTabs()
@@ -1905,6 +2052,7 @@ namespace EdgeRebuild
         {
             await HistoryManager.ClearAsync();
             DownloadManager.ClearCompleted();
+            _tabManager.ClearClosedTabs();   // 与 Metro 设置面板语义一致
             if (HubSplitView.IsPaneOpen)
                 hubPane.RefreshAll();
             await ClearAllCookiesInternalAsync();

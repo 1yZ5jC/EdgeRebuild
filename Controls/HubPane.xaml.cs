@@ -69,6 +69,7 @@ namespace EdgeRebuild.Controls
         {
             RefreshFavorites();
             RefreshHistory();
+            RefreshReadingList();
             LoadDownloads();
             HubNavView.SelectedItem = HubNavView.MenuItems[0];
         }
@@ -96,6 +97,7 @@ namespace EdgeRebuild.Controls
         {
             RefreshFavorites();
             RefreshHistory();
+            RefreshReadingList();
             LoadDownloads();
         }
 
@@ -814,11 +816,91 @@ namespace EdgeRebuild.Controls
                 }
                 FavPanel.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
                 HistoryPanel.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
+                ReadingPanel.Visibility = tag == "ReadingList" ? Visibility.Visible : Visibility.Collapsed;
                 DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
                 if (tag == "Favorites") RefreshFavorites();
                 if (tag == "History") RefreshHistory();
+                if (tag == "ReadingList") RefreshReadingList();
                 if (tag == "Downloads") LoadDownloads();
             }
+        }
+
+        // ---- 稍后读（旧版 Edge 阅读列表） ----
+        public void RefreshReadingList()
+        {
+            if (ReadingListView == null) return;
+            ReadingListView.Items.Clear();
+            foreach (var item in ReadingListManager.Instance.Items)
+                ReadingListView.Items.Add(item);
+            ApplyThemeToReadingList();
+        }
+
+        private void ApplyThemeToReadingList()
+        {
+            var fg = ForegroundBrush?.Color ?? Colors.Black;
+            var muted = MutedForegroundBrush?.Color ?? Colors.DimGray;
+            foreach (var container in ReadingListView.ItemsPanelRoot?.Children ?? Enumerable.Empty<DependencyObject>())
+            {
+                if (!(container is ListViewItem lvi) || !(lvi.Content is ReadingItem)) continue;
+                var root = FindElementByName(lvi, "RootGrid");
+                if (root == null) continue;
+                var title = FindElementByName(root, "TitleText") as TextBlock;
+                var urlText = FindElementByName(root, "UrlText") as TextBlock;
+                var dateText = FindElementByName(root, "DateText") as TextBlock;
+                if (title != null) title.Foreground = new SolidColorBrush(fg);
+                if (urlText != null) urlText.Foreground = new SolidColorBrush(muted);
+                if (dateText != null) dateText.Foreground = new SolidColorBrush(muted);
+            }
+        }
+
+        private static DependencyObject FindElementByName(DependencyObject parent, string name)
+        {
+            int count = Windows.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < count; i++)
+            {
+                var child = Windows.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is FrameworkElement fe && fe.Name == name) return fe;
+                var found = FindElementByName(child, name);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private void ReadingListView_ItemClick(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is ReadingItem item)
+            {
+                NavigateRequested?.Invoke(item.Url);
+                // 读完即删（阅读列表语义：一次性队列）
+                _ = ReadingListManager.Instance.RemoveAsync(item);
+                RefreshReadingList();
+            }
+        }
+
+        private void ReadingItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var grid = sender as Grid;
+            if (grid?.DataContext is ReadingItem item)
+            {
+                var menu = new MenuFlyout();
+                var openNewTab = new MenuFlyoutItem { Text = "在新标签页打开并移除" };
+                openNewTab.Click += (s, a) =>
+                {
+                    NavigateRequested?.Invoke(item.Url);
+                    _ = ReadingListManager.Instance.RemoveAsync(item);
+                    RefreshReadingList();
+                };
+                menu.Items.Add(openNewTab);
+                var removeItem = new MenuFlyoutItem { Text = "移除" };
+                removeItem.Click += async (s, a) =>
+                {
+                    await ReadingListManager.Instance.RemoveAsync(item);
+                    RefreshReadingList();
+                };
+                menu.Items.Add(removeItem);
+                menu.ShowAt(grid, e.GetPosition(grid));
+            }
+            e.Handled = true;
         }
     }
 }

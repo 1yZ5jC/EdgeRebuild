@@ -21,7 +21,7 @@ namespace EdgeRebuild.Metro
             InitializeComponent();
         }
 
-        public void UpdateTabCount(int count) => TabCountText.Text = count.ToString();
+        public void UpdateTabCount(int count) => TabCountText.Text = $"({count})";
 
         public void SetFullscreenText(bool fullscreen) => FullscreenText.Text = fullscreen ? "退出全屏" : "全屏";
 

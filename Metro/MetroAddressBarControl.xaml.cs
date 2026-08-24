@@ -15,12 +15,15 @@ namespace EdgeRebuild.Metro
         public event Action HomeRequested;
         public event Action FullscreenRequested;
         public event Action<string> UrlSubmitted;
+        public event Action ContentAreaFocusRequested;   // Esc/提交后把焦点还给页面内容
 
         public MetroAddressBarControl()
         {
             InitializeComponent();
             UpdateNavButtons(false, false);
         }
+
+        private string _currentUrl = "";
 
         public void UpdateNavButtons(bool canGoBack, bool canGoForward)
         {
@@ -32,8 +35,9 @@ namespace EdgeRebuild.Metro
 
         public void SetUrl(string url)
         {
+            _currentUrl = url ?? "";
             if (UrlBox.FocusState == FocusState.Unfocused)
-                UrlBox.Text = url;
+                UrlBox.Text = _currentUrl;
         }
 
         public void FocusUrl()
@@ -63,12 +67,14 @@ namespace EdgeRebuild.Metro
             if (e.Key == VirtualKey.Enter)
             {
                 UrlSubmitted?.Invoke(UrlBox.Text?.Trim() ?? "");
-                UrlBox.Focus(FocusState.Programmatic);
+                ContentAreaFocusRequested?.Invoke();   // 焦点还给页面内容
             }
             else if (e.Key == VirtualKey.Escape)
             {
-                UrlBox.Text = "";
-                UrlBox.Focus(FocusState.Programmatic);
+                // 恢复显示当前页地址（而非清空）
+                UrlBox.Text = _currentUrl;
+                UrlBox.SelectionStart = UrlBox.Text.Length;
+                ContentAreaFocusRequested?.Invoke();
             }
         }
     }
