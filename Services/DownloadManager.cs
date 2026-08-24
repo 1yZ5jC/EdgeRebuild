@@ -204,9 +204,17 @@ namespace EdgeRebuild.Services
             }
             catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] 注册表解析失败: {ex.Message}"); }
 
+            // 兜底可视化：真实下载目录不可用时明确告知用户落点（仅提示一次）
+            if (!_fallbackToastShown)
+            {
+                _fallbackToastShown = true;
+                try { ShowToastOnUIThread("系统下载目录不可用，文件将保存到应用数据目录"); } catch { }
+            }
             Services.Diagnostics.Log("[下载目录] 回退应用私有目录 Downloads");
             return await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
         }
+
+        private static bool _fallbackToastShown;
 
         public static async Task UpdateSystemDownloadFolderAccessAsync()
         {

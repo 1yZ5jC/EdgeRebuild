@@ -34,7 +34,6 @@ namespace EdgeRebuild.Metro
         private bool _commandBarOpen;
         private bool _settingsOpen;
         private bool _isFullscreen;
-        private bool _windowActive;   // 真多视图：未激活前禁止 GetForCurrentView
         private bool _isReadingAloud;
         private double _zoomFactor = 1.0;
         private uint? _edgeSwipePointerId;   // A3 底缘上滑手势跟踪
@@ -87,8 +86,7 @@ namespace EdgeRebuild.Metro
                 _stripRefreshTimer.Stop();
                 TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             };
-            _ctxPollTimer.Tick += CtxPollTimer_Tick;
-            _ctxPollTimer.Start();
+            _ctxPollTimer.Tick += CtxPollTimer_Tick;   // R2-2：启停由 SyncCtxPolling 随活动引擎治理
             // AppWindow 模式：标题随标签切换经 _appWindow.Title 同步（见 OnTabChanged）
             Loaded += (s, e) =>
             {
@@ -150,6 +148,7 @@ namespace EdgeRebuild.Metro
             _tabManager.NtpSearchRequested += OnNtpSearchRequested;   // 经典 NTP 搜索（WebView2 postMessage 通道）
             _tabManager.PageKeyPressed += OnMetroPageKey;             // 焦点在网页内容内的快捷键（WebView2 消息桥）
             _tabManager.TabScrolled += OnTabScrolled;                 // 滚动感知底栏自动隐藏（IE11 Modern 行为）
+            SyncCtxPolling();   // R2-2：初始状态同步（首个标签可能就是 EdgeHTML）
 
             // AppWindow 模式：标题/标题栏经 AppWindow 定制（OnNavigatedTo 阶段即可用）
             try
@@ -172,10 +171,19 @@ namespace EdgeRebuild.Metro
             _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
         }
 
+        // R2-2：仅活动标签为 EdgeHTML 时运行 marker 轮询，切换标签/清空时停表
+        private void SyncCtxPolling()
+        {
+            bool need = _tabManager?.CurrentTab is EdgeHtmlTab;
+            if (need && !_ctxPollTimer.IsEnabled) _ctxPollTimer.Start();
+            else if (!need && _ctxPollTimer.IsEnabled) _ctxPollTimer.Stop();
+        }
+
         private void OnTabChanged(TabViewItem viewItem)
         {
             var tab = viewItem?.Tab;
             if (tab == null) return;
+            SyncCtxPolling();   // R2-2：活动引擎变化 → 轮询启停
             AddressBar.SetUrl(tab.CurrentUrl);
             AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
             TopBarTitle.Text = tab.Title ?? "Metro IE";
@@ -835,7 +843,9 @@ namespace EdgeRebuild.Metro
                     _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
                     break;
                 case PageShortcutKey.CloseTab:
-                    _ = _tabManager.CloseTabAsync(FindViewItem(_tabManager.CurrentTab));
+                    var currentItem = FindViewItem(_tabManager.CurrentTab);
+                    if (currentItem != null)
+                        _ = _tabManager.CloseTabAsync(currentItem);
                     break;
                 case PageShortcutKey.FocusUrl:
                     ShowBottomBar();
@@ -1043,7 +1053,7 @@ namespace EdgeRebuild.Metro
             sb.Begin();
         }
 
-        private TabViewItem FindViewItem(IBrowserTab tab)
+        private TabViewItem? FindViewItem(IBrowserTab tab)
         {
             if (tab == null) return null;
             foreach (var item in _tabManager.Tabs)
@@ -1097,7 +1107,9 @@ namespace EdgeRebuild.Metro
                         break;
                     case VirtualKey.W:
                         e.Handled = true;
-                        _ = _tabManager.CloseTabAsync(FindViewItem(_tabManager.CurrentTab));
+                        var wTarget = FindViewItem(_tabManager.CurrentTab);
+                        if (wTarget != null)
+                            _ = _tabManager.CloseTabAsync(wTarget);
                         break;
                     case VirtualKey.L:
                         e.Handled = true;
@@ -1159,7 +1171,8 @@ namespace EdgeRebuild.Metro
         {
             var list = _tabManager.Tabs;
             if (list.Count == 0) return;
-            int idx = _tabManager.GetTabIndex(FindViewItem(_tabManager.CurrentTab));
+            var currentItem = FindViewItem(_tabManager.CurrentTab);
+            int idx = currentItem != null ? _tabManager.GetTabIndex(currentItem) : 0;
             if (idx < 0) idx = 0;
             else idx = (idx + delta + list.Count) % list.Count;
             _ = _tabManager.SwitchToTabAsync(list[idx]);

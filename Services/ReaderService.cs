@@ -1,4 +1,4 @@
-using EdgeRebuild.Core;
+﻿using EdgeRebuild.Core;
 using System;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -155,7 +155,7 @@ namespace EdgeRebuild.Services
     }
 })()";
 
-        private static ArticleResult ParseResult(string raw)
+        private static ArticleResult? ParseResult(string raw)
         {
             if (string.IsNullOrEmpty(raw)) return null;
 

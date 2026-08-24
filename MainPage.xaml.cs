@@ -64,7 +64,6 @@ namespace EdgeRebuild
 
         // ---- 辅助窗口引用（AppWindow 同线程模型；主窗口为 null）----
         private AppWindow _appWindow;
-        private bool _isSecondary;   // false=主窗口；true=AppWindow 副窗口
 
         // ---- 多窗口焦点守卫 ----
         // AppWindow 同线程模式：Window.Current 恒指主窗口，失活窗口的 XamlRoot 内
@@ -592,9 +591,9 @@ namespace EdgeRebuild
                 _tabManager.NtpSearchRequested += OnNtpSearchRequested;
 
                 // ---- EdgeHTML 页面内快捷键：marker 轮询（见 EdgeHtmlTab.PageKeyBridgeJs 注释）----
+                // R2-2：仅当活动标签为 EdgeHTML 时运行（SyncPageKeyPolling 随标签切换启停）
                 _pageKeyTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
                 _pageKeyTimer.Tick += OnPageKeyTimerTick;
-                _pageKeyTimer.Start();
             }
             catch (Exception ex)
             {
@@ -657,8 +656,16 @@ namespace EdgeRebuild
             }
         }
 
+        // R2-2：轮询启停治理——仅活动标签为 EdgeHTML 时运行，切换标签/清空时停表
+        private void SyncPageKeyPolling()
+        {
+            if (_pageKeyTimer == null) return;
+            bool need = _tabManager?.CurrentTab is EdgeHtmlTab;
+            if (need && !_pageKeyTimer.IsEnabled) _pageKeyTimer.Start();
+            else if (!need && _pageKeyTimer.IsEnabled) _pageKeyTimer.Stop();
+        }
+
         // EdgeHTML 引擎无可靠的按键回传通道（ScriptNotify 需白名单、WebView 无输入事件、
-        // AddWebAllowedObject 需独立组件），故仅对当前活动的 EdgeHTML 标签轮询 marker。
         private async void OnPageKeyTimerTick(object sender, object e)
         {
             if (!IsFocusedWindow()) return;
@@ -1148,6 +1155,7 @@ namespace EdgeRebuild
         {
             var tab = viewItem.Tab;
             string currentUrl = tab.CurrentUrl ?? "";
+            SyncPageKeyPolling();   // R2-2：活动引擎变化 → 轮询启停
             toolbarControl.SetEngine(tab.Engine);
             toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, currentUrl);
             UpdateStarButton();
@@ -1177,6 +1185,7 @@ namespace EdgeRebuild
         private void OnTabManagerTabCountChanged(int count)
         {
             UpdateTabLayout();
+            SyncPageKeyPolling();   // R2-2：最后一个标签关闭 → 停轮询
             if (count == 0 && !_isEngineSwitching)
                 _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
         }
@@ -1950,7 +1959,7 @@ namespace EdgeRebuild
         /// <summary>
         /// 下载 PDF/EPUB 到 contentcache，返回可供阅读器加载的本地 URL。
         /// </summary>
-        private async Task<string> DownloadDocToCacheAsync(string kind, string url)
+        private async Task<string?> DownloadDocToCacheAsync(string kind, string url)
         {
             try
             {
@@ -2260,7 +2269,6 @@ namespace EdgeRebuild
                 _defaultEngine = args.Engine;
                 _appWindow = args.AppWindow;
                 _isNewWindow = true;
-                _isSecondary = true;
                 _isInPrivate = args.IsInPrivate;
                 _pendingSessionSlot = Math.Max(0, args.SessionSlot);
                 _restoreSlot = args.RestoreSlot;

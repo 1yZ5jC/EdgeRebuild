@@ -67,6 +67,13 @@
     <Page Remove="docs\**" />
   </ItemGroup>
   <ItemGroup>
+    <!-- 测试工程目录：不编入主应用（xunit 引用仅存在于测试工程） -->
+    <Compile Remove="Tests\**" />
+    <EmbeddedResource Remove="Tests\**" />
+    <None Remove="Tests\**" />
+    <Page Remove="Tests\**" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />

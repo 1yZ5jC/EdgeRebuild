@@ -17,7 +17,7 @@ using Windows.UI.Xaml.Media;
 
 namespace EdgeRebuild.Controls
 {
-    public sealed class HistoryTemplateSelector : DataTemplateSelector
+    public sealed partial class HistoryTemplateSelector : DataTemplateSelector
     {
         public DataTemplate HeaderTemplate { get; set; }
         public DataTemplate ItemTemplate { get; set; }

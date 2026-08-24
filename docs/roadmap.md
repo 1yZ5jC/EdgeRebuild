@@ -3,6 +3,28 @@
 来源：旧版 Edge（EdgeHTML/Spartan）与 Metro IE（Win8/8.1）设计对标分析。
 状态标记：[ ] 待办 / [x] 完成 / [-] 暂缓（含原因）
 
+## 下一阶段开发计划（2026-08-24 制定）
+### R1 稳定化收尾（当前批次）
+- [ ] R1-1 多窗口回归清单执行：主/副/Metro/InPrivate 开关、槽位恢复、快捷键路由、关闭链日志全绿
+- [ ] R1-2 关闭链观察期：收集 `[窗口关闭]` 异例行一周，确认 WebView2 销毁竞态已绝迹
+- [x] R1-3 存量警告清零：FindViewItem 返回类型改 `TabViewItem?`（连带 4 处调用点判空）、
+      HistoryTemplateSelector 加 partial、ReaderService.ParseResult/DownloadDocToCacheAsync 返回类型可空化；
+      全仓可空注解存量债（CS8618 等）另行专项，不在本项范围
+- [x] R1-4 下载目录回退可视化：落入应用私有目录时 toast 告知用户一次（含真实路径指引）
+
+### R2 工程健康
+- [x] R2-1 核心服务单元测试：Tests/EdgeRebuild.CoreTests（xUnit，源码链接方式共享纯逻辑文件），
+      UrlInputResolver 全矩阵 25 用例通过；运行方式 `dotnet test Tests/EdgeRebuild.CoreTests`
+- [x] R2-2 轮询定时器治理：pageKeyTimer / ctxPollTimer 仅在活动标签为 EdgeHTML 时运行，
+      随 TabChanged / 清空启停（SyncPageKeyPolling / SyncCtxPolling）
+- [x] R2-3 [-] WinUI 3 迁移：**因项目设计原因永久排除**（不评估、不规划）
+
+### R3 功能演进（原 P2 遗留 + 新增）
+- [ ] R3-1 集锦 Collections（拖拽收集链接/图片/文本成组导出）——最大单项，需独立设计轮
+- [ ] R3-2 垂直标签试验
+- [ ] R3-3 命令栏窄窗自适应（VisualStateManager 收纳为溢出）
+- [ ] R3-4 EdgeHTML 能力对齐再评估：若 WebView2 化彻底，考虑裁剪 EdgeHTML 引擎维护面
+
 ## P0 — 高价值低成本
 - [x] P0-4 多主窗口会话覆盖隐患：`SessionTabs` 单快照表，两个主窗口互踩（D1 同款）。方案：副窗口 `ParticipatesInSession=false`
 - [x] P0-1 阅读列表（旧版 Edge Reading List）：Hub 第四区 + `ReadingListManager`（复刻 FavoritesManager 模式）+ Metro「更多→稍后读」
