@@ -28,3 +28,15 @@
 - [x] A3 底缘上滑手势唤出（根网格触点跟踪，起点在窗口底缘 24px 内上滑 >40px）
 - [x] A4 [-] Win+Z 键盘唤出：**放弃**——Win11 中 Win+Z 被系统抢占为贴靠布局，无法可靠拦截
 - [x] A5 [-] 超时自动隐藏：**不加**——真实 8.1 为 light-dismiss（点外即收），我们已一致
+
+## 多窗口稳定性（AppWindow 同线程模型）
+- [x] MW1 快捷键焦点守卫失效：失活窗口 XamlRoot 内焦点元素残留 → 多窗口同时响应同一快捷键。
+      修复：WindowManager.ActiveSlot + 页面根 GotFocus 广播近似激活（UWP 契约无 AppWindow.Activated /
+      DidZOrderChange，winmd 已验证），IsFocusedWindow = 槽位匹配 && 本 XamlRoot 有焦点元素
+- [x] MW2 关闭副窗口禁用全局快捷键：核查后**非缺陷**——ShortcutManager.Enable/Disable 为引用计数
+- [x] MW3 标签预览 Popup 锚错窗口：Popup 未设 XamlRoot 会挂到主窗口内容层，副窗预览飘移。已锚定本页 XamlRoot
+- [x] MW4 会话槽位化：SessionTabRecord 加 Slot 列（sqlite-net 自动补列），每窗口独立快照；
+      启动时主窗口恢复 Slot 0 后由 WindowManager.RestoreSecondaryWindowsAsync 按槽位重建副主窗口
+      （RestoreSession 开关控制）；副窗口关闭即清其槽位数据防幽灵恢复
+- [x] MW5 WindowManager 注册表：槽位分配（最小未用正整数）/回收、激活广播、Closed 联动清理
+- [x] MW6 MetroPage 窗口关闭不释放 WebView：Unloaded 时 DisposeAll + 停轮询定时器

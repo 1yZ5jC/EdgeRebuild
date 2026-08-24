@@ -48,6 +48,14 @@ namespace EdgeRebuild.Metro
         public MetroPage()
         {
             InitializeComponent();
+            // MW6：窗口关闭（frame.Content 置空触发 Unloaded）时释放全部标签的
+            // WebView 资源，否则 AppWindow 关了 WebView2 进程仍驻留（内存泄漏）
+            this.Unloaded += (s, e) =>
+            {
+                _stripRefreshTimer.Stop();
+                _ctxPollTimer.Stop();
+                try { _tabManager?.DisposeAll(); } catch { }
+            };
             _stripRefreshTimer.Tick += (s, e) =>
             {
                 _stripRefreshTimer.Stop();

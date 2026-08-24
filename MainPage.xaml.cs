@@ -65,6 +65,17 @@ namespace EdgeRebuild
         // ---- 辅助窗口引用（AppWindow；主窗口为 null）----
         private AppWindow _appWindow;
 
+        // ---- 多窗口焦点守卫（MW1） ----
+        // AppWindow 多窗口共享主 UI 线程：失活窗口的 XamlRoot 内仍残留"已聚焦元素"，
+        // 仅凭 GetFocusedElement 判定会让多个窗口同时响应同一快捷键（双开标签等）。
+        // 因此守卫 = 本窗口处于激活态 && 本 XamlRoot 存在焦点元素。
+        private bool _windowActive;
+        private int _pendingSessionSlot;   // OnNavigatedTo 暂存，OnLoaded 使用
+        private int _sessionSlot;    // 本窗口会话槽位（0=主窗口；副窗由 WindowManager 分配）
+        private int _restoreSlot = -1;   // >=1：本窗口是启动恢复重建的槽位窗口
+
+        private void OnSlotActivated(int slot) => _windowActive = (slot == _sessionSlot);
+
         // ---- 快捷键处理器引用（用于跨窗口守卫和反注册） ----
         private Action _shortcutNewTab, _shortcutCloseTab, _shortcutReopenTab, _shortcutFocusAddressBar,
             _shortcutRefresh, _shortcutAddFavorite, _shortcutShowHistory, _shortcutShowDownloads,
@@ -147,6 +158,7 @@ namespace EdgeRebuild
             }
             _hoverTimer?.Stop();
             if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
+            WindowManager.SlotActivated -= OnSlotActivated;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
             _pageKeyTimer?.Stop();
@@ -157,6 +169,20 @@ namespace EdgeRebuild
         {
             _isLoaded = true;
             if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 开始");
+
+            // MW1：跟踪本窗口激活态——AppWindow 多窗口共享主 UI 层且契约无 Activated
+            // 事件，用"本槽位最近获得 XAML 焦点"近似；守卫见 IsFocusedWindow
+            if (_appWindow != null)
+            {
+                _windowActive = WindowManager.ActiveSlot == _sessionSlot;
+                WindowManager.SlotActivated += OnSlotActivated;
+                this.GotFocus += (s2, e2) => WindowManager.ReportSlotFocus(_sessionSlot);
+            }
+            else
+            {
+                _windowActive = true;   // 主窗口启动即默认激活
+                this.GotFocus += (s2, e2) => WindowManager.ReportSlotFocus(0);
+            }
 
             try
             {
@@ -172,9 +198,15 @@ namespace EdgeRebuild
                 _layoutManager.LayoutUpdated += OnLayoutUpdated;
 
                 // ---- 标签管理器 ----
-                // ParticipatesInSession=false：SessionTabs 是单快照表，仅主窗口持久化，
-                // 否则多个主窗口（AppWindow 副窗）互相覆盖对方的恢复快照
-                _tabManager = new TabManager { IsInPrivateWindow = _isInPrivate, ParticipatesInSession = !_isNewWindow };
+                // 多窗口会话：每个 MainPage 窗口持独立 Slot（0=主窗），互不覆盖；
+                // InPrivate 不持久化；MetroPage ParticipatesInSession=false
+                _sessionSlot = _pendingSessionSlot;
+                _tabManager = new TabManager
+                {
+                    IsInPrivateWindow = _isInPrivate,
+                    ParticipatesInSession = !_isInPrivate,
+                    SessionSlot = _sessionSlot
+                };
                 _tabManager.Initialize(TabBarPanel, ContentContainer);
                 if (_isInPrivate)
                 {
@@ -329,7 +361,20 @@ namespace EdgeRebuild
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 if (_tabManager.TabCount == 0)
                 {
-                    if (!string.IsNullOrEmpty(_pendingUrl))
+                    if (_restoreSlot >= 1)
+                    {
+                        // 启动恢复重建的副窗口：读取本槽位记录，不落主页兜底
+                        var slotTabs = await SessionManager.LoadTabsAsync(_restoreSlot);
+                        foreach (var rec in slotTabs)
+                        {
+                            if (string.IsNullOrEmpty(rec.Url)) continue;
+                            EngineType engine = (rec.Engine == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
+                            await _tabManager.CreateTabAsync(engine, rec.Url, rec.IsPinned);
+                        }
+                        if (_tabManager.TabCount == 0)
+                            await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);   // 空槽兜底
+                    }
+                    else if (!string.IsNullOrEmpty(_pendingUrl))
                     {
                         await _tabManager.CreateTabAsync(_defaultEngine, _pendingUrl);
                     }
@@ -338,7 +383,7 @@ namespace EdgeRebuild
                         string restoreSetting = _isInPrivate ? "False"
                             : await SettingsManager.GetAsync("RestoreSession") ?? "True";
                         bool restoreSession = (restoreSetting == "True" || restoreSetting == "true");
-                        var sessionTabs = _isInPrivate ? new List<SessionTabRecord>() : await SessionManager.LoadTabsAsync();
+                        var sessionTabs = _isInPrivate ? new List<SessionTabRecord>() : await SessionManager.LoadTabsAsync(0);
 
                         if (restoreSession && sessionTabs.Count > 0)
                         {
@@ -353,6 +398,10 @@ namespace EdgeRebuild
                         {
                             await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);
                         }
+
+                        // 主窗口标签恢复完毕 → 按持久化槽位重建上次的副主窗口
+                        if (!_isInPrivate && restoreSession && !_isNewWindow)
+                            _ = WindowManager.RestoreSecondaryWindowsAsync();
                     }
                 }
 
@@ -1249,7 +1298,14 @@ namespace EdgeRebuild
                 BorderThickness = new Thickness(1),
                 Width = PreviewW
             };
-            _tabPreviewPopup = new Windows.UI.Xaml.Controls.Primitives.Popup { IsLightDismissEnabled = false, Child = _tabPreviewCard };
+            // AppWindow 多窗口共享主 UI 层：Popup 不设 XamlRoot 会挂到主窗口内容层，
+            // 在副窗口中预览卡会飘到主窗口上——必须锚定本页 XamlRoot
+            _tabPreviewPopup = new Windows.UI.Xaml.Controls.Primitives.Popup
+            {
+                IsLightDismissEnabled = false,
+                Child = _tabPreviewCard,
+                XamlRoot = this.XamlRoot
+            };
             _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _hoverTimer.Tick += async (s, e) => { _hoverTimer.Stop(); await ShowTabPreviewAsync(); };
         }
@@ -1280,6 +1336,7 @@ namespace EdgeRebuild
         {
             var target = _tabPreviewTarget;
             if (target == null || target.Container == null || !_tabManager.Tabs.Contains(target)) return;
+            if (_tabPreviewPopup.XamlRoot == null) _tabPreviewPopup.XamlRoot = this.XamlRoot;
 
             // 定位：标签上方居中，夹在窗口内（XamlRoot 尺寸对 AppWindow 副窗同样正确）
             try
@@ -1490,9 +1547,10 @@ namespace EdgeRebuild
         }
 
         // AppWindow 多窗口共享主 UI 线程，Window.Current 恒定指向主窗口，
-        // 需用 XamlRoot 判断快捷键事件是否属于本窗口（是否有焦点元素）。
+        // 需结合本窗口激活态 + XamlRoot 焦点元素双重判定（见 _windowActive 注释）。
         private bool IsFocusedWindow()
         {
+            if (!_windowActive) return false;
             try { return FocusManager.GetFocusedElement(this.XamlRoot) != null; }
             catch { return false; }
         }
@@ -2160,8 +2218,10 @@ namespace EdgeRebuild
                 _appWindow = args.AppWindow;
                 _isNewWindow = true;
                 _isInPrivate = args.IsInPrivate;
+                _pendingSessionSlot = Math.Max(0, args.SessionSlot);
+                _restoreSlot = args.RestoreSlot;
                 string windowId = _appWindow != null ? "AppWindow" : "main";
-                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window={windowId} url={args.Url}");
+                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window={windowId} url={args.Url} slot={_pendingSessionSlot} restore={_restoreSlot}");
             }
             else if (e.Parameter is string url)
             {

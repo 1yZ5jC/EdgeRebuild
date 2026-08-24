@@ -97,6 +97,9 @@ namespace EdgeRebuild.Core
         /// </summary>
         public bool ParticipatesInSession { get; set; } = true;
 
+        /// <summary>多窗口会话槽位：0=主窗口，1..n=副主窗口（WindowManager 分配）。</summary>
+        public int SessionSlot { get; set; }
+
         private bool CanPersistSession => !IsInPrivateWindow && ParticipatesInSession;
 
         // 历史标题待修正表：导航瞬间以 URL 占位入库，TitleChanged 后回填真实标题
@@ -146,7 +149,7 @@ namespace EdgeRebuild.Core
             if (isPinned && !viewItem.IsPinned)
                 await TogglePinTabAsync(viewItem);
 
-            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
 
             return viewItem;
         }
@@ -371,7 +374,7 @@ namespace EdgeRebuild.Core
             tab.UrlChanged += (url) =>
             {
                 TabUrlChanged?.Invoke(tab, url);
-                if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
+                if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
                 // 历史统一在此记录（主窗口地址栏提交处不再重复添加）；NTP/磁贴主页不入库
                 if (!IsInPrivateWindow && !string.IsNullOrEmpty(url)
                     && url != "about:blank" && !Controls.ToolbarControl.IsNtpUrl(url))
@@ -554,7 +557,7 @@ namespace EdgeRebuild.Core
 
             TabClosed?.Invoke(viewItem);
             TabCountChanged?.Invoke(_tabs.Count);
-            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
         }
 
         public bool TryReopenClosedTab(out EngineType engine, out string url, out string title)
@@ -677,7 +680,7 @@ namespace EdgeRebuild.Core
             _tabs.Insert(adjustedIndex, item);
 
             TabOrderChanged?.Invoke();
-            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
         }
 
         public int GetTabIndex(TabViewItem item) => _tabs.IndexOf(item);
@@ -733,7 +736,7 @@ namespace EdgeRebuild.Core
 
             TabOrderChanged?.Invoke();
             TabCountChanged?.Invoke(_tabs.Count);
-            if (CanPersistSession) SessionManager.ScheduleSave(_tabs);
+            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
         }
 
         private void ReorderTabToPinnedSection(TabViewItem viewItem)
