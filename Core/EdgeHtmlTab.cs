@@ -248,6 +248,20 @@ namespace EdgeRebuild.Core
             InjectContextMenuBridge();
             // DOM 加载完成时再尝试提取 favicon
             TryExtractFavicon();
+            _ = SeedTilesFromFavoritesIfConfiguredAsync();
+        }
+
+        // P1-7：磁贴主页数据源=收藏夹时，ntpmetro 页 DOM 就绪后注入收藏磁贴
+        private async Task SeedTilesFromFavoritesIfConfiguredAsync()
+        {
+            try
+            {
+                string uri = _webView?.Source?.AbsoluteUri ?? "";
+                if (!uri.Contains("/ntpmetro/")) return;
+                if (!await NtpTileSeeder.ShouldSeedAsync()) return;
+                await ExecuteScriptAsync(NtpTileSeeder.BuildSeedScript());
+            }
+            catch { }
         }
 
         private void CheckNavigationState()

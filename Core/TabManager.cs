@@ -24,6 +24,7 @@ namespace EdgeRebuild.Core
         private readonly Dictionary<IBrowserTab, DispatcherTimer> _suspendTimers = new Dictionary<IBrowserTab, DispatcherTimer>();
         private const int SuspendDelaySeconds = 120;
         private bool _enableTabSuspend = true;
+        private string[] _suspendExclusions = Array.Empty<string>();   // 挂起排除关键词（URL 包含即跳过）
 
         private StackPanel _tabBarPanel;
         private Panel _contentContainer;
@@ -49,6 +50,7 @@ namespace EdgeRebuild.Core
         public event Action<string> NtpSearchRequested;
         public event Action<TabViewItem> TabHoverStarted;   // 标签悬停（缩略图预览用）
         public event Action<TabViewItem> TabHoverEnded;
+        public event Action<IBrowserTab, string> TabScrolled;   // 页面滚动回报（Metro 底栏自动隐藏）
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         public IBrowserTab CurrentTab => _currentTab;
@@ -75,6 +77,15 @@ namespace EdgeRebuild.Core
         {
             var setting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
             _enableTabSuspend = (setting == "True" || setting == "true");
+            try
+            {
+                string list = await SettingsManager.GetAsync("SuspendExcludeList") ?? "";
+                _suspendExclusions = list.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            }
+            catch
+            {
+                _suspendExclusions = Array.Empty<string>();
+            }
         }
 
         /// InPrivate 窗口：不写历史、不存会话，所有标签使用隐身主页
@@ -231,12 +242,23 @@ namespace EdgeRebuild.Core
                 Orientation = Orientation.Horizontal,
                 VerticalAlignment = VerticalAlignment.Center
             };
+            var audioIndicator = new FontIcon
+            {
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                Glyph = "\xE767",   // Volume
+                FontSize = 11,
+                Foreground = ThemeManager.GetMutedForegroundBrush(),
+                Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = Visibility.Collapsed
+            };
             infoPanel.Children.Add(engineMark);
             infoPanel.Children.Add(faviconPlaceholder);
             infoPanel.Children.Add(faviconImage);
             infoPanel.Children.Add(loadingRing);
             infoPanel.Children.Add(suspendedIndicator);
             infoPanel.Children.Add(titleText);
+            infoPanel.Children.Add(audioIndicator);
             Grid.SetColumn(infoPanel, 0);
             tabPanel.Children.Add(infoPanel);
 
@@ -284,6 +306,7 @@ namespace EdgeRebuild.Core
             viewItem.SuspendedIndicator = suspendedIndicator;
             viewItem.LoadingRing = loadingRing;
             viewItem.TabAccentBar = accentBar;
+            viewItem.AudioIndicator = audioIndicator;
             closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
 
             // 悬停缩略图预览（旧版 Edge 标签悬停卡片）：宿主决定是否展示
@@ -371,6 +394,13 @@ namespace EdgeRebuild.Core
                 wv2Tab.TtsTextRequested += (text) => TtsTextRequested?.Invoke(text);
                 wv2Tab.NtpSearchRequested += (query) => NtpSearchRequested?.Invoke(query);
                 wv2Tab.ContextMenuRequested += (args) => ContextMenuRequested?.Invoke(args);
+                // 后台音频指示：直接点亮/熄灭标签条喇叭（无需页面再订阅）
+                wv2Tab.AudioPlayingChanged += (playing) => RunOnUiThread(() =>
+                {
+                    if (viewItem.AudioIndicator != null)
+                        viewItem.AudioIndicator.Visibility = playing ? Visibility.Visible : Visibility.Collapsed;
+                });
+                wv2Tab.Scrolled += (info) => TabScrolled?.Invoke(tab, info);
             }
 
             tab.NewWindowRequested += (url) => NewWindowRequested?.Invoke(url);
@@ -443,7 +473,10 @@ namespace EdgeRebuild.Core
             if (viewItem.TitleText != null)   // 无标签条模式（Metro）没有标题 UI
             {
                 viewItem.TitleText.Text = suspended ? "[已挂起] " + originalTitle : originalTitle;
-                ToolTipService.SetToolTip(viewItem.TitleText, viewItem.TitleText.Text);
+                // tooltip 顺带说明挂起收益，点击/切回即自动恢复
+                ToolTipService.SetToolTip(viewItem.TitleText, suspended
+                    ? $"{originalTitle}（后台已挂起以节省内存与 CPU，切回时自动恢复）"
+                    : originalTitle);
             }
         }
 
@@ -552,6 +585,15 @@ namespace EdgeRebuild.Core
                     timer.Stop();
                     var target = tab;
                     if (target == _currentTab || target.IsSuspended)
+                    {
+                        _suspendTimers.Remove(target);
+                        return;
+                    }
+
+                    // 排除名单（设置→性能）：URL 含任一关键词的标签永不挂起
+                    string suspendUrl = target.CurrentUrl ?? "";
+                    if (_suspendExclusions.Any(k => !string.IsNullOrWhiteSpace(k) &&
+                        suspendUrl.Contains(k, StringComparison.OrdinalIgnoreCase)))
                     {
                         _suspendTimers.Remove(target);
                         return;

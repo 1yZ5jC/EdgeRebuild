@@ -1,4 +1,4 @@
-<Page
+﻿<Page
     x:Class="EdgeRebuild.Metro.MetroPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -7,17 +7,17 @@
     RequestedTheme="Dark"
     KeyDown="Page_KeyDown" KeyUp="Page_KeyUp">
 
-    <!-- 布局（Metro IE 真实形态）：Row0 标题栏 / Row1 内容区 / Row2 底部标签条 / Row3 底部地址栏。
+    <!-- 布局（Metro IE 真实形态）：Row0 标题栏 / Row1 内容区 / Row2 底部组合条。
          其余功能（新建标签/标签视图/刷新/全屏/设置）收进底部命令栏（Windows 8.1 AppBar 形态：
          平时隐藏，右键或命令唤出，图标+文字平铺）。
-         网页空白处右键 = 唤出命令栏；链接/图片/选区右键 = 就近小菜单（MetroPage 代码隐藏）。 -->
+         网页空白处右键 = 唤出命令栏；链接/图片/选区右键 = 就近小菜单（MetroPage 代码隐藏）。
+         底部组合条支持滚动感知自动隐藏（IE11 Modern 行为，WebView2 滚动桥回报）。 -->
     <Grid RightTapped="Root_RightTapped" PointerPressed="Root_PointerPressed"
           PointerMoved="Root_PointerMoved" PointerReleased="Root_PointerReleased"
           PointerCanceled="Root_PointerReleased">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
@@ -33,24 +33,30 @@
             <Grid x:Name="ContentPanel" Background="#FF1E1E1E"/>
         </Grid>
 
-        <!-- 底部标签条（横向滚动，当前标签蓝底） -->
-        <metro:MetroTabStripControl x:Name="TabStrip" Grid.Row="2"
-            TabSelected="TabStrip_TabSelected"
-            TabCloseRequested="TabStrip_TabCloseRequested"
-            NewTabRequested="TabStrip_NewTabRequested"/>
+        <!-- 底部组合条：标签条 + 地址栏（滚动感知整体滑出/滑入，动画见代码隐藏） -->
+        <Grid x:Name="BottomBar" Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <metro:MetroTabStripControl x:Name="TabStrip" Grid.Row="0"
+                TabSelected="TabStrip_TabSelected"
+                TabCloseRequested="TabStrip_TabCloseRequested"
+                NewTabRequested="TabStrip_NewTabRequested"/>
 
-        <!-- 底部地址栏 -->
-        <metro:MetroAddressBarControl x:Name="AddressBar" Grid.Row="3"
-            BackRequested="AddressBar_BackRequested"
-            ForwardRequested="AddressBar_ForwardRequested"
-            RefreshRequested="AddressBar_RefreshRequested"
-            HomeRequested="AddressBar_HomeRequested"
-            FullscreenRequested="AddressBar_FullscreenRequested"
-            UrlSubmitted="AddressBar_UrlSubmitted"
-            ContentAreaFocusRequested="AddressBar_ContentAreaFocusRequested"/>
+            <!-- 底部地址栏 -->
+            <metro:MetroAddressBarControl x:Name="AddressBar" Grid.Row="1"
+                BackRequested="AddressBar_BackRequested"
+                ForwardRequested="AddressBar_ForwardRequested"
+                RefreshRequested="AddressBar_RefreshRequested"
+                HomeRequested="AddressBar_HomeRequested"
+                FullscreenRequested="AddressBar_FullscreenRequested"
+                UrlSubmitted="AddressBar_UrlSubmitted"
+                ContentAreaFocusRequested="AddressBar_ContentAreaFocusRequested"/>
+        </Grid>
 
-        <!-- 底部命令栏覆盖层（滑入/滑出动画见代码隐藏） -->
-        <metro:MetroAppBarControl x:Name="CommandBar" Grid.RowSpan="4"
+        <!-- 底部命令栏覆盖层（Windows 8.1 AppBar 形态；滑入/滑出动画见代码隐藏） -->
+        <metro:MetroAppBarControl x:Name="CommandBar" Grid.RowSpan="3"
             VerticalAlignment="Bottom" Visibility="Collapsed"
             NewTabClicked="CommandBar_NewTabClicked"
             TabsClicked="CommandBar_TabsClicked"
@@ -59,24 +65,25 @@
             SettingsClicked="CommandBar_SettingsClicked"
             MoreClicked="CommandBar_MoreClicked"/>
 
-        <!-- 页内查找栏覆盖层（Ctrl+F 唤出；位于标签条+地址栏之上） -->
-        <metro:MetroFindBarControl x:Name="FindBar" Grid.RowSpan="4"
-            VerticalAlignment="Bottom" Margin="0,0,0,88" Visibility="Collapsed"
+        <!-- 页内查找栏覆盖层（Ctrl+F 唤出；位于底部组合条之上） -->
+        <metro:MetroFindBarControl x:Name="FindBar" Grid.RowSpan="3"
+            VerticalAlignment="Bottom" Visibility="Collapsed"
             FindRequested="FindBar_FindRequested"
             CloseRequested="FindBar_CloseRequested"/>
 
         <!-- 设置面板覆盖层（Windows 8 形态：从右侧滑入，346px 全高） -->
-        <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="4"
+        <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="3"
             HorizontalAlignment="Right" VerticalAlignment="Stretch" Visibility="Collapsed"
             CloseRequested="SettingsPanel_CloseRequested"
             ZoomInRequested="SettingsPanel_ZoomInRequested"
             ZoomOutRequested="SettingsPanel_ZoomOutRequested"
             ZoomResetRequested="SettingsPanel_ZoomResetRequested"
-            ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"/>
+            ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"
+            InPrivateToggled="SettingsPanel_InPrivateToggled"/>
 
         <!-- 全屏缩略图网格覆盖层(常驻可见,Opacity=0+不命中:确保 ScrollViewer 在窗口
              显示时就完成首次真实布局——延迟到打开时才布局会在本 AppWindow 内冻结 UI 线程) -->
-        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="4"
+        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="3"
             Opacity="0" IsHitTestVisible="False"
             TabSelected="TabGrid_TabSelected"
             TabCloseRequested="TabGrid_TabCloseRequested"

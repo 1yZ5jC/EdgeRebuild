@@ -24,5 +24,8 @@ namespace EdgeRebuild.Core
 
         // 选中标签顶部强调条（与背景/边框一起随选中状态切换）
         public Border TabAccentBar { get; set; }
+
+        // 后台音频播放指示（喇叭图标，WebView2 桥上报；主窗口标签条专用）
+        public FontIcon AudioIndicator { get; set; }
     }
 }

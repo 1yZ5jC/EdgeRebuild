@@ -35,6 +35,21 @@
                     <TextBlock Text="删除浏览历史、Cookie、已完成的下载与关闭的标签页" FontSize="12"
                                Foreground="#FF7A7A7A" Margin="0,6,0,20" TextWrapping="Wrap"/>
 
+                    <!-- 隐私：InPrivate -->
+                    <TextBlock Text="隐私" FontSize="12" Foreground="#FF7A7A7A" Margin="0,0,0,8"/>
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="InPrivate 模式" FontSize="14" Foreground="White"/>
+                            <TextBlock Text="新开标签不写历史、不留会话痕迹（已开标签不受影响）"
+                                       FontSize="12" Foreground="#FF7A7A7A" TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch x:Name="InPrivateToggle" HorizontalAlignment="Right"
+                                      VerticalAlignment="Center"
+                                      OnContent="" OffContent="" MinWidth="0"
+                                      Toggled="InPrivateToggle_Toggled"/>
+                    </Grid>
+                    <TextBlock Text="" FontSize="12" Margin="0,6,0,20"/>
+
                     <!-- 位置权限 -->
                     <TextBlock Text="位置权限" FontSize="12" Foreground="#FF7A7A7A" Margin="0,0,0,8"/>
                     <Grid>

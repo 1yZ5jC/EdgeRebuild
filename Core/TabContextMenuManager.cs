@@ -19,6 +19,7 @@ namespace EdgeRebuild.Core
         private readonly Func<Task> _onViewSourceRequested;
         private readonly Action<TabViewItem> _onTogglePin;
         private readonly Func<Task> _onWebCapture;
+        private readonly Func<Task> _onShareRequested;
 
         public TabContextMenuManager(
             TabManager tabManager,
@@ -27,7 +28,8 @@ namespace EdgeRebuild.Core
             Func<Task> onPrintRequested,
             Func<Task> onViewSourceRequested,
             Action<TabViewItem> onTogglePin = null,
-            Func<Task> onWebCapture = null)
+            Func<Task> onWebCapture = null,
+            Func<Task> onShareRequested = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -36,6 +38,7 @@ namespace EdgeRebuild.Core
             _onViewSourceRequested = onViewSourceRequested;
             _onTogglePin = onTogglePin;
             _onWebCapture = onWebCapture;
+            _onShareRequested = onShareRequested;
         }
 
         // 搜索项文案带当前引擎名；引擎名异步读取，菜单弹出后原地更新
@@ -233,6 +236,11 @@ namespace EdgeRebuild.Core
             var captureItem = new MenuFlyoutItem { Text = "网页捕获" };
             captureItem.Click += async (_, _) => { if (_onWebCapture != null) await _onWebCapture(); };
             flyout.Items.Add(captureItem);
+
+            // ---- 系统分享（Metro IE / 旧版 Edge 的分享入口） ----
+            var shareItem = new MenuFlyoutItem { Text = "分享页面" };
+            shareItem.Click += async (_, _) => { if (_onShareRequested != null) await _onShareRequested(); };
+            flyout.Items.Add(shareItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());
 

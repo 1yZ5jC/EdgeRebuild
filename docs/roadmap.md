@@ -11,16 +11,16 @@
 - [x] P0-5 阅读视图字号/间距可调（ReaderService 注入参数化 CSS）
 
 ## P1 — 中成本高还原度
-- [ ] P1-6 Metro 底栏滚动感知自动隐藏（JS 桥回报 scrollY，下滚收起上滚现）
-- [ ] P1-7 磁贴主页 ↔ 收藏夹联动（数据源可选收藏前 N 个）
-- [ ] P1-8 系统分享 DataTransferManager.ShowShareUI（标题+URL）
-- [ ] P1-9 后台播放音频的标签显示喇叭指示
-- [ ] P1-10 标签挂起显性化：tooltip 显示收益、设置排除名单
+- [x] P1-6 Metro 底栏滚动感知自动隐藏（WebView2 滚动桥 150ms 节流回报；下滚收起、上滚/近顶/切标签/开面板恢复；EdgeHTML 不支持已注明）
+- [x] P1-7 磁贴主页 ↔ 收藏夹联动：设置→常规「磁贴主页数据源=来自收藏夹」时，ntpmetro 每次加载注入前 8 个收藏覆盖磁贴（NtpTileSeeder，双引擎挂钩；镜像语义，页内编辑下次加载被覆盖）
+- [x] P1-8 系统分享 DataTransferManager.ShowShareUI（主窗口网页右键「分享页面」+ Metro「更多→分享」；AppWindow 不支持时降级 toast）
+- [x] P1-9 后台播放音频的标签显示喇叭指示（WebView2 音频桥；仅主窗口标签条；EdgeHTML 无消息通道不做，已知限制）
+- [x] P1-10 标签挂起显性化：设置→性能加挂起排除名单（URL 关键词）；tooltip 注明收益与自动恢复
 
 ## P2 — 战略级
-- [ ] P2-11 集锦 Collections（拖拽收集链接/图片/文本成组导出）
-- [ ] P2-12 垂直标签试验（TabManager 已解耦容器）
-- [ ] P2-13 Metro 窗口 InPrivate 开关（SetInPrivate 已就绪）
+- [ ] P2-11 集锦 Collections（拖拽收集链接/图片/文本成组导出）——最大单项，建议独立规划：新表 + Hub 第五区 + 拖拽协议 + 导出
+- [ ] P2-12 垂直标签试验（TabManager 已解耦容器；需布局切换开关与标签条双宿主方案）
+- [x] P2-13 Metro 窗口 InPrivate 开关（设置面板→隐私；IsInPrivateWindow 驱动，新标签生效、不持久化）
 
 ## AppBar 与 Win8.1 差异对齐
 - [x] A1 布局：由六等分平铺改为「左侧全局命令 / 右侧上下文命令」分组（真 8.1 规范）

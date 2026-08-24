@@ -17,6 +17,7 @@ namespace EdgeRebuild.Metro
         public event Action ZoomOutRequested;
         public event Action ZoomResetRequested;
         public event Action ClearHistoryRequested;
+        public event Action<bool> InPrivateToggled;   // P2-13：Metro 窗口 InPrivate 开关
 
         public MetroSettingsPanelControl()
         {
@@ -40,6 +41,9 @@ namespace EdgeRebuild.Metro
         {
             try { await SettingsManager.SetAsync("MetroLocationPermission", LocationToggle.IsOn ? "True" : "False"); } catch { }
         }
+
+        private void InPrivateToggle_Toggled(object sender, RoutedEventArgs e)
+            => InPrivateToggled?.Invoke(InPrivateToggle.IsOn);
 
         private void CloseBtn_Click(object sender, RoutedEventArgs e) => CloseRequested?.Invoke();
         private void ZoomInBtn_Click(object sender, RoutedEventArgs e) => ZoomInRequested?.Invoke();

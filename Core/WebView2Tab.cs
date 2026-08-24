@@ -47,6 +47,8 @@ namespace EdgeRebuild.Core
         public event Action<TabContextMenuEventArgs> ContextMenuRequested;
         public event Action<string> NewWindowRequested;
         public event Action<bool> LoadingChanged;
+        public event Action<bool> AudioPlayingChanged;   // 后台音频播放状态（标签喇叭指示）
+        public event Action<string> Scrolled;            // 页面滚动方向回报 "down|y"/"up|y"（Metro 底栏自动隐藏）
         public event Action<PageShortcutKey> PageShortcutKeyPressed;
         public event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
         public event Action<string> TtsTextRequested;   // 大声朗读文本回传（EPUB 章节）
@@ -75,6 +77,37 @@ namespace EdgeRebuild.Core
 
         private static PageShortcutKey? ParsePageKey(string msg) => PageKeyMarkers.Parse(msg);
 
+        // 滚动方向桥：下滚 'scroll:down|y'，上滚 'scroll:up|y'；150ms 节流 + 8px 死区
+        private const string ScrollBridgeJs =
+            "(function(){ if (window.__edgScrollBridge) return; window.__edgScrollBridge = true;"
+            + " var lastY = window.scrollY || window.pageYOffset || 0, pending = false;"
+            + " function report(){"
+            + "   pending = false;"
+            + "   var y = window.scrollY || window.pageYOffset || 0;"
+            + "   if (Math.abs(y - lastY) < 8) return;"
+            + "   try { window.chrome.webview.postMessage('scroll:' + (y > lastY ? 'down' : 'up') + '|' + Math.round(y)); } catch(e){}"
+            + "   lastY = y;"
+            + " }"
+            + " window.addEventListener('scroll', function(){ if (!pending){ pending = true; setTimeout(report, 150); } }, { passive: true });"
+            + "})();";
+
+        // 后台音频指示桥：监听媒体元素状态（捕获阶段，SPA 动态插入的播放器也能覆盖）。
+        // 仅 WebView2 通道；EdgeHTML 无消息回传，不做音频指示（已知限制）。
+        private const string AudioBridgeJs =
+            "(function(){ if (window.__edgAudioBridge) return; window.__edgAudioBridge = true;"
+            + " function report(){"
+            + "   var playing = false;"
+            + "   var media = document.querySelectorAll('audio,video');"
+            + "   for (var i = 0; i < media.length; i++) {"
+            + "     try { if (!media[i].paused && !media[i].muted && media[i].volume > 0) { playing = true; break; } } catch(e){}"
+            + "   }"
+            + "   try { window.chrome.webview.postMessage('audio:' + (playing ? '1' : '0')); } catch(e){}"
+            + " }"
+            + " ['play','pause','volumechange','ended','emptied'].forEach(function(ev){"
+            + "   document.addEventListener(ev, function(){ setTimeout(report, 50); }, true);"
+            + " });"
+            + "})();";
+
         public WebView2Tab()
         {
             _webView = new WebView2();
@@ -98,6 +131,11 @@ namespace EdgeRebuild.Core
                 _webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageKeyBridgeJs);
+                // 后台音频指示桥（旧版 Edge/Chromium 标签喇叭图标）：媒体 play/pause 等事件
+                // 时上报播放状态，宿主据此点亮标签条喇叭
+                _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(AudioBridgeJs);
+                // 滚动方向桥（Metro 底栏自动隐藏，IE11 Modern 行为）：节流回报滚动方向与位置
+                _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(ScrollBridgeJs);
                 // UWP 版 WebView2 无 IsFindEnabled（WinUI3 专有），
                 // 禁用浏览器加速键以免 Ctrl+F 弹出原生查找条；
                 // Ctrl+F/Ctrl+P/Ctrl+R 由应用层快捷键接管，F5 已在 ShortcutManager 注册。
@@ -168,6 +206,16 @@ namespace EdgeRebuild.Core
             if (msg.StartsWith("ntp:search:", StringComparison.Ordinal))
             {
                 NtpSearchRequested?.Invoke(msg.Substring("ntp:search:".Length));
+                return;
+            }
+            if (msg.StartsWith("audio:", StringComparison.Ordinal))
+            {
+                AudioPlayingChanged?.Invoke(msg.EndsWith("1"));
+                return;
+            }
+            if (msg.StartsWith("scroll:", StringComparison.Ordinal))
+            {
+                Scrolled?.Invoke(msg.Substring("scroll:".Length));   // "down|123" / "up|45"
                 return;
             }
             var key = ParsePageKey(msg);
@@ -477,6 +525,7 @@ namespace EdgeRebuild.Core
                 UpdateTitleFromDocument();
                 CheckNavigationState();
                 ExtractFavicon();
+                _ = SeedTilesFromFavoritesIfConfiguredAsync();
             }
             else
             {
@@ -484,6 +533,19 @@ namespace EdgeRebuild.Core
                 UrlChanged?.Invoke(currentUrl);
                 ShowErrorPage(currentUrl, e.WebErrorStatus, e.HttpStatusCode);
             }
+        }
+
+        // P1-7：磁贴主页数据源=收藏夹时，ntpmetro 页加载完成后注入收藏磁贴
+        private async Task SeedTilesFromFavoritesIfConfiguredAsync()
+        {
+            try
+            {
+                string uri = _webView.Source?.AbsoluteUri ?? "";
+                if (!uri.Contains("/ntpmetro/")) return;
+                if (!await NtpTileSeeder.ShouldSeedAsync()) return;
+                await ExecuteScriptAsync(NtpTileSeeder.BuildSeedScript());
+            }
+            catch { }
         }
 
         // ---- 导航失败 → 本地错误页(参考规范 §5.5:offline/dns/cert/http + #failed-url 传参)----

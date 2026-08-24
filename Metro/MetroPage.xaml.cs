@@ -36,6 +36,8 @@ namespace EdgeRebuild.Metro
         private double _zoomFactor = 1.0;
         private uint? _edgeSwipePointerId;   // A3 底缘上滑手势跟踪
         private double _edgeSwipeStartY;
+        private bool _bottomBarHidden;
+        private double _bottomBarFullHeight = 88;
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
@@ -55,8 +57,15 @@ namespace EdgeRebuild.Metro
             _ctxPollTimer.Start();
             Loaded += (s, e) =>
             {
-                // FindBar 底边距 = 标签条 + 地址栏实际高度（避免与布局常量硬编码耦合）
-                FindBar.Margin = new Thickness(0, 0, 0, TabStrip.ActualHeight + AddressBar.ActualHeight);
+                // FindBar 底边距 = 底部组合条实际高度（避免与布局常量硬编码耦合）
+                FindBar.Margin = new Thickness(0, 0, 0, BottomBar.ActualHeight);
+                _bottomBarFullHeight = BottomBar.ActualHeight;
+                // 高度动画期间裁剪子元素（Grid 默认不裁剪，收缩时标签条会溢出到内容区上）
+                BottomBar.SizeChanged += (s2, e2) =>
+                    BottomBar.Clip = new Windows.UI.Xaml.Media.RectangleGeometry
+                    {
+                        Rect = new Rect(0, 0, e2.NewSize.Width, e2.NewSize.Height)
+                    };
             };
         }
 
@@ -106,6 +115,7 @@ namespace EdgeRebuild.Metro
             _tabManager.ContextMenuRequested += OnTabContextMenuRequested;
             _tabManager.NtpSearchRequested += OnNtpSearchRequested;   // 经典 NTP 搜索（WebView2 postMessage 通道）
             _tabManager.PageKeyPressed += OnMetroPageKey;             // 焦点在网页内容内的快捷键（WebView2 消息桥）
+            _tabManager.TabScrolled += OnTabScrolled;                 // 滚动感知底栏自动隐藏（IE11 Modern 行为）
 
             if (_appWindow != null)
             {
@@ -134,6 +144,7 @@ namespace EdgeRebuild.Metro
             AddressBar.SetUrl(tab.CurrentUrl);
             AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
             TopBarTitle.Text = tab.Title ?? "Metro IE";
+            ShowBottomBar();   // 切标签恢复底栏，避免新标签在无 chrome 状态下迷失
             if (_appWindow != null)
             {
                 try { _appWindow.Title = tab.Title ?? "Metro IE"; } catch { }
@@ -176,6 +187,7 @@ namespace EdgeRebuild.Metro
         {
             if (_commandBarOpen) return;
             _commandBarOpen = true;
+            ShowBottomBar();
             CommandBar.UpdateTabCount(_tabManager.Tabs.Count);
             CommandBar.SetFullscreenText(_isFullscreen);
             CommandBar.Visibility = Visibility.Visible;
@@ -218,6 +230,7 @@ namespace EdgeRebuild.Metro
         {
             if (_settingsOpen) return;
             _settingsOpen = true;
+            ShowBottomBar();
             SettingsPanel.UpdateZoomPercent((int)Math.Round(_zoomFactor * 100));
             SettingsPanel.Visibility = Visibility.Visible;
             SettingsPanel.RenderTransform = new TranslateTransform { X = 346 };
@@ -264,6 +277,14 @@ namespace EdgeRebuild.Metro
         private void SettingsPanel_ZoomInRequested() => ApplyZoom(_zoomFactor + 0.25);
         private void SettingsPanel_ZoomOutRequested() => ApplyZoom(_zoomFactor - 0.25);
         private void SettingsPanel_ZoomResetRequested() => ApplyZoom(1.0);
+
+        // P2-13：Metro 窗口 InPrivate——TabManager.IsInPrivateWindow 驱动
+        // （新标签 SetInPrivate：不写历史、隐身主页；会话本就不参与）
+        private void SettingsPanel_InPrivateToggled(bool on)
+        {
+            _tabManager.IsInPrivateWindow = on;
+            NotificationService.ShowToast("设置", on ? "已开启 InPrivate：新开标签不写历史" : "已关闭 InPrivate");
+        }
 
         private async void SettingsPanel_ClearHistoryRequested()
         {
@@ -371,6 +392,14 @@ namespace EdgeRebuild.Metro
             };
             printItem.Click += (s, a) => _ = PrintCurrentTabAsync();
             menu.Items.Add(printItem);
+
+            var shareItem = new MenuFlyoutItem
+            {
+                Text = "分享",
+                Icon = new FontIcon { Glyph = "\xE72D", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            shareItem.Click += (s, a) => _ = ShareCurrentTabAsync();
+            menu.Items.Add(shareItem);
 
             menu.Items.Add(new MenuFlyoutSeparator());
 
@@ -511,6 +540,45 @@ namespace EdgeRebuild.Metro
             NotificationService.ShowToast("已复制", "网址已复制到剪贴板");
         }
 
+        // ---- 系统分享（Share contract；AppWindow 环境不支持时降级提示） ----
+        private async Task ShareCurrentTabAsync()
+        {
+            var tab = _tabManager?.CurrentTab;
+            string url = tab?.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                NotificationService.ShowToast("分享", "当前页面不可分享");
+                return;
+            }
+            try
+            {
+                var dtm = Windows.ApplicationModel.DataTransfer.DataTransferManager.GetForCurrentView();
+                Windows.Foundation.TypedEventHandler<
+                    Windows.ApplicationModel.DataTransfer.DataTransferManager,
+                    Windows.ApplicationModel.DataTransfer.DataRequestedEventArgs> handler = null;
+                handler = (s, args) =>
+                {
+                    try
+                    {
+                        var data = args.Request.Data;
+                        data.Properties.Title = string.IsNullOrEmpty(tab.Title) ? url : tab.Title;
+                        data.SetWebLink(new Uri(url));
+                    }
+                    finally
+                    {
+                        s.DataRequested -= handler;
+                    }
+                };
+                dtm.DataRequested += handler;
+                Windows.ApplicationModel.DataTransfer.DataTransferManager.ShowShareUI();
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[分享] 失败: {ex.Message}");
+                NotificationService.ShowToast("分享", "当前环境不支持系统分享");
+            }
+        }
+
         // 稍后读（旧版 Edge 阅读列表）：与收藏分离的一次性阅读队列
         private async void AddCurrentToReadingList()
         {
@@ -550,6 +618,55 @@ namespace EdgeRebuild.Metro
             {
                 Services.Diagnostics.Log($"[查找] 异常: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        // ---- 底栏自动隐藏（IE11 Modern 行为：下滚收起，上滚/近顶/切标签/开面板恢复） ----
+        private void OnTabScrolled(IBrowserTab tab, string info)
+        {
+            if (tab != _tabManager?.CurrentTab) return;
+            var parts = (info ?? "").Split('|');
+            string dir = parts.Length > 0 ? parts[0] : "";
+            double y = (parts.Length > 1 && double.TryParse(parts[1], out double v)) ? v : 0;
+
+            if (_settingsOpen || _commandBarOpen || _gridOpen || FindBar.Visibility == Visibility.Visible)
+            {
+                ShowBottomBar();
+                return;
+            }
+            if (dir == "down" && !_bottomBarHidden && y > 120)
+                HideBottomBar();
+            else if ((dir == "up" || y < 80) && _bottomBarHidden)
+                ShowBottomBar();
+        }
+
+        private void HideBottomBar()
+        {
+            if (_bottomBarHidden) return;
+            _bottomBarHidden = true;
+            AnimateBottomBarHeight(BottomBar.ActualHeight, 0);
+        }
+
+        private void ShowBottomBar()
+        {
+            if (!_bottomBarHidden) return;
+            _bottomBarHidden = false;
+            AnimateBottomBarHeight(BottomBar.ActualHeight, _bottomBarFullHeight);
+        }
+
+        private void AnimateBottomBarHeight(double from, double to)
+        {
+            var sb = new Storyboard();
+            var anim = new DoubleAnimation
+            {
+                From = from,
+                To = to,
+                Duration = TimeSpan.FromMilliseconds(180),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(anim, BottomBar);
+            Storyboard.SetTargetProperty(anim, "Height");
+            sb.Children.Add(anim);
+            sb.Begin();
         }
 
         // ---- 右键：设置面板/网格开着则先收面板，否则切换命令栏 ----
@@ -664,6 +781,7 @@ namespace EdgeRebuild.Metro
             switch (key)
             {
                 case PageShortcutKey.Find:
+                    ShowBottomBar();
                     FindBar.Show();
                     break;
                 case PageShortcutKey.FindNext:
@@ -685,6 +803,7 @@ namespace EdgeRebuild.Metro
                     _ = _tabManager.CloseTabAsync(FindViewItem(_tabManager.CurrentTab));
                     break;
                 case PageShortcutKey.FocusUrl:
+                    ShowBottomBar();
                     AddressBar.FocusUrl();
                     break;
                 case PageShortcutKey.ToggleFullscreen:
@@ -805,6 +924,7 @@ namespace EdgeRebuild.Metro
         {
             MetroDebug($"OpenGrid: 标签数={_tabManager.Tabs.Count} 当前={( _tabManager.CurrentTab == null ? "null" : _tabManager.CurrentTab.Title)}");
             _gridOpen = true;
+            ShowBottomBar();   // 网格覆盖全屏时保持 chrome 一致
             // 覆盖层始终 Visible(构造即可见,窗口显示时完成首次布局——延迟可见化的
             // ScrollViewer 首次真实布局会冻结本 AppWindow 的 UI 线程),这里只恢复
             // 命中与透明度。打开期间收起网页容器,避免 EdgeHTML WebView 气泡区遮挡。
@@ -958,6 +1078,7 @@ namespace EdgeRebuild.Metro
                         break;
                     case VirtualKey.F:
                         e.Handled = true;
+                        ShowBottomBar();
                         FindBar.Show();
                         break;
                 }

@@ -217,7 +217,8 @@ namespace EdgeRebuild
                     PrintCurrentPageAsync,
                     ViewSourceAsync,
                     (viewItem) => _ = _tabManager.TogglePinTabAsync(viewItem),
-                    WebCaptureCurrentAsync
+                    WebCaptureCurrentAsync,
+                    ShareCurrentPageAsync
                 );
 
                 // ---- 下载协调器 ----
@@ -1339,6 +1340,45 @@ namespace EdgeRebuild
             {
                 Services.Diagnostics.Log($"[标签预览] 捕获失败: {ex.Message}");
                 if (_tabPreviewTarget == target) _tabPreviewRing.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // ---- 系统分享（Share contract：标题 + URL 交给系统分享面板） ----
+        private async Task ShareCurrentPageAsync()
+        {
+            var tab = _tabManager?.CurrentTab;
+            string url = tab?.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                NotificationService.ShowToast("分享", "当前页面不可分享");
+                return;
+            }
+            try
+            {
+                var dtm = Windows.ApplicationModel.DataTransfer.DataTransferManager.GetForCurrentView();
+                Windows.Foundation.TypedEventHandler<
+                    Windows.ApplicationModel.DataTransfer.DataTransferManager,
+                    Windows.ApplicationModel.DataTransfer.DataRequestedEventArgs> handler = null;
+                handler = (s, args) =>
+                {
+                    try
+                    {
+                        var data = args.Request.Data;
+                        data.Properties.Title = string.IsNullOrEmpty(tab.Title) ? url : tab.Title;
+                        data.SetWebLink(new Uri(url));
+                    }
+                    finally
+                    {
+                        s.DataRequested -= handler;   // 一次性挂接，防重复叠加
+                    }
+                };
+                dtm.DataRequested += handler;
+                Windows.ApplicationModel.DataTransfer.DataTransferManager.ShowShareUI();
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[分享] 失败: {ex.Message}");
+                NotificationService.ShowToast("分享", "当前环境不支持系统分享");
             }
         }
 

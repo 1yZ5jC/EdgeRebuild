@@ -16,6 +16,8 @@ namespace EdgeRebuild.Controls
         private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle;
         private ComboBox _ntpTypeCombo;
         private ComboBox _readerFontSizeCombo;
+        private ComboBox _tilesSourceCombo;
+        private TextBox _suspendExcludeBox;
         private TextBox _homePageBox;
         private DispatcherTimer _homePageDebounce;
         private ComboBox _searchEngineCombo;
@@ -60,6 +62,13 @@ namespace EdgeRebuild.Controls
             _ntpTypeCombo.Items.Add("Metro 磁贴主页");
             _ntpTypeCombo.Items.Add("空白页");
             generalPanel.Children.Add(_ntpTypeCombo);
+
+            // 磁贴主页数据源（P1-7）：自行管理 / 镜像收藏夹前 8 个
+            generalPanel.Children.Add(new TextBlock { Text = "磁贴主页数据源", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
+            _tilesSourceCombo = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
+            _tilesSourceCombo.Items.Add("自行管理");
+            _tilesSourceCombo.Items.Add("来自收藏夹（前 8 个）");
+            generalPanel.Children.Add(_tilesSourceCombo);
 
             generalPanel.Children.Add(new TextBlock { Text = "搜索引擎", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 8) });
             _searchEngineCombo = new ComboBox { Margin = new Thickness(0, 0, 0, 12) };
@@ -175,6 +184,13 @@ namespace EdgeRebuild.Controls
                 await SettingsManager.SetAsync("EnableTabSuspend", _suspendToggle.IsOn.ToString());
             };
             perfPanel.Children.Add(_suspendToggle);
+
+            // 挂起排除名单：URL 含任一关键词的标签永不挂起（音乐/会议页等）
+            perfPanel.Children.Add(new TextBlock { Text = "挂起排除（逗号分隔，URL 包含即不挂起）", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 12, 0, 8) });
+            _suspendExcludeBox = new TextBox { PlaceholderText = "music, meet, youtube" };
+            _suspendExcludeBox.LostFocus += async (s, e) =>
+                await SettingsManager.SetAsync("SuspendExcludeList", _suspendExcludeBox.Text ?? "");
+            perfPanel.Children.Add(_suspendExcludeBox);
             _panels[5] = perfPanel;
 
             // 关于 (6)
@@ -217,6 +233,9 @@ namespace EdgeRebuild.Controls
                 string suspendSetting = await SettingsManager.GetAsync("EnableTabSuspend") ?? "True";
                 _suspendToggle.IsOn = (suspendSetting == "True" || suspendSetting == "true");
 
+                string excludeList = await SettingsManager.GetAsync("SuspendExcludeList") ?? "";
+                _suspendExcludeBox.Text = excludeList;
+
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 _homePageBox.Text = homeUrl;
 
@@ -231,6 +250,9 @@ namespace EdgeRebuild.Controls
                     "Blank" => 2,
                     _ => (ntpShow == "False" ? 2 : 0)
                 };
+
+                string tilesSource = await SettingsManager.GetAsync("NtpTilesSource") ?? "Local";
+                _tilesSourceCombo.SelectedIndex = (tilesSource == "Favorites") ? 1 : 0;
 
                 string searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
                 _searchEngineCombo.SelectedIndex = searchEngine switch { "Bing" => 1, "DuckDuckGo" => 2, _ => 0 };
@@ -283,6 +305,10 @@ namespace EdgeRebuild.Controls
                         _ => "18"
                     };
                     await SettingsManager.SetAsync("ReaderFontSize", size);
+                };
+                _tilesSourceCombo.SelectionChanged += async (s, e) =>
+                {
+                    await SettingsManager.SetAsync("NtpTilesSource", _tilesSourceCombo.SelectedIndex == 1 ? "Favorites" : "Local");
                 };
                 _ntpTypeCombo.SelectionChanged += async (s, e) =>
                 {
