@@ -8,13 +8,17 @@ namespace EdgeRebuild.Services
 {
     public static class HistoryManager
     {
+        private static readonly object _collSync = new object();   // 真多视图：集合变更跨线程串行化
         public static ObservableCollection<HistoryItem> History { get; } = new ObservableCollection<HistoryItem>();
 
         public static async Task LoadAsync()
         {
             var items = await DatabaseService.Database.Table<HistoryItem>().ToListAsync();
-            History.Clear();
-            foreach (var item in items) History.Add(item);
+            lock (_collSync)
+            {
+                History.Clear();
+                foreach (var item in items) History.Add(item);
+            }
         }
 
         /// <summary>
@@ -25,13 +29,19 @@ namespace EdgeRebuild.Services
         {
             var item = new HistoryItem { Title = title ?? url, Url = url, VisitTime = DateTime.Now };
             await DatabaseService.Database.InsertAsync(item);
-            History.Insert(0, item);
-            while (History.Count > 1000)
+            List<HistoryItem> overflow = null;
+            lock (_collSync)
             {
-                var last = History.Last();
-                await DatabaseService.Database.DeleteAsync(last);
-                History.Remove(last);
+                History.Insert(0, item);
+                if (History.Count > 1000)
+                {
+                    overflow = History.Skip(1000).ToList();
+                    foreach (var last in overflow) History.Remove(last);
+                }
             }
+            if (overflow != null)
+                foreach (var last in overflow)
+                    await DatabaseService.Database.DeleteAsync(last);
             return item;
         }
 
@@ -45,12 +55,12 @@ namespace EdgeRebuild.Services
         public static async Task ClearAsync()
         {
             await DatabaseService.Database.DeleteAllAsync<HistoryItem>();
-            History.Clear();
+            lock (_collSync) History.Clear();
         }
 
         public static async Task RemoveAsync(HistoryItem item)
         {
-            History.Remove(item);
+            lock (_collSync) History.Remove(item);
             await DatabaseService.Database.DeleteAsync(item);
         }
 
@@ -59,8 +69,12 @@ namespace EdgeRebuild.Services
             if (ids == null || ids.Count == 0) return;
             foreach (var id in ids)
             {
-                var item = History.FirstOrDefault(h => h.Id == id);
-                if (item != null) History.Remove(item);
+                HistoryItem item;
+                lock (_collSync)
+                {
+                    item = History.FirstOrDefault(h => h.Id == id);
+                    if (item != null) History.Remove(item);
+                }
                 await DatabaseService.Database.DeleteAsync<HistoryItem>(id);
             }
         }

@@ -62,13 +62,13 @@ namespace EdgeRebuild
         // ---- 阅读模式：tab -> 原始 URL ----
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
 
-        // ---- 辅助窗口引用（AppWindow；主窗口为 null）----
+        // ---- 辅助窗口引用（AppWindow 同线程模型；主窗口为 null）----
         private AppWindow _appWindow;
+        private bool _isSecondary;   // false=主窗口；true=AppWindow 副窗口
 
-        // ---- 多窗口焦点守卫（MW1） ----
-        // AppWindow 多窗口共享主 UI 线程：失活窗口的 XamlRoot 内仍残留"已聚焦元素"，
-        // 仅凭 GetFocusedElement 判定会让多个窗口同时响应同一快捷键（双开标签等）。
-        // 因此守卫 = 本窗口处于激活态 && 本 XamlRoot 存在焦点元素。
+        // ---- 多窗口焦点守卫 ----
+        // AppWindow 同线程模式：Window.Current 恒指主窗口，失活窗口的 XamlRoot 内
+        // 焦点元素残留 → 守卫 = WindowManager 槽位前台标记 && 本 XamlRoot 有焦点元素。
         private bool _windowActive;
         private int _pendingSessionSlot;   // OnNavigatedTo 暂存，OnLoaded 使用
         private int _sessionSlot;    // 本窗口会话槽位（0=主窗口；副窗由 WindowManager 分配）
@@ -101,23 +101,63 @@ namespace EdgeRebuild
             CleanupStaticEvents();
         }
 
+        private bool _shutdownDone;   // 关闭清理幂等标志
+
+        /// <summary>
+        /// 显式关闭清理：AppWindow.Closed 时由 WindowManager 直接调用。
+        /// 实测窗口销毁后 frame.Content=null 不一定触发 Unloaded，
+        /// 因此不能依赖 Unloaded 事件执行释放链路。
+        /// </summary>
+        public void Shutdown() => RunShutdownCore();
+
         private void OnUnloaded(object sender, RoutedEventArgs e)
         {
-            if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnUnloaded 触发（窗口被关闭）");
-            CleanupStaticEvents();
-            _ = SessionManager.FlushAsync();
-            _downloadCoordinator?.CleanupAll();
-            if (this.XamlRoot != null) this.XamlRoot.Changed -= OnXamlRootChanged;
-            ShortcutManager.Disable();
-            ThemeManager.ThemeChanged -= OnThemeChanged;
-            _layoutManager?.Dispose();
-            _tabManager?.DisposeAll();
-            _dragManager?.Dispose();
+            if (_isNewWindow && !_shutdownDone)
+                Services.Diagnostics.Log("[窗口] OnUnloaded 触发（窗口被关闭）");
+            RunShutdownCore();
+        }
+
+        private void RunShutdownCore()
+        {
+            if (_shutdownDone) return;
+            _shutdownDone = true;
+            Services.Diagnostics.Log("[窗口] 关闭清理开始");
+            // 窗口销毁竞态下任何清理步骤都可能抛（WebView2 Close / XAML 卸载 /
+            // 组合动画中止）——逐步设防 + 落日志，既定位异常源，又保证
+            // 某一步失败不跳过后续释放（否则 WebView 进程泄漏）。
+            void Safe(string name, Action action)
+            {
+                try { action(); }
+                catch (Exception ex)
+                {
+                    Services.Diagnostics.Log($"[窗口关闭] {name} 清理异常: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+
+            Safe("静态事件", CleanupStaticEvents);
+            Safe("会话Flush", () => _ = SessionManager.FlushAsync());
+            Safe("下载协调器", () => _downloadCoordinator?.CleanupAll());
+            Safe("悬停预览", () =>
+            {
+                _hoverTimer?.Stop();
+                if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
+            });
+            Safe("XamlRoot", () => { if (this.XamlRoot != null) this.XamlRoot.Changed -= OnXamlRootChanged; });
+            Safe("快捷键Disable", () => ShortcutManager.Disable());
+            Safe("槽位广播解绑", () => WindowManager.SlotActivated -= OnSlotActivated);
+            Safe("主题事件", () => ThemeManager.ThemeChanged -= OnThemeChanged);
+            Safe("布局管理器", () => _layoutManager?.Dispose());
+            Safe("标签释放", () => _tabManager?.DisposeAll());
+            Safe("拖拽管理器", () => _dragManager?.Dispose());
             if (_appWindow != null)
             {
-                this.KeyDown -= OnWindowKeyDown;
-                this.KeyUp -= OnWindowKeyUp;
+                Safe("键盘解绑", () =>
+                {
+                    this.KeyDown -= OnWindowKeyDown;
+                    this.KeyUp -= OnWindowKeyUp;
+                });
             }
+            Services.Diagnostics.Log("[窗口关闭] 清理完成");
         }
 
         private void CleanupStaticEvents()
@@ -158,7 +198,6 @@ namespace EdgeRebuild
             }
             _hoverTimer?.Stop();
             if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
-            WindowManager.SlotActivated -= OnSlotActivated;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
             _pageKeyTimer?.Stop();
@@ -170,13 +209,15 @@ namespace EdgeRebuild
             _isLoaded = true;
             if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 开始");
 
-            // MW1：跟踪本窗口激活态——AppWindow 多窗口共享主 UI 层且契约无 Activated
-            // 事件，用"本槽位最近获得 XAML 焦点"近似；守卫见 IsFocusedWindow
+            // MW1：AppWindow 同线程模式——激活态由 WindowManager 槽位广播维护
+            // （页面 GotFocus 上报 + TryShow/Closed 时的槽位通知）
             if (_appWindow != null)
             {
-                _windowActive = WindowManager.ActiveSlot == _sessionSlot;
+                _windowActive = false;   // 副窗口等首次前台标记
                 WindowManager.SlotActivated += OnSlotActivated;
                 this.GotFocus += (s2, e2) => WindowManager.ReportSlotFocus(_sessionSlot);
+                this.KeyDown += OnWindowKeyDown;
+                this.KeyUp += OnWindowKeyUp;
             }
             else
             {
@@ -303,11 +344,9 @@ namespace EdgeRebuild
                 // ---- 窗口设置 ----
                 if (_appWindow != null)
                 {
-                    // 子窗口（AppWindow）：恢复自定义标题栏外观（扩展标题栏）。
-                    // 注意：UWP AppWindow 无 SetTitleBar/SetDragRectangles，
-                    // 系统把顶部条带设为默认拖拽区并吞掉该区域所有指针输入，
-                    // 因此子窗口标签栏内的按钮点击无效——先隐藏新建标签按钮；
-                    // 标签切换/关闭请用快捷键（Ctrl+Tab / Ctrl+W）。
+                    // 副窗口（AppWindow）：扩展标题栏 + 配色。
+                    // 注意：AppWindow 无 SetTitleBar/SetDragRectangles，系统把顶部条带
+                    // 设为默认拖拽区并吞掉指针输入——标签栏内新建按钮需隐藏（历史行为）。
                     try { _appWindow.Title = "EdgeRebuild"; } catch { }
                     _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
                     ApplyAppWindowTitleBarColors();
@@ -751,7 +790,14 @@ namespace EdgeRebuild
         }
 
         // ---- 朗读控制浮层 ----
+        // 真多视图：事件在播放器（主视图）线程上触发，副视图 UI 更新须封送回本视图线程
         private void OnReadAloudStateChanged()
+        {
+            var dispatcher = this.Dispatcher;
+            var ignored = dispatcher.RunAsync(CoreDispatcherPriority.Normal, ApplyReadAloudUi);
+        }
+
+        private void ApplyReadAloudUi()
         {
             if (ReadAloudBar == null) return;
             if (ReadAloudService.IsActive)
@@ -1101,17 +1147,19 @@ namespace EdgeRebuild
         private void OnTabManagerTabChanged(TabViewItem viewItem)
         {
             var tab = viewItem.Tab;
+            string currentUrl = tab.CurrentUrl ?? "";
             toolbarControl.SetEngine(tab.Engine);
-            toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, tab.CurrentUrl);
+            toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, currentUrl);
             UpdateStarButton();
 
             if (FindBar.Visibility == Visibility.Visible)
                 CloseFindBar();
 
-            bool isSecure = tab.CurrentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-            string host = GetHostName(GetSiteUrl(tab.CurrentUrl));
-            toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(tab.CurrentUrl));
+            bool isSecure = currentUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            string host = GetHostName(GetSiteUrl(currentUrl));
+            toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(currentUrl));
 
+            // 副窗口（AppWindow）用 AppWindow.Title 同步标题；主窗口标题随系统
             if (_appWindow != null)
             {
                 try { _appWindow.Title = tab.Title ?? "新标签页"; } catch { }
@@ -1143,13 +1191,14 @@ namespace EdgeRebuild
                 if (FindBar.Visibility == Visibility.Visible)
                     CloseFindBar();
 
-                toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, url);
+                string safeUrl = url ?? "";
+                toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, safeUrl);
                 UpdateStarButton();
 
                 // 阅读器场景下站点信息显示来源网站（src 参数），非阅读器场景用当前地址
-                bool isSecure = url.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
-                string host = GetHostName(GetSiteUrl(url));
-                toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(url));
+                bool isSecure = safeUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+                string host = GetHostName(GetSiteUrl(safeUrl));
+                toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(safeUrl));
             }
         }
 
@@ -1164,18 +1213,19 @@ namespace EdgeRebuild
 
         private static string ExtractQueryParam(string url, string name)
         {
-            try
+            // 用 TryCreate 而非 new Uri：新建副窗时本方法会在导航完成前收到空/畸形
+            // CurrentUrl，抛出的 UriFormatException 即便被吞也会触发调试器首轮中断
+            if (string.IsNullOrEmpty(url) ||
+                !Uri.TryCreate(url, UriKind.Absolute, out var parsed))
+                return null;
+            var query = parsed.Query;
+            if (string.IsNullOrEmpty(query)) return null;
+            foreach (var part in query.TrimStart('?').Split('&'))
             {
-                var query = new Uri(url).Query;
-                if (string.IsNullOrEmpty(query)) return null;
-                foreach (var part in query.TrimStart('?').Split('&'))
-                {
-                    var kv = part.Split('=');
-                    if (kv.Length == 2 && kv[0] == name)
-                        return Uri.UnescapeDataString(kv[1]);
-                }
+                var kv = part.Split('=');
+                if (kv.Length == 2 && kv[0] == name)
+                    return Uri.UnescapeDataString(kv[1]);
             }
-            catch { }
             return null;
         }
 
@@ -1546,8 +1596,8 @@ namespace EdgeRebuild
                 UpdateTabLayout();
         }
 
-        // AppWindow 多窗口共享主 UI 线程，Window.Current 恒定指向主窗口，
-        // 需结合本窗口激活态 + XamlRoot 焦点元素双重判定（见 _windowActive 注释）。
+        // 真·多视图：每个窗口拥有独立 CoreWindow/XamlRoot。
+        // 守卫 = 本窗口处于激活态（本视图 CoreWindow.Activated 维护） && 本 XamlRoot 有焦点元素。
         private bool IsFocusedWindow()
         {
             if (!_windowActive) return false;
@@ -1555,17 +1605,13 @@ namespace EdgeRebuild
             catch { return false; }
         }
 
-        // ---- 子窗口（AppWindow）标题栏配色 ----
-        // 仅用于给系统标题栏按钮（最小化/最大化/关闭）和条带着色；
-        // 拖拽区域由系统管理（无 SetDragRectangles），交互控件不能放在条带内。
+        // ---- 副窗口（AppWindow）标题栏配色 ----
         private void ApplyAppWindowTitleBarColors()
         {
             if (_appWindow == null) return;
             bool isDark = ThemeManager.IsDarkTheme;
             var transparent = Color.FromArgb(0, 0, 0, 0);
-            var fg = isDark
-                ? Color.FromArgb(255, 255, 255, 255)
-                : Color.FromArgb(255, 0, 0, 0);
+            var fg = isDark ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(255, 0, 0, 0);
 
             _appWindow.TitleBar.ForegroundColor = fg;
             _appWindow.TitleBar.BackgroundColor = transparent;
@@ -1581,9 +1627,7 @@ namespace EdgeRebuild
                 : Color.FromArgb(0x40, 0x00, 0x00, 0x00);
         }
 
-        // ---- 子窗口（AppWindow）键盘快捷键 ----
-        // AppWindow 的键盘输入不经过 CoreWindow（主窗口钩子收不到），
-        // 键盘事件以 XAML 路由事件形式送达焦点所在的窗口，在页面根上处理。
+        // ---- 副视图键盘快捷键（XAML 路由；副视图不挂 CoreWindow 全局钩子） ----
         private void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
         {
             ShortcutManager.UpdateModifiers(e.Key, true);
@@ -1653,7 +1697,6 @@ namespace EdgeRebuild
             _tabManager?.UpdateTheme(colors);
 
             ThemeManager.UpdateTitleBarColors();
-            ApplyAppWindowTitleBarColors();
             UpdateTabLayout();
         }
 
@@ -2217,11 +2260,11 @@ namespace EdgeRebuild
                 _defaultEngine = args.Engine;
                 _appWindow = args.AppWindow;
                 _isNewWindow = true;
+                _isSecondary = true;
                 _isInPrivate = args.IsInPrivate;
                 _pendingSessionSlot = Math.Max(0, args.SessionSlot);
                 _restoreSlot = args.RestoreSlot;
-                string windowId = _appWindow != null ? "AppWindow" : "main";
-                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window={windowId} url={args.Url} slot={_pendingSessionSlot} restore={_restoreSlot}");
+                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window=secondary url={args.Url} slot={_pendingSessionSlot} restore={_restoreSlot}");
             }
             else if (e.Parameter is string url)
             {

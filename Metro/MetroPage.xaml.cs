@@ -5,9 +5,11 @@ using System.Threading.Tasks;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
 using Microsoft.Web.WebView2.Core;
+using Windows.ApplicationModel.Core;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.System;
+using Windows.UI.ViewManagement;
 using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -25,13 +27,14 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public sealed partial class MetroPage : Page
     {
-        private AppWindow _appWindow;
         private EngineType _defaultEngine;
+        private AppWindow _appWindow;
         private TabManager _tabManager;
         private bool _gridOpen;
         private bool _commandBarOpen;
         private bool _settingsOpen;
         private bool _isFullscreen;
+        private bool _windowActive;   // 真多视图：未激活前禁止 GetForCurrentView
         private bool _isReadingAloud;
         private double _zoomFactor = 1.0;
         private uint? _edgeSwipePointerId;   // A3 底缘上滑手势跟踪
@@ -45,17 +48,40 @@ namespace EdgeRebuild.Metro
         // 页面脚本写入 window.__edgCtxMarker，宿主定时读取；WebView2 走 ContextMenuRequested）
         private readonly DispatcherTimer _ctxPollTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
 
+        private bool _shutdownDone;   // 关闭清理幂等标志
+
+        /// <summary>
+        /// 显式关闭清理：AppWindow.Closed 时由 WindowManager 直接调用
+        /// （窗口销毁后 Unloaded 不一定触发，不能依赖事件）。
+        /// </summary>
+        public void Shutdown()
+        {
+            if (_shutdownDone) return;
+            _shutdownDone = true;
+            Services.Diagnostics.Log("[Metro] Shutdown 执行");
+            RunShutdownCore();
+        }
+
+        private void RunShutdownCore()
+        {
+            void Safe(string name, Action action)
+            {
+                try { action(); }
+                catch (Exception ex)
+                {
+                    Services.Diagnostics.Log($"[Metro关闭] {name} 清理异常: {ex.GetType().Name}: {ex.Message}");
+                }
+            }
+            Safe("轮询定时器", () => { _stripRefreshTimer.Stop(); _ctxPollTimer.Stop(); });
+            Safe("标签释放", () => _tabManager?.DisposeAll());
+        }
+
         public MetroPage()
         {
             InitializeComponent();
-            // MW6：窗口关闭（frame.Content 置空触发 Unloaded）时释放全部标签的
-            // WebView 资源，否则 AppWindow 关了 WebView2 进程仍驻留（内存泄漏）
-            this.Unloaded += (s, e) =>
-            {
-                _stripRefreshTimer.Stop();
-                _ctxPollTimer.Stop();
-                try { _tabManager?.DisposeAll(); } catch { }
-            };
+            // 兜底：若 Unloaded 事件仍会触发（部分销毁路径），幂等标志保证清理只跑一次；
+            // 主路径是 WindowManager.Closed → Shutdown()（窗口销毁后 Unloaded 不可靠）
+            this.Unloaded += (s, e) => Shutdown();
             _stripRefreshTimer.Tick += (s, e) =>
             {
                 _stripRefreshTimer.Stop();
@@ -63,6 +89,7 @@ namespace EdgeRebuild.Metro
             };
             _ctxPollTimer.Tick += CtxPollTimer_Tick;
             _ctxPollTimer.Start();
+            // AppWindow 模式：标题随标签切换经 _appWindow.Title 同步（见 OnTabChanged）
             Loaded += (s, e) =>
             {
                 // FindBar 底边距 = 底部组合条实际高度（避免与布局常量硬编码耦合）
@@ -100,7 +127,6 @@ namespace EdgeRebuild.Metro
             _defaultEngine = args?.Engine ?? EngineType.WebView2;
             _appWindow = args?.AppWindow;
             string url = args?.Url ?? "about:blank";
-
             _tabManager = new TabManager(() => MetroColorPalette.GetSkinColors());
             _tabManager.ParticipatesInSession = false;   // Metro 独立窗口不写共享会话，避免覆盖主窗口恢复快照
             _tabManager.Initialize(null, ContentPanel);
@@ -125,11 +151,12 @@ namespace EdgeRebuild.Metro
             _tabManager.PageKeyPressed += OnMetroPageKey;             // 焦点在网页内容内的快捷键（WebView2 消息桥）
             _tabManager.TabScrolled += OnTabScrolled;                 // 滚动感知底栏自动隐藏（IE11 Modern 行为）
 
-            if (_appWindow != null)
+            // AppWindow 模式：标题/标题栏经 AppWindow 定制（OnNavigatedTo 阶段即可用）
+            try
             {
-                try { _appWindow.Title = "Metro IE"; } catch { }
-                try
+                if (_appWindow != null)
                 {
+                    _appWindow.Title = "Metro IE";
                     _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
                     _appWindow.TitleBar.BackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
                     _appWindow.TitleBar.InactiveBackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
@@ -139,8 +166,8 @@ namespace EdgeRebuild.Metro
                     _appWindow.TitleBar.ButtonForegroundColor = Windows.UI.Colors.White;
                     _appWindow.TitleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
                 }
-                catch { }
             }
+            catch { }
 
             _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
         }

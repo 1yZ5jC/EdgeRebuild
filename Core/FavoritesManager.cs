@@ -10,6 +10,7 @@ namespace EdgeRebuild.Core
 {
     public class FavoritesManager
     {
+        private static readonly object _collSync = new object();   // 真多视图：集合变更跨线程串行化
         public static FavoritesManager Instance = new FavoritesManager();
         public ObservableCollection<FavoriteItem> Favorites { get; } = new ObservableCollection<FavoriteItem>();
 
@@ -46,13 +47,19 @@ namespace EdgeRebuild.Core
         {
             var item = new FavoriteItem { Title = title, Url = url, AddedDate = DateTime.Now };
             await Services.DatabaseService.Database.InsertAsync(item);
-            Favorites.Add(item);
+            lock (_collSync)
+            {
+                Favorites.Add(item);
+            }
         }
 
         public async Task RemoveAsync(FavoriteItem item)
         {
+            lock (_collSync)
+            {
+                Favorites.Remove(item);
+            }
             await Services.DatabaseService.Database.DeleteAsync(item);
-            Favorites.Remove(item);
         }
 
         public async Task RenameAsync(FavoriteItem item, string newTitle)

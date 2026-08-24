@@ -151,29 +151,68 @@ namespace EdgeRebuild.Services
 
         public static async Task<StorageFolder> GetDownloadFolderAsync()
         {
+            // 真·多视图：每个新窗口 OnLoaded 都会走到这里。以下全部改为
+            // 「预检优先」，避免已知会抛的调用（陈旧 FAL token / 失效路径 /
+            // OneDrive KFM 重定向的 E_INVALIDARG）产生调试器首轮中断噪音。
+            // 每个分支的 catch 落日志：若仍有异常，crash.log 直接给出分支与原因。
             if (!string.IsNullOrEmpty(_downloadFolderToken))
             {
-                try { return await StorageApplicationPermissions.FutureAccessList.GetFolderAsync(_downloadFolderToken); } catch { }
+                try
+                {
+                    var fal = StorageApplicationPermissions.FutureAccessList;
+                    if (fal.ContainsItem(_downloadFolderToken))
+                        return await fal.GetFolderAsync(_downloadFolderToken);
+                }
+                catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] FAL token 分支失败: {ex.Message}"); }
             }
-            if (!string.IsNullOrEmpty(_customDownloadPath))
+            if (!string.IsNullOrEmpty(_customDownloadPath) && System.IO.Directory.Exists(_customDownloadPath))
             {
-                try { return await StorageFolder.GetFolderFromPathAsync(_customDownloadPath); } catch { }
+                try { return await StorageFolder.GetFolderFromPathAsync(_customDownloadPath); }
+                catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] 自定义路径失败 ({_customDownloadPath}): {ex.Message}"); }
             }
             // DownloadsFolder API 在 OneDrive 已知文件夹重定向（KFM）下会抛“参数错误”（E_INVALIDARG），
-            // 优先用 UserDataPaths 解析真实下载路径，失败再退回 API 和 LocalFolder。
+            // 且实测部分环境连 UserDataPaths 都失败时它同样不可用——该层兜底冗余且必炸，
+            // 直接移除：UserDataPaths 成功即用真实下载目录；失败则退回应用私有目录
+            //（牺牲“存到系统下载文件夹”这一边缘能力，换取启动链路零首轮异常）。
             try
             {
                 string realPath = UserDataPaths.GetDefault().Downloads;
-                if (!string.IsNullOrEmpty(realPath))
+                if (!string.IsNullOrEmpty(realPath) && System.IO.Directory.Exists(realPath))
                     return await StorageFolder.GetFolderFromPathAsync(realPath);
+                Services.Diagnostics.Log($"[下载目录] UserDataPaths 结果为空或不存在: '{realPath}'");
             }
-            catch { }
-            try { return await DownloadsFolder.CreateFolderAsync("EdgeRebuild", CreationCollisionOption.OpenIfExists); } catch { }
+            catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] UserDataPaths 失败: {ex.Message}"); }
+
+            // 注册表 User Shell Folders 解析：下载文件夹被迁移到非默认位置时
+            // （UserDataPaths 的默认路径不存在），这里给出资源管理器实际使用的位置。
+            // {374DE290-123F-4565-9164-39C4925E467B} = Downloads 的 Shell Folder GUID
+            try
+            {
+                var raw = Microsoft.Win32.Registry.GetValue(
+                    @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                    "{374DE290-123F-4565-9164-39C4925E467B}", null) as string;
+                if (!string.IsNullOrEmpty(raw))
+                {
+                    string expanded = Environment.ExpandEnvironmentVariables(raw);
+                    if (System.IO.Directory.Exists(expanded))
+                    {
+                        Services.Diagnostics.Log($"[下载目录] 注册表解析下载目录: {expanded}");
+                        return await StorageFolder.GetFolderFromPathAsync(expanded);
+                    }
+                    Services.Diagnostics.Log($"[下载目录] 注册表路径不存在: '{expanded}'");
+                }
+            }
+            catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] 注册表解析失败: {ex.Message}"); }
+
+            Services.Diagnostics.Log("[下载目录] 回退应用私有目录 Downloads");
             return await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
         }
 
         public static async Task UpdateSystemDownloadFolderAccessAsync()
         {
+            // 真·多视图：每个新窗口都会调用；探测结果全局一致，只跑一次
+            // （否则 .perm_test 写探针在每个窗口启动时都重复抛一轮首轮异常）
+            if (_checkedSystemFolder) return;
             try
             {
                 var folder = await GetDownloadFolderAsync();

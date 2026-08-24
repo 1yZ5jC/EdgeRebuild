@@ -16,6 +16,7 @@ namespace EdgeRebuild.Services
     {
         private static SpeechSynthesizer _synth;
         private static MediaElement _player;
+        private static Windows.UI.Core.CoreDispatcher _playerDispatcher;   // 播放器所属视图的调度器
         private static readonly List<string> _paragraphs = new List<string>();
         private static int _index = 0;
         private static bool _active = false;
@@ -29,11 +30,17 @@ namespace EdgeRebuild.Services
         public static bool IsPaused => _paused;
         public static string CurrentLabel => _currentText;
 
+        /// <summary>
+        /// 真多视图：播放器固定在首个初始化它的视图（通常主视图）线程上；
+        /// 任何窗口调用 Start/Pause/Stop 都经此调度器封送回该线程执行。
+        /// </summary>
         public static bool Initialize(MediaElement player)
         {
             try
             {
+                if (_player != null && !ReferenceEquals(_player, player)) return true;   // 已由其他视图初始化
                 _player = player;
+                _playerDispatcher = Window.Current.CoreWindow.Dispatcher;
                 _player.MediaEnded += OnMediaEnded;
                 _player.MediaFailed += (s, e) => Stop();
                 _synth = new SpeechSynthesizer();
@@ -48,7 +55,16 @@ namespace EdgeRebuild.Services
             }
         }
 
-        /// <summary>开始朗读（自动替换当前朗读）。</summary>
+        private static void RunOnPlayerThread(Action action)
+        {
+            var d = _playerDispatcher ?? Window.Current.CoreWindow.Dispatcher;
+            var ignored = d.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () =>
+            {
+                try { action(); } catch (Exception ex) { Services.Diagnostics.Log($"[朗读] 播放操作异常: {ex.Message}"); }
+            });
+        }
+
+        /// <summary>开始朗读（自动替换当前朗读）。任意视图线程可调，内部封送到播放器线程。</summary>
         public static void Start(string text, string label)
         {
             if (string.IsNullOrWhiteSpace(text)) return;
@@ -57,40 +73,52 @@ namespace EdgeRebuild.Services
                 Services.Diagnostics.Log("[朗读] 组件未初始化，无法朗读");
                 return;
             }
-            Stop();
-            _currentText = label ?? "";
-            _paragraphs.Clear();
-            _paragraphs.AddRange(SplitParagraphs(text));
-            _index = 0;
-            _active = true;
-            _paused = false;
-            PlayNext();
-            StateChanged?.Invoke();
+            RunOnPlayerThread(() =>
+            {
+                Stop();
+                _currentText = label ?? "";
+                _paragraphs.Clear();
+                _paragraphs.AddRange(SplitParagraphs(text));
+                _index = 0;
+                _active = true;
+                _paused = false;
+                PlayNext();
+                StateChanged?.Invoke();
+            });
         }
 
         /// <summary>暂停/恢复切换。</summary>
         public static void TogglePause()
         {
-            if (!_active || _player == null) return;
-            if (_paused)
+            RunOnPlayerThread(() =>
             {
-                _player.Play();
-                _paused = false;
-            }
-            else
-            {
-                _player.Pause();
-                _paused = true;
-            }
-            StateChanged?.Invoke();
+                if (!_active || _player == null) return;
+                if (_paused)
+                {
+                    _player.Play();
+                    _paused = false;
+                }
+                else
+                {
+                    _player.Pause();
+                    _paused = true;
+                }
+                StateChanged?.Invoke();
+            });
         }
 
         public static void Stop()
         {
+            // Stop 也可能由播放器线程自身（MediaFailed/PlayNext）调用——同线程 RunAsync 仍按序执行
+            RunOnPlayerThread(StopCore);
+        }
+
+        private static void StopCore()
+        {
             _active = false;
             _paused = false;
             _index = 0;
-            try { _player.Stop(); _player.Source = null; } catch { }
+            try { _player?.Stop(); if (_player != null) _player.Source = null; } catch { }
             _paragraphs.Clear();
             StateChanged?.Invoke();
         }
@@ -100,7 +128,7 @@ namespace EdgeRebuild.Services
             if (!_active) return;
             if (_index >= _paragraphs.Count)
             {
-                Stop();
+                StopCore();
                 return;
             }
             try
@@ -112,7 +140,7 @@ namespace EdgeRebuild.Services
             }
             catch
             {
-                Stop();
+                StopCore();
             }
         }
 

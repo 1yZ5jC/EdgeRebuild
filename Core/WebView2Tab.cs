@@ -843,7 +843,10 @@ namespace EdgeRebuild.Core
             if (_disposed) return;
             _disposed = true;
 
-            _initLock?.Dispose();
+            // 窗口关闭竞态：EnsureInitializedAsync 可能仍在等待此信号量，
+            // 此时 Dispose 会抛 ObjectDisposedException——仅记录，不阻断后续释放
+            try { _initLock?.Dispose(); }
+            catch (Exception ex) { Services.Diagnostics.Log($"[WebView2] 信号量释放异常: {ex.Message}"); }
             if (_webView == null) return;
 
             // 解除事件
@@ -859,7 +862,12 @@ namespace EdgeRebuild.Core
                     _webView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
                     _webView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
                 }
-                catch { /* 忽略 */ }
+                catch (Exception ex)
+                {
+                    // 窗口销毁竞态下 CoreWebView2 可能已失效——记录而非静默，
+                    // 否则调试器首轮中断时零线索
+                    Services.Diagnostics.Log($"[WebView2] 事件解绑异常: {ex.Message}");
+                }
             }
 
             try
@@ -867,7 +875,11 @@ namespace EdgeRebuild.Core
                 (_webView.Parent as Panel)?.Children.Remove(_webView);
                 _webView.Close();
             }
-            catch { /* 忽略 */ }
+            catch (Exception ex)
+            {
+                // 已知噪音源：AppWindow 销毁竞态下 Close 抛 COMException——落日志定位
+                Services.Diagnostics.Log($"[WebView2] Close 异常: {ex.Message}");
+            }
             _webView = null;
 
             TitleChanged = null;

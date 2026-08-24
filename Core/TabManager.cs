@@ -769,12 +769,25 @@ namespace EdgeRebuild.Core
 
         public void DisposeAll()
         {
+            // 窗口关闭期逐标签释放：单个 WebView2 释放失败（窗口销毁竞态）
+            // 不应中断其余标签，也不应让异常冒泡到页面 Unloaded
             foreach (var item in _tabs)
-                item.Tab.Dispose();
+            {
+                try
+                {
+                    item.Tab?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Services.Diagnostics.Log($"[TabManager] 标签释放异常 ({item.Tab?.Engine}): {ex.Message}");
+                }
+            }
             _tabs.Clear();
             _currentTab = null;
             foreach (var timer in _suspendTimers.Values)
-                timer.Stop();
+            {
+                try { timer.Stop(); } catch { }
+            }
             _suspendTimers.Clear();
         }
     }

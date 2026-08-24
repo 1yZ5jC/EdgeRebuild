@@ -190,12 +190,11 @@ namespace EdgeRebuild.Controls
         public static string GetReaderDisplayUrl(string url)
         {
             if (string.IsNullOrEmpty(url)) return url;
-            bool isReaderUrl = false;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var u)) return url;
             try
             {
-                var u = new Uri(url);
                 var host = u.Host ?? "";
-                isReaderUrl = host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
+                bool isReaderUrl = host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
                     || host.EndsWith("epubreader.local", StringComparison.OrdinalIgnoreCase)
                     || (u.Scheme == "ms-appx-web" && (url.Contains("viewer.html") || url.Contains("reader.html")));
                 if (isReaderUrl)
@@ -213,18 +212,18 @@ namespace EdgeRebuild.Controls
 
         private static string ExtractQueryParam(string url, string name)
         {
-            try
+            // TryCreate：空/畸形 URL（新视图导航完成前 CurrentUrl 为空串）不再抛首轮异常
+            if (string.IsNullOrEmpty(url) ||
+                !Uri.TryCreate(url, UriKind.Absolute, out var parsed))
+                return null;
+            var query = parsed.Query;
+            if (string.IsNullOrEmpty(query)) return null;
+            foreach (var part in query.TrimStart('?').Split('&'))
             {
-                var query = new Uri(url).Query;
-                if (string.IsNullOrEmpty(query)) return null;
-                foreach (var part in query.TrimStart('?').Split('&'))
-                {
-                    var kv = part.Split('=');
-                    if (kv.Length == 2 && kv[0] == name)
-                        return Uri.UnescapeDataString(kv[1]);
-                }
+                var kv = part.Split('=');
+                if (kv.Length == 2 && kv[0] == name)
+                    return Uri.UnescapeDataString(kv[1]);
             }
-            catch { }
             return null;
         }
 

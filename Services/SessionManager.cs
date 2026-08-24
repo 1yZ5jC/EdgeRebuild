@@ -1,10 +1,10 @@
-using EdgeRebuild.Core;
+﻿using EdgeRebuild.Core;
 using SQLite;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using Windows.UI.Xaml;
 
 namespace EdgeRebuild.Services
 {
@@ -32,11 +32,15 @@ namespace EdgeRebuild.Services
     {
         private static readonly object _lock = new object();
         private static Dictionary<int, List<SessionTabRecord>> _pendingSnapshots = new Dictionary<int, List<SessionTabRecord>>();
-        private static DispatcherTimer _saveTimer;
+
+        // 真·多视图：各窗口在不同线程调用 ScheduleSave，DispatcherTimer 有线程亲和
+        // （跨线程 Stop/Start 直接崩溃）——改用无线程亲和的 Threading.Timer，
+        // 回调只触碰 DB 与纯托管状态，不涉及任何 UI 对象。
+        private static System.Threading.Timer _saveTimer;
         private const int SaveDebounceMs = 800;
 
         /// <summary>
-        /// 调度一次延迟保存（UI 线程调用，防抖合并；slot 内全量替换）。
+        /// 调度一次延迟保存（任意视图线程调用，防抖合并；slot 内全量替换）。
         /// </summary>
         public static void ScheduleSave(int slot, IReadOnlyList<TabViewItem> tabs)
         {
@@ -53,16 +57,10 @@ namespace EdgeRebuild.Services
             }
 
             if (_saveTimer == null)
-            {
-                _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SaveDebounceMs) };
-                _saveTimer.Tick += async (s, e) =>
-                {
-                    _saveTimer.Stop();
-                    await FlushAsync();
-                };
-            }
-            _saveTimer.Stop();
-            _saveTimer.Start();
+                _saveTimer = new System.Threading.Timer(
+                    async _ => { try { await FlushAsync(); } catch { } },
+                    null, Timeout.Infinite, Timeout.Infinite);
+            _saveTimer.Change(SaveDebounceMs, Timeout.Infinite);
         }
 
         /// <summary>
@@ -78,7 +76,7 @@ namespace EdgeRebuild.Services
                 _pendingSnapshots = new Dictionary<int, List<SessionTabRecord>>();
             }
 
-            _saveTimer?.Stop();
+            _saveTimer?.Change(Timeout.Infinite, Timeout.Infinite);
 
             try
             {
