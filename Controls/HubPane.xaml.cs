@@ -84,6 +84,9 @@ namespace EdgeRebuild.Controls
             ClearHistoryBtn.Foreground = foreground;
             FavoritesSearchBox.Foreground = foreground;
             HistorySearchBox.Foreground = foreground;
+            NewCollectionGroupBtn.Foreground = foreground;
+            ExportCollectionBtn.Foreground = foreground;
+            CollectionBackBtn.Foreground = foreground;
 
             Style itemStyle = isDark
                 ? (Style)Resources["HubListViewItemStyleDark"]
@@ -818,10 +821,12 @@ namespace EdgeRebuild.Controls
                 HistoryPanel.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
                 ReadingPanel.Visibility = tag == "ReadingList" ? Visibility.Visible : Visibility.Collapsed;
                 DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
+                CollectionsPanel.Visibility = tag == "Collections" ? Visibility.Visible : Visibility.Collapsed;
                 if (tag == "Favorites") RefreshFavorites();
                 if (tag == "History") RefreshHistory();
                 if (tag == "ReadingList") RefreshReadingList();
                 if (tag == "Downloads") LoadDownloads();
+                if (tag == "Collections") RefreshCollections();
             }
         }
 
@@ -901,6 +906,190 @@ namespace EdgeRebuild.Controls
                 menu.ShowAt(grid, e.GetPosition(grid));
             }
             e.Handled = true;
+        }
+
+        // ---- 集锦 ----
+        private int _currentGroupId = -1;   // -1 = 分组列表视图
+
+        public void RefreshCollections()
+        {
+            if (CollectionsPanel == null) return;
+            if (_currentGroupId >= 0)
+            {
+                ShowCollectionItems(_currentGroupId);
+                return;
+            }
+            // 分组列表视图
+            CollectionGroupList.Visibility = Visibility.Visible;
+            CollectionItemListContainer.Visibility = Visibility.Collapsed;
+            CollectionGroupList.Children.Clear();
+            foreach (var group in CollectionManager.Instance.Groups)
+            {
+                var count = CollectionManager.Instance.Items.Count(i => i.GroupId == group.Id);
+                var btn = new Button
+                {
+                    Content = $"{group.Name}  ({count})",
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Left,
+                    Background = new SolidColorBrush(Colors.Transparent),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = new SolidColorBrush(Colors.LightGray),
+                    Padding = new Thickness(12, 8, 12, 8),
+                    Margin = new Thickness(12, 2, 12, 2),
+                    FontSize = 13,
+                    Tag = group
+                };
+                btn.Click += CollectionGroupBtn_Click;
+                btn.RightTapped += CollectionGroup_RightTapped;
+                CollectionGroupList.Children.Add(btn);
+            }
+            // 空分组提示
+            if (CollectionManager.Instance.Groups.Count == 0)
+            {
+                CollectionGroupList.Children.Add(new TextBlock
+                {
+                    Text = "暂无分组，点击「新建分组」开始收集",
+                    Margin = new Thickness(12, 16, 12, 0),
+                    FontSize = 12,
+                    Opacity = 0.5
+                });
+            }
+        }
+
+        private async void CollectionGroupBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is CollectionGroup group)
+            {
+                _currentGroupId = group.Id;
+                await CollectionManager.Instance.LoadItemsAsync();
+                ShowCollectionItems(group.Id);
+            }
+        }
+
+        private void ShowCollectionItems(int groupId)
+        {
+            CollectionGroupList.Visibility = Visibility.Collapsed;
+            CollectionItemListContainer.Visibility = Visibility.Visible;
+            var group = CollectionManager.Instance.Groups.FirstOrDefault(g => g.Id == groupId);
+            CollectionGroupNameText.Text = group?.Name ?? "";
+            CollectionItemListView.Items.Clear();
+            var items = CollectionManager.Instance.Items.Where(i => i.GroupId == groupId).ToList();
+            foreach (var item in items)
+                CollectionItemListView.Items.Add(item);
+        }
+
+        private void CollectionBackBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _currentGroupId = -1;
+            RefreshCollections();
+        }
+
+        private void CollectionItemListView_ItemClick(object sender, ItemClickEventArgs e)
+        {
+            if (e.ClickedItem is CollectionItem item && item.ItemType == CollectionItemType.Link)
+                NavigateRequested?.Invoke(item.Content);
+        }
+
+        private void CollectionItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var grid = sender as Grid;
+            if (grid?.DataContext is CollectionItem item)
+            {
+                var menu = new MenuFlyout();
+                if (item.ItemType == CollectionItemType.Link)
+                {
+                    var openItem = new MenuFlyoutItem { Text = "在新标签页打开" };
+                    openItem.Click += (s, a) => NavigateRequested?.Invoke(item.Content);
+                    menu.Items.Add(openItem);
+                }
+                var removeItem = new MenuFlyoutItem { Text = "移除" };
+                removeItem.Click += async (s, a) =>
+                {
+                    await CollectionManager.Instance.RemoveItemAsync(item);
+                    ShowCollectionItems(_currentGroupId);
+                };
+                menu.Items.Add(removeItem);
+                menu.ShowAt(grid, e.GetPosition(grid));
+            }
+            e.Handled = true;
+        }
+
+        private async void CollectionGroup_RightTapped(object sender, RightTappedRoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            if (btn?.Tag is CollectionGroup group)
+            {
+                var menu = new MenuFlyout();
+                var renameItem = new MenuFlyoutItem { Text = "重命名" };
+                renameItem.Click += async (s, a) =>
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "重命名分组",
+                        PrimaryButtonText = "确定",
+                        SecondaryButtonText = "取消"
+                    };
+                    var tb = new TextBox { Text = group.Name, Margin = new Thickness(0, 8, 0, 0) };
+                    dialog.Content = tb;
+                    if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                    {
+                        await CollectionManager.Instance.RenameGroupAsync(group, tb.Text);
+                        RefreshCollections();
+                    }
+                };
+                menu.Items.Add(renameItem);
+                var deleteItem = new MenuFlyoutItem { Text = "删除分组", Foreground = new SolidColorBrush(Colors.Red) };
+                deleteItem.Click += async (s, a) =>
+                {
+                    await CollectionManager.Instance.DeleteGroupAsync(group);
+                    RefreshCollections();
+                };
+                menu.Items.Add(deleteItem);
+                menu.ShowAt(btn, e.GetPosition(btn));
+            }
+            e.Handled = true;
+        }
+
+        private async void NewCollectionGroupBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "新建集锦分组",
+                PrimaryButtonText = "创建",
+                SecondaryButtonText = "取消"
+            };
+            var tb = new TextBox { PlaceholderText = "分组名称", Margin = new Thickness(0, 8, 0, 0) };
+            dialog.Content = tb;
+            if (await dialog.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(tb.Text))
+            {
+                await CollectionManager.Instance.AddGroupAsync(tb.Text);
+                RefreshCollections();
+            }
+        }
+
+        private async void ExportCollectionBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentGroupId < 0)
+            {
+                NotificationService.ShowToast("导出", "请先进入一个分组再导出");
+                return;
+            }
+            var group = CollectionManager.Instance.Groups.FirstOrDefault(g => g.Id == _currentGroupId);
+            if (group == null) return;
+
+            var picker = new FileSavePicker();
+            picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+            picker.FileTypeChoices.Add("Markdown 文件", new List<string> { ".md" });
+            picker.FileTypeChoices.Add("HTML 文件", new List<string> { ".html" });
+            picker.SuggestedFileName = $"集锦_{group.Name}";
+            var file = await picker.PickSaveFileAsync();
+            if (file == null) return;
+
+            if (file.FileType == ".md")
+                await CollectionManager.ExportToMarkdownAsync(group, file);
+            else
+                await CollectionManager.ExportToHtmlAsync(group, file);
+            NotificationService.ShowToast("导出完成", file.Path);
         }
     }
 }

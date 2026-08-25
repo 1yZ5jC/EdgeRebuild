@@ -462,6 +462,14 @@ namespace EdgeRebuild.Metro
             readLaterItem.Click += (s, a) => AddCurrentToReadingList();
             menu.Items.Add(readLaterItem);
 
+            var addColItem = new MenuFlyoutItem
+            {
+                Text = "添加到集锦",
+                Icon = new FontIcon { Glyph = "\xE8B9", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            addColItem.Click += (s, a) => AddCurrentToCollection();
+            menu.Items.Add(addColItem);
+
             var copyItem = new MenuFlyoutItem
             {
                 Text = "复制网址",
@@ -635,6 +643,54 @@ namespace EdgeRebuild.Metro
             }
             await ReadingListManager.Instance.AddAsync(tab.Title ?? url, url);
             NotificationService.ShowToast("已加入稍后读", tab.Title ?? url);
+        }
+
+        private async void AddCurrentToCollection()
+        {
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            string url = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                NotificationService.ShowToast("集锦", "当前页面不可添加");
+                return;
+            }
+            var groups = CollectionManager.Instance.Groups;
+            if (groups.Count == 0)
+            {
+                // 无分组 → 快速新建
+                var dialog = new ContentDialog
+                {
+                    Title = "新建集锦分组",
+                    PrimaryButtonText = "创建",
+                    SecondaryButtonText = "取消"
+                };
+                var tb = new TextBox { PlaceholderText = "分组名称", Margin = new Thickness(0, 8, 0, 0) };
+                dialog.Content = tb;
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(tb.Text))
+                {
+                    var g = await CollectionManager.Instance.AddGroupAsync(tb.Text);
+                    await CollectionManager.Instance.AddItemAsync(
+                        tab.Title ?? url, url, Core.CollectionItemType.Link, g.Id);
+                    NotificationService.ShowToast("已加入集锦", $"{tab.Title ?? url} → {g.Name}");
+                }
+                return;
+            }
+            // 有分组 → flyout 选择
+            var flyout = new MenuFlyout();
+            foreach (var group in groups)
+            {
+                var g = group;
+                var item = new MenuFlyoutItem { Text = g.Name };
+                item.Click += async (s, a) =>
+                {
+                    await CollectionManager.Instance.AddItemAsync(
+                        tab.Title ?? url, url, Core.CollectionItemType.Link, g.Id);
+                    NotificationService.ShowToast("已加入集锦", $"{tab.Title ?? url} → {g.Name}");
+                };
+                flyout.Items.Add(item);
+            }
+            flyout.ShowAt(this, new Point(ActualWidth / 2, ActualHeight - 40));
         }
 
         // ---- 页内查找（Ctrl+F，双引擎经 FindService 注入；Esc 关闭） ----

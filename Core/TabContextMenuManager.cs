@@ -97,6 +97,31 @@ namespace EdgeRebuild.Core
             closeRightItem.Click += (_, _) => CloseTabsToRight(viewItem);
             menu.Items.Add(closeRightItem);
 
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            // ---- 添加到集锦 ----
+            var addColSubMenu = new MenuFlyoutSubItem { Text = "添加到集锦" };
+            foreach (var group in CollectionManager.Instance.Groups)
+            {
+                var g = group;
+                var groupItem = new MenuFlyoutItem { Text = g.Name };
+                groupItem.Click += async (_, _) =>
+                {
+                    var tab = viewItem.Tab;
+                    if (tab == null || string.IsNullOrEmpty(tab.CurrentUrl) || tab.CurrentUrl == "about:blank")
+                    {
+                        NotificationService.ShowToast("集锦", "当前页面不可添加");
+                        return;
+                    }
+                    await CollectionManager.Instance.AddItemAsync(
+                        tab.Title ?? tab.CurrentUrl, tab.CurrentUrl,
+                        CollectionItemType.Link, g.Id);
+                    NotificationService.ShowToast("已加入集锦", $"{tab.Title ?? tab.CurrentUrl} → {g.Name}");
+                };
+                addColSubMenu.Items.Add(groupItem);
+            }
+            menu.Items.Add(addColSubMenu);
+
             menu.ShowAt(tabBorder, new Point(0, tabBorder.ActualHeight));
         }
 
@@ -231,6 +256,67 @@ namespace EdgeRebuild.Core
                 NotificationService.ShowToast("已加入稍后读", tab.Title ?? tab.CurrentUrl);
             };
             flyout.Items.Add(readLaterItem);
+
+            // ---- 集锦（旧版 Edge Collections：分组收集链接/文本/图片） ----
+            var addToColSubMenu = new MenuFlyoutSubItem { Text = "添加到集锦" };
+            foreach (var group in CollectionManager.Instance.Groups)
+            {
+                var g = group;
+                var groupItem = new MenuFlyoutItem { Text = g.Name };
+                groupItem.Click += async (_, _) =>
+                {
+                    var tab = _tabManager.CurrentTab;
+                    if (tab == null || string.IsNullOrEmpty(tab.CurrentUrl) || tab.CurrentUrl == "about:blank")
+                    {
+                        NotificationService.ShowToast("集锦", "当前页面不可添加");
+                        return;
+                    }
+                    string title = tab.Title ?? tab.CurrentUrl;
+                    string url = tab.CurrentUrl;
+                    string snippet = null;
+                    if (tab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
+                    {
+                        try
+                        {
+                            string json = await wv2.CoreWebView2.ExecuteScriptAsync(
+                                "document.title || ''");
+                            var docTitle = System.Text.Json.JsonDocument.Parse(json).RootElement.GetString();
+                            if (!string.IsNullOrEmpty(docTitle)) title = docTitle;
+                        }
+                        catch { }
+                    }
+                    await CollectionManager.Instance.AddItemAsync(title, url, CollectionItemType.Link, g.Id, snippet);
+                    NotificationService.ShowToast("已加入集锦", $"{title} → {g.Name}");
+                };
+                addToColSubMenu.Items.Add(groupItem);
+            }
+            // 新建分组快捷入口
+            var newGroupItem = new MenuFlyoutItem { Text = "新建分组..." };
+            newGroupItem.Click += async (_, _) =>
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "新建集锦分组",
+                    PrimaryButtonText = "创建",
+                    SecondaryButtonText = "取消"
+                };
+                var tb = new TextBox { PlaceholderText = "分组名称", Margin = new Thickness(0, 8, 0, 0) };
+                dialog.Content = tb;
+                if (await dialog.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(tb.Text))
+                {
+                    var newGroup = await CollectionManager.Instance.AddGroupAsync(tb.Text);
+                    var tab = _tabManager.CurrentTab;
+                    if (tab != null && !string.IsNullOrEmpty(tab.CurrentUrl) && tab.CurrentUrl != "about:blank")
+                    {
+                        await CollectionManager.Instance.AddItemAsync(
+                            tab.Title ?? tab.CurrentUrl, tab.CurrentUrl,
+                            CollectionItemType.Link, newGroup.Id);
+                        NotificationService.ShowToast("已加入集锦", $"{tab.Title ?? tab.CurrentUrl} → {newGroup.Name}");
+                    }
+                }
+            };
+            addToColSubMenu.Items.Add(newGroupItem);
+            flyout.Items.Add(addToColSubMenu);
 
             // ---- 网页捕获（截图批注） ----
             var captureItem = new MenuFlyoutItem { Text = "网页捕获" };

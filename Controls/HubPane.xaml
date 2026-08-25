@@ -189,6 +189,11 @@
                         <FontIcon Glyph="&#xE896;" FontFamily="Segoe MDL2 Assets"/>
                     </muxc:NavigationViewItem.Icon>
                 </muxc:NavigationViewItem>
+                <muxc:NavigationViewItem Content="集锦" Tag="Collections">
+                    <muxc:NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B9;" FontFamily="Segoe MDL2 Assets"/>
+                    </muxc:NavigationViewItem.Icon>
+                </muxc:NavigationViewItem>
             </muxc:NavigationView.MenuItems>
 
             <ScrollViewer>
@@ -356,6 +361,66 @@
                                   VerticalAlignment="Stretch">
                         <StackPanel x:Name="DownloadsStackPanel" Orientation="Vertical" HorizontalAlignment="Stretch"/>
                     </ScrollViewer>
+
+                    <!-- 集锦面板 -->
+                    <StackPanel x:Name="CollectionsPanel" Visibility="Collapsed">
+                        <!-- 工具栏 -->
+                        <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
+                            <Button x:Name="NewCollectionGroupBtn" Content="新建分组"
+                                    Background="Transparent"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="10,4" FontSize="12"
+                                    Click="NewCollectionGroupBtn_Click"/>
+                            <Button x:Name="ExportCollectionBtn" Content="导出"
+                                    Background="Transparent"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="10,4" FontSize="12"
+                                    Click="ExportCollectionBtn_Click"/>
+                        </StackPanel>
+
+                        <!-- 分组列表（顶层） -->
+                        <StackPanel x:Name="CollectionGroupList" Visibility="Visible"/>
+
+                        <!-- 条目列表（进入分组后显示） -->
+                        <StackPanel x:Name="CollectionItemListContainer" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Margin="12,4,12,4" Spacing="8">
+                                <Button x:Name="CollectionBackBtn" Content="← 返回"
+                                        Background="Transparent"
+                                        BorderThickness="1" BorderBrush="LightGray"
+                                        Padding="10,4" FontSize="12"
+                                        Click="CollectionBackBtn_Click"/>
+                                <TextBlock x:Name="CollectionGroupNameText" FontSize="14" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <ListView x:Name="CollectionItemListView"
+                                      SelectionMode="None"
+                                      IsItemClickEnabled="True"
+                                      ItemClick="CollectionItemListView_ItemClick"
+                                      Background="Transparent"
+                                      MinHeight="200"
+                                      HorizontalAlignment="Stretch">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Padding="12,8,12,8" Background="Transparent"
+                                              RightTapped="CollectionItem_RightTapped">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <FontIcon Grid.Column="0" x:Name="ItemIcon" FontFamily="Segoe MDL2 Assets"
+                                                      FontSize="16" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock x:Name="TitleText" FontSize="13" FontWeight="Normal"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock x:Name="ContentText" FontSize="11" Opacity="0.6"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="300"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </StackPanel>
                 </Grid>
             </ScrollViewer>
         </muxc:NavigationView>

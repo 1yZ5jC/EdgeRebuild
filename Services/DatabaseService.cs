@@ -35,6 +35,8 @@ namespace EdgeRebuild.Services
             await _database.CreateTableAsync<SessionTabRecord>();
             await _database.CreateTableAsync<PageMark>();
             await _database.CreateTableAsync<ReadingItem>();   // 稍后读（新增表必须在此注册，否则启动查询抛 no such table）
+            await _database.CreateTableAsync<CollectionGroup>(); // 集锦分组
+            await _database.CreateTableAsync<CollectionItem>();  // 集锦条目
         }
     }
 }

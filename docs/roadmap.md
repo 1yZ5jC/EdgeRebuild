@@ -20,7 +20,8 @@
 - [x] R2-3 [-] WinUI 3 迁移：**因项目设计原因永久排除**（不评估、不规划）
 
 ### R3 功能演进（原 P2 遗留 + 新增）
-- [ ] R3-1 集锦 Collections（拖拽收集链接/图片/文本成组导出）——最大单项，需独立设计轮
+- [x] R3-1 集锦 Collections：CollectionGroup/CollectionItem 双表 + CollectionManager 单例 + Hub 第五区
+      （分组列表→条目列表→右键添加→导出 Markdown/HTML）+ TabContextMenuManager/MetroPage 右键入口
 - [ ] R3-2 垂直标签试验
 - [ ] R3-3 命令栏窄窗自适应（VisualStateManager 收纳为溢出）
 - [ ] R3-4 EdgeHTML 能力对齐再评估：若 WebView2 化彻底，考虑裁剪 EdgeHTML 引擎维护面
@@ -40,7 +41,7 @@
 - [x] P1-10 标签挂起显性化：设置→性能加挂起排除名单（URL 关键词）；tooltip 注明收益与自动恢复
 
 ## P2 — 战略级
-- [ ] P2-11 集锦 Collections（拖拽收集链接/图片/文本成组导出）——最大单项，建议独立规划：新表 + Hub 第五区 + 拖拽协议 + 导出
+- [x] P2-11 集锦 Collections → 已合并至 R3-1（新表 + Hub 第五区 + 右键菜单 + 导出）
 - [ ] P2-12 垂直标签试验（TabManager 已解耦容器；需布局切换开关与标签条双宿主方案）
 - [x] P2-13 Metro 窗口 InPrivate 开关（设置面板→隐私；IsInPrivateWindow 驱动，新标签生效、不持久化）
 

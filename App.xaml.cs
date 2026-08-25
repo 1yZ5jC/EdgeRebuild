@@ -106,7 +106,8 @@ namespace EdgeRebuild
                         ("收藏夹", () => FavoritesManager.Instance.LoadAsync()),
                         ("稍后读", () => ReadingListManager.Instance.LoadAsync()),
                         ("历史记录", () => HistoryManager.LoadAsync()),
-                        ("下载记录", () => DownloadManager.LoadDownloadsAsync())
+                        ("下载记录", () => DownloadManager.LoadDownloadsAsync()),
+                        ("集锦", () => CollectionManager.Instance.LoadGroupsAsync())
                     })
                     {
                         try { await load(); }
