@@ -14,7 +14,7 @@ namespace EdgeRebuild.Core
     public class TabDragManager
     {
         private readonly TabManager _tabManager;
-        private readonly Panel _tabBarPanel;
+        private Panel _tabBarPanel;
         private readonly Canvas _dragCanvas;
         private readonly LayoutManager _layoutManager;
 
@@ -31,6 +31,9 @@ namespace EdgeRebuild.Core
         private const int ReorderThrottleMs = 200;
         private const double DetachThreshold = 20;
 
+        /// <summary>垂直标签模式：Y 轴排序 + X 轴脱离判定</summary>
+        public bool IsVertical { get; set; }
+
         // 事件
         public event Action<int, int> SortRequested;
         public event Action<TabViewItem> DetachRequested;
@@ -44,6 +47,12 @@ namespace EdgeRebuild.Core
             _tabBarPanel = tabBarPanel;
             _dragCanvas = dragCanvas;
             _layoutManager = layoutManager;
+        }
+
+        /// <summary>切换拖拽目标面板（水平↔垂直）</summary>
+        public void SetTargetPanel(Panel panel)
+        {
+            _tabBarPanel = panel;
         }
 
         public void AttachEvents(TabViewItem viewItem)
@@ -118,8 +127,8 @@ namespace EdgeRebuild.Core
             var colors = ThemeManager.Colors;
             _dragGhost = new Border
             {
-                Width = _dragItem.Container.ActualWidth,
-                Height = 32,
+                Width = IsVertical ? _tabBarPanel?.ActualWidth ?? _dragItem.Container.ActualWidth : _dragItem.Container.ActualWidth,
+                Height = IsVertical ? 36 : 32,
                 Background = colors.TabActiveBackground,
                 BorderBrush = ThemeManager.GetSeparatorBrush(),
                 BorderThickness = new Thickness(1),
@@ -193,8 +202,19 @@ namespace EdgeRebuild.Core
                               _tabBarPanelOffset.Y + _tabBarPanel.ActualHeight)
                 );
 
-                bool outside = posInCanvas.Y < tabBarBounds.Top - DetachThreshold ||
-                               posInCanvas.Y > tabBarBounds.Bottom + DetachThreshold;
+                bool outside;
+                if (IsVertical)
+                {
+                    // 垂直模式：拖出侧边栏右侧 → 脱离
+                    outside = posInCanvas.X < tabBarBounds.Left - DetachThreshold ||
+                              posInCanvas.X > tabBarBounds.Right + DetachThreshold;
+                }
+                else
+                {
+                    // 水平模式：拖出标签栏上下 → 脱离
+                    outside = posInCanvas.Y < tabBarBounds.Top - DetachThreshold ||
+                              posInCanvas.Y > tabBarBounds.Bottom + DetachThreshold;
+                }
 
                 // 拖拽诊断：节流记录指针位置与脱离判定
                 if ((DateTime.Now - _lastMoveLogTime).TotalMilliseconds >= 300)
@@ -224,34 +244,57 @@ namespace EdgeRebuild.Core
         {
             if ((DateTime.Now - _lastReorderTime).TotalMilliseconds < ReorderThrottleMs) return;
 
-            double ghostCenterInCanvas = posInCanvas.X - _dragOffset.X + _dragGhost.Width / 2;
-            double ghostLocalX = ghostCenterInCanvas - _tabBarPanelOffset.X;
             int dragIndex = _tabManager.Tabs.ToList().IndexOf(_dragItem);
-
-            double accumulatedWidth = 0;
             int targetIndex = -1;
 
-            for (int i = 0; i < _tabManager.Tabs.Count; i++)
+            if (IsVertical)
             {
-                if (i == dragIndex) continue;
-                var item = _tabManager.Tabs[i];
-                double containerCenter = accumulatedWidth + item.Container.ActualWidth / 2;
-                if (ghostLocalX < containerCenter)
+                // 垂直模式：Y 轴排序
+                double ghostCenterY = posInCanvas.Y - _dragOffset.Y + _dragGhost.Height / 2;
+                double ghostLocalY = ghostCenterY - _tabBarPanelOffset.Y;
+                double accumulatedHeight = 0;
+                for (int i = 0; i < _tabManager.Tabs.Count; i++)
                 {
-                    targetIndex = i;
-                    break;
+                    if (i == dragIndex) continue;
+                    var item = _tabManager.Tabs[i];
+                    double containerCenter = accumulatedHeight + item.Container.ActualHeight / 2;
+                    if (ghostLocalY < containerCenter)
+                    {
+                        targetIndex = i;
+                        break;
+                    }
+                    accumulatedHeight += item.Container.ActualHeight;
                 }
-                accumulatedWidth += item.Container.ActualWidth;
+                if (targetIndex == -1)
+                    targetIndex = _tabManager.Tabs.Count;
             }
-
-            if (targetIndex == -1)
-                targetIndex = _tabManager.Tabs.Count;
+            else
+            {
+                // 水平模式：X 轴排序
+                double ghostCenterInCanvas = posInCanvas.X - _dragOffset.X + _dragGhost.Width / 2;
+                double ghostLocalX = ghostCenterInCanvas - _tabBarPanelOffset.X;
+                double accumulatedWidth = 0;
+                for (int i = 0; i < _tabManager.Tabs.Count; i++)
+                {
+                    if (i == dragIndex) continue;
+                    var item = _tabManager.Tabs[i];
+                    double containerCenter = accumulatedWidth + item.Container.ActualWidth / 2;
+                    if (ghostLocalX < containerCenter)
+                    {
+                        targetIndex = i;
+                        break;
+                    }
+                    accumulatedWidth += item.Container.ActualWidth;
+                }
+                if (targetIndex == -1)
+                    targetIndex = _tabManager.Tabs.Count;
+            }
 
             if (targetIndex != dragIndex)
             {
                 SortRequested?.Invoke(dragIndex, targetIndex);
                 _lastReorderTime = DateTime.Now;
-                Services.Diagnostics.Log($"[拖拽] 重排 {dragIndex} -> {targetIndex} (ghostX={ghostLocalX:0})");
+                Services.Diagnostics.Log($"[拖拽] 重排 {dragIndex} -> {targetIndex} (vertical={IsVertical})");
             }
         }
 

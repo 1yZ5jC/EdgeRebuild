@@ -345,13 +345,19 @@ namespace EdgeRebuild
                 // ---- 窗口设置 ----
                 if (_appWindow != null)
                 {
-                    // 副窗口（AppWindow）：扩展标题栏 + 配色。
-                    // 注意：AppWindow 无 SetTitleBar/SetDragRectangles，系统把顶部条带
-                    // 设为默认拖拽区并吞掉指针输入——标签栏内新建按钮需隐藏（历史行为）。
+                    // 副窗口（AppWindow）：默认扩展标题栏（系统拖拽区）；
+                    // 用户可在设置→外观中开启「新窗口显示系统标题栏」，此时不扩展内容进标题栏
                     try { _appWindow.Title = "EdgeRebuild"; } catch { }
-                    _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
-                    ApplyAppWindowTitleBarColors();
-                    NewTabButton.Visibility = Visibility.Collapsed;
+                    string titleBarSetting = await SettingsManager.GetAsync("ShowSystemTitleBar") ?? "False";
+                    bool showSystemTitleBar = (titleBarSetting == "True" || titleBarSetting == "true");
+                    if (!showSystemTitleBar)
+                    {
+                        _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
+                        ApplyAppWindowTitleBarColors();
+                        NewTabButton.Visibility = Visibility.Collapsed;
+                        // 垂直侧边栏按钮下移到系统拖拽区下方（32px），保持可用
+                        VerticalButtonsHost.Margin = new Thickness(0, 32, 0, 0);
+                    }
                     this.KeyDown += OnWindowKeyDown;
                     this.KeyUp += OnWindowKeyUp;
                 }
@@ -453,6 +459,7 @@ namespace EdgeRebuild
                     {
                         _isVerticalTabs = true;
                         ApplyVerticalTabs();
+                        ApplyTheme(); // 刷新垂直模式背景（ApplyTheme 在设置恢复前已执行）
                     }
                 }
                 catch { }
@@ -1750,8 +1757,31 @@ namespace EdgeRebuild
 
             bool isDark = ThemeManager.IsDarkTheme;
 
+            // 同步 Page 级 XAML 资源（主题字典被 Page.Resources 遮蔽）
+            this.Resources["ForegroundBrush"] = colors.ForegroundBrush;
+            this.Resources["MutedForegroundBrush"] = colors.MutedForegroundBrush;
+            this.Resources["SeparatorBrush"] = colors.SeparatorBrush;
+            this.Resources["TabActiveBackgroundBrush"] = colors.TabActiveBackground;
+            this.Resources["TabInactiveBackgroundBrush"] = colors.TabInactiveBackground;
+            this.Resources["TabHoverBackgroundBrush"] = colors.TabHoverBackground;
+
             TabBarBorder.Background = colors.ToolbarBackground;
+            VerticalTabSidebar.Background = _isVerticalTabs
+                ? new SolidColorBrush(Colors.Transparent)
+                : colors.ToolbarBackground;
+            if (_isVerticalTabs)
+            {
+                var sidebarGrid = VerticalTabSidebar.Child as Grid;
+                if (sidebarGrid != null) sidebarGrid.Background = colors.ToolbarBackground;
+            }
+            TitleBarHost.Background = colors.ToolbarBackground;
             toolbarControl.ApplySkin(colors, isDark);
+
+            // 垂直侧边栏标题 + 按钮前景色
+            VerticalTabTitle.Foreground = colors.ForegroundBrush;
+            VerticalNewTabBtn.Foreground = colors.ForegroundBrush;
+            VerticalTabToggleBtn.Foreground = colors.ForegroundBrush;
+            VerticalTabEmptyText.Foreground = colors.MutedForegroundBrush;
             HubSplitView.PaneBackground = colors.ToolbarBackground;
             SettingsSplitView.PaneBackground = colors.ToolbarBackground;
             FavoritesBar.Background = colors.ToolbarBackground;
@@ -1853,6 +1883,7 @@ namespace EdgeRebuild
             _isVerticalTabs = !_isVerticalTabs;
             await Services.SettingsManager.SetAsync("VerticalTabs", _isVerticalTabs.ToString());
             ApplyVerticalTabs();
+            ApplyTheme(); // 刷新垂直/水平模式的背景配色
         }
 
         private void ApplyVerticalTabs()
@@ -1868,6 +1899,8 @@ namespace EdgeRebuild
                     if (child != null) ApplyVerticalTabStyle(child);
                     VerticalTabPanel.Children.Add(child);
                 }
+                _dragManager?.SetTargetPanel(VerticalTabPanel);
+                _dragManager.IsVertical = true;
             }
             else
             {
@@ -1880,6 +1913,8 @@ namespace EdgeRebuild
                     if (child != null) ApplyHorizontalTabStyle(child);
                     TabBarPanel.Children.Add(child);
                 }
+                _dragManager?.SetTargetPanel(TabBarPanel);
+                _dragManager.IsVertical = false;
             }
         }
 

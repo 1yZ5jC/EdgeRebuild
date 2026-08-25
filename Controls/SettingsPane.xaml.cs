@@ -13,7 +13,7 @@ namespace EdgeRebuild.Controls
         public event EventHandler CloseRequested;
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle;
+        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle, _systemTitleBarToggle;
         private ComboBox _ntpTypeCombo;
         private ComboBox _readerFontSizeCombo;
         private ComboBox _tilesSourceCombo;
@@ -111,6 +111,9 @@ namespace EdgeRebuild.Controls
             appearancePanel.Children.Add(_modernIERadio);
             _favoritesBarToggle = new ToggleSwitch { Header = "显示收藏夹栏", Margin = new Thickness(0, 10, 0, 0) };
             appearancePanel.Children.Add(_favoritesBarToggle);
+
+            _systemTitleBarToggle = new ToggleSwitch { Header = "新窗口显示系统标题栏", Margin = new Thickness(0, 10, 0, 0) };
+            appearancePanel.Children.Add(_systemTitleBarToggle);
 
             // 阅读视图默认字号（旧版 Edge 阅读排版设置；页内 A-/A+ 即时微调不持久化）
             appearancePanel.Children.Add(new TextBlock { Text = "阅读视图字号", FontWeight = Windows.UI.Text.FontWeights.SemiBold, Margin = new Thickness(0, 16, 0, 8) });
@@ -212,6 +215,9 @@ namespace EdgeRebuild.Controls
                 string favoritesBar = await SettingsManager.GetAsync("ShowFavoritesBar") ?? "False";
                 _favoritesBarToggle.IsOn = (favoritesBar == "True" || favoritesBar == "true");
 
+                string showTitleBar = await SettingsManager.GetAsync("ShowSystemTitleBar") ?? "False";
+                _systemTitleBarToggle.IsOn = (showTitleBar == "True" || showTitleBar == "true");
+
                 string readerFontSize = await SettingsManager.GetAsync("ReaderFontSize") ?? "18";
                 _readerFontSizeCombo.SelectedIndex = readerFontSize switch
                 {
@@ -295,6 +301,7 @@ namespace EdgeRebuild.Controls
                 };
                 _restoreToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("RestoreSession", _restoreToggle.IsOn.ToString());
                 _favoritesBarToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("ShowFavoritesBar", _favoritesBarToggle.IsOn.ToString());
+                _systemTitleBarToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("ShowSystemTitleBar", _systemTitleBarToggle.IsOn.ToString());
                 _readerFontSizeCombo.SelectionChanged += async (s, e) =>
                 {
                     string size = _readerFontSizeCombo.SelectedIndex switch

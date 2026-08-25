@@ -198,34 +198,48 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
+        <!-- 标题栏拖拽区（始终可见，水平/垂直模式共用；亚克力背景 + 窗口拖拽） -->
+        <Border x:Name="TitleBarHost" Grid.Row="0" Grid.Column="1"
+                Background="{StaticResource ToolbarAcrylicBrush}">
+            <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
+                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+        </Border>
+
         <!-- 垂直标签栏侧边栏（默认隐藏，设置中切换） -->
         <Border x:Name="VerticalTabSidebar" Grid.Row="0" Grid.RowSpan="4" Grid.Column="0"
                 Width="220" Visibility="Collapsed"
-                Background="{StaticResource ToolbarAcrylicBrush}"
                 BorderThickness="0,0,1,0" BorderBrush="{StaticResource SeparatorBrush}">
-            <Grid>
+            <Grid Background="{StaticResource ToolbarAcrylicBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Grid Margin="8,6,4,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="垂直标签" FontSize="12" FontWeight="SemiBold"
-                               VerticalAlignment="Center" Foreground="{StaticResource ForegroundBrush}"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
-                        <Button x:Name="VerticalNewTabBtn" Content="&#xE710;"
-                                Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
-                                Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"/>
-                        <Button x:Name="VerticalTabToggleBtn" Content="&#xE711;"
-                                Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
-                                Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"/>
-                    </StackPanel>
+                <!-- 标题栏拖拽区（整行可拖拽窗口，按钮覆盖在上方） -->
+                <Grid Grid.Row="0">
+                    <Rectangle x:Name="VerticalTitleBarDragArea" Fill="Transparent" Height="32"
+                               HorizontalAlignment="Stretch" VerticalAlignment="Top"/>
+                    <Grid Margin="8,0,4,0" Height="32" VerticalAlignment="Top">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="VerticalTabTitle" Grid.Column="0" Text="垂直标签" FontSize="12" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource ForegroundBrush}"
+                                   IsHitTestVisible="False"/>
+                        <StackPanel x:Name="VerticalButtonsHost" Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                                    VerticalAlignment="Center">
+                            <Button x:Name="VerticalNewTabBtn" Content="&#xE710;"
+                                    Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
+                                    Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"/>
+                            <Button x:Name="VerticalTabToggleBtn" Content="&#xE711;"
+                                    Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
+                                    Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"/>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
                 <Grid Grid.Row="1" x:Name="VerticalTabEmptyHint" Visibility="Collapsed">
-                    <TextBlock Text="暂无标签页" FontSize="12" Opacity="0.4"
+                    <TextBlock x:Name="VerticalTabEmptyText" Text="暂无标签页" FontSize="12" Opacity="0.4"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Grid>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -234,9 +248,10 @@
             </Grid>
         </Border>
 
-        <!-- 标签栏 -->
-        <Border x:Name="TabBarBorder" Grid.Row="0" Grid.Column="1" Background="{StaticResource ToolbarAcrylicBrush}"
-                Padding="0" SizeChanged="TabBarBorder_SizeChanged">
+        <!-- 标签栏（覆盖在 TitleBarHost 上方；垂直模式时隐藏） -->
+        <Border x:Name="TabBarBorder" Grid.Row="0" Grid.RowSpan="1" Grid.Column="1"
+                Padding="0" SizeChanged="TabBarBorder_SizeChanged"
+                Background="Transparent">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -286,8 +301,8 @@
                             Margin="0,0,0,0"/>
                 </StackPanel>
 
-                <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
-                           Grid.Column="3" VerticalAlignment="Stretch"/>
+                <Rectangle x:Name="OldTitleBarDragArea" Fill="Transparent"
+                           Grid.Column="3" VerticalAlignment="Stretch" Visibility="Collapsed"/>
             </Grid>
         </Border>
 
