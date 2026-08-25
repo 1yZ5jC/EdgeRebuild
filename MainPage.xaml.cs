@@ -139,6 +139,7 @@ namespace EdgeRebuild
             Safe("悬停预览", () =>
             {
                 _hoverTimer?.Stop();
+                _previewCloseTimer?.Stop();
                 if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
             });
             Safe("XamlRoot", () => { if (this.XamlRoot != null) this.XamlRoot.Changed -= OnXamlRootChanged; });
@@ -196,6 +197,7 @@ namespace EdgeRebuild
                 ReadAloudService.StateChanged -= OnReadAloudStateChanged;
             }
             _hoverTimer?.Stop();
+            _previewCloseTimer?.Stop();
             if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
@@ -442,6 +444,18 @@ namespace EdgeRebuild
                             _ = WindowManager.RestoreSecondaryWindowsAsync();
                     }
                 }
+
+                // ---- 恢复垂直标签栏状态 ----
+                try
+                {
+                    string vtSetting = await SettingsManager.GetAsync("VerticalTabs");
+                    if (vtSetting == "True" || vtSetting == "true")
+                    {
+                        _isVerticalTabs = true;
+                        ApplyVerticalTabs();
+                    }
+                }
+                catch { }
 
                 // ---- 快捷键 ----
                 ShortcutManager.Enable();
@@ -1145,6 +1159,17 @@ namespace EdgeRebuild
         // ---- 核心修复：新建标签后自动激活并焦点到地址栏 ----
         private async void OnTabManagerTabCreated(TabViewItem viewItem)
         {
+            // 垂直标签模式：新建标签被 TabManager 加到水平面板，需迁移到垂直面板
+            if (_isVerticalTabs && viewItem.Container != null)
+            {
+                var border = viewItem.Container;
+                if (border.Parent == TabBarPanel)
+                {
+                    TabBarPanel.Children.Remove(border);
+                    ApplyVerticalTabStyle(border);
+                    VerticalTabPanel.Children.Add(border);
+                }
+            }
             // 切换到新标签
             await _tabManager.SwitchToTabAsync(viewItem);
             UpdateTabLayout();
@@ -1330,7 +1355,10 @@ namespace EdgeRebuild
         private TabViewItem _tabPreviewTarget;
         private readonly Dictionary<IBrowserTab, byte[]> _previewCache = new Dictionary<IBrowserTab, byte[]>();
         private DispatcherTimer _hoverTimer;
+        private DispatcherTimer _previewCloseTimer;   // 鼠标离开标签后延迟关闭预览卡
+        private bool _isPreviewHovered;               // 鼠标是否在预览卡内
         private const double PreviewW = 240, PreviewH = 150;
+        private const int PreviewCloseDelayMs = 300;  // 鼠标离开后 300ms 再关闭
 
         private void BuildTabPreviewPopup()
         {
@@ -1357,8 +1385,18 @@ namespace EdgeRebuild
                 BorderThickness = new Thickness(1),
                 Width = PreviewW
             };
-            // AppWindow 多窗口共享主 UI 层：Popup 不设 XamlRoot 会挂到主窗口内容层，
-            // 在副窗口中预览卡会飘到主窗口上——必须锚定本页 XamlRoot
+            // 鼠标移入预览卡 → 取消关闭定时器，保持预览显示
+            _tabPreviewCard.PointerEntered += (s, e) =>
+            {
+                _isPreviewHovered = true;
+                _previewCloseTimer?.Stop();
+            };
+            // 鼠标移出预览卡 → 启动延迟关闭
+            _tabPreviewCard.PointerExited += (s, e) =>
+            {
+                _isPreviewHovered = false;
+                SchedulePreviewClose();
+            };
             _tabPreviewPopup = new Windows.UI.Xaml.Controls.Primitives.Popup
             {
                 IsLightDismissEnabled = false,
@@ -1367,6 +1405,22 @@ namespace EdgeRebuild
             };
             _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _hoverTimer.Tick += async (s, e) => { _hoverTimer.Stop(); await ShowTabPreviewAsync(); };
+            _previewCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PreviewCloseDelayMs) };
+            _previewCloseTimer.Tick += (s, e) =>
+            {
+                _previewCloseTimer.Stop();
+                if (!_isPreviewHovered)
+                {
+                    _tabPreviewTarget = null;
+                    _tabPreviewPopup.IsOpen = false;
+                }
+            };
+        }
+
+        private void SchedulePreviewClose()
+        {
+            if (_previewCloseTimer != null && !_isPreviewHovered)
+                _previewCloseTimer.Start();
         }
 
         private void OnTabHoverStarted(TabViewItem viewItem)
@@ -1383,8 +1437,9 @@ namespace EdgeRebuild
             if (_tabPreviewTarget != null && _tabPreviewTarget == viewItem)
             {
                 _hoverTimer.Stop();
-                _tabPreviewTarget = null;
-                _tabPreviewPopup.IsOpen = false;
+                // 不再立即关闭：如果鼠标在预览卡内，等 PointerExited 再关
+                if (!_isPreviewHovered)
+                    SchedulePreviewClose();
             }
         }
 
@@ -1397,14 +1452,30 @@ namespace EdgeRebuild
             if (target == null || target.Container == null || !_tabManager.Tabs.Contains(target)) return;
             if (_tabPreviewPopup.XamlRoot == null) _tabPreviewPopup.XamlRoot = this.XamlRoot;
 
-            // 定位：标签上方居中，夹在窗口内（XamlRoot 尺寸对 AppWindow 副窗同样正确）
+            // 定位：水平模式→标签上方居中；垂直模式→侧边栏右侧、与标签顶部对齐
             try
             {
                 var topLeft = target.Container.TransformToVisual(null).TransformPoint(new Point(0, 0));
                 double maxW = XamlRoot?.Size.Width ?? Window.Current.Bounds.Width;
-                _tabPreviewPopup.HorizontalOffset = Math.Max(8,
-                    Math.Min(topLeft.X + target.Container.ActualWidth / 2 - PreviewW / 2, maxW - PreviewW - 8));
-                _tabPreviewPopup.VerticalOffset = Math.Max(8, topLeft.Y - PreviewH - 34);
+                double maxH = XamlRoot?.Size.Height ?? Window.Current.Bounds.Height;
+                if (_isVerticalTabs)
+                {
+                    // 垂直模式：显示在侧边栏右侧，与标签顶部对齐
+                    double sidebarRight = VerticalTabSidebar.ActualWidth;
+                    _tabPreviewPopup.HorizontalOffset = Math.Min(sidebarRight + 4, maxW - PreviewW - 8);
+                    _tabPreviewPopup.VerticalOffset = Math.Max(8,
+                        Math.Min(topLeft.Y, maxH - PreviewH - 40));
+                }
+                else
+                {
+                    // 水平模式：标签上方居中（标签栏高 32px，上方需留 34px 间距）
+                    double aboveY = topLeft.Y - PreviewH - 6;
+                    double belowY = topLeft.Y + target.Container.ActualHeight + 6;
+                    // 优先上方；空间不足则放下方
+                    _tabPreviewPopup.VerticalOffset = (aboveY >= 0) ? aboveY : belowY;
+                    _tabPreviewPopup.HorizontalOffset = Math.Max(8,
+                        Math.Min(topLeft.X + target.Container.ActualWidth / 2 - PreviewW / 2, maxW - PreviewW - 8));
+                }
             }
             catch { }
             _tabPreviewTitle.Text = target.Tab.Title ?? "";
@@ -1574,6 +1645,8 @@ namespace EdgeRebuild
         // ---- 布局更新 ----
         private void OnLayoutUpdated()
         {
+            // 垂直标签模式：LayoutManager 不干预宽度，由 ApplyVerticalTabStyle 统一管理
+            if (_isVerticalTabs) return;
             double tabWidth = _layoutManager.TabWidth;
             foreach (var item in _tabManager.Tabs)
             {
@@ -1585,17 +1658,22 @@ namespace EdgeRebuild
         private void UpdateTabLayout()
         {
             if (!_isLoaded || _tabManager.TabCount == 0 || _isDragging) return;
+            // 垂直标签模式：不调用 LayoutManager.Recalculate，避免干预标签宽度
+            if (_isVerticalTabs) return;
             int pinnedCount = _tabManager.GetPinnedTabCount();
             _layoutManager.Recalculate(TabBarBorder.ActualWidth, _tabManager.TabCount, pinnedCount);
         }
 
         private void SyncTabPanelOrder()
         {
-            TabBarPanel.Children.Clear();
+            // 垂直模式：同步到 VerticalTabPanel；水平模式：同步到 TabBarPanel
+            var targetPanel = _isVerticalTabs ? VerticalTabPanel as Panel : TabBarPanel as Panel;
+            if (targetPanel == null) return;
+            targetPanel.Children.Clear();
             foreach (var item in _tabManager.Tabs)
             {
                 if (item.Container != null)
-                    TabBarPanel.Children.Add(item.Container);
+                    targetPanel.Children.Add(item.Container);
             }
         }
 
@@ -1754,7 +1832,91 @@ namespace EdgeRebuild
         private void ToolbarControl_MenuClicked()
         {
             var menu = _menuManager.BuildMenu();
+
+            // 垂直标签栏切换（实验功能）
+            menu.Items.Add(new MenuFlyoutSeparator());
+            var verticalTabItem = new MenuFlyoutItem
+            {
+                Text = VerticalTabSidebar.Visibility == Visibility.Visible ? "切换到水平标签栏" : "切换到垂直标签栏",
+                Icon = new FontIcon { Glyph = "\xE8A0", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            verticalTabItem.Click += (_, _) => ToggleVerticalTabs();
+            menu.Items.Add(verticalTabItem);
+
             toolbarControl.ShowMenu(menu);
+        }
+
+        private bool _isVerticalTabs;
+
+        private async void ToggleVerticalTabs()
+        {
+            _isVerticalTabs = !_isVerticalTabs;
+            await Services.SettingsManager.SetAsync("VerticalTabs", _isVerticalTabs.ToString());
+            ApplyVerticalTabs();
+        }
+
+        private void ApplyVerticalTabs()
+        {
+            if (_isVerticalTabs)
+            {
+                TabBarBorder.Visibility = Visibility.Collapsed;
+                VerticalTabSidebar.Visibility = Visibility.Visible;
+                while (TabBarPanel.Children.Count > 0)
+                {
+                    var child = TabBarPanel.Children[0] as Border;
+                    TabBarPanel.Children.RemoveAt(0);
+                    if (child != null) ApplyVerticalTabStyle(child);
+                    VerticalTabPanel.Children.Add(child);
+                }
+            }
+            else
+            {
+                VerticalTabSidebar.Visibility = Visibility.Collapsed;
+                TabBarBorder.Visibility = Visibility.Visible;
+                while (VerticalTabPanel.Children.Count > 0)
+                {
+                    var child = VerticalTabPanel.Children[0] as Border;
+                    VerticalTabPanel.Children.RemoveAt(0);
+                    if (child != null) ApplyHorizontalTabStyle(child);
+                    TabBarPanel.Children.Add(child);
+                }
+            }
+        }
+
+        /// <summary>将标签 Border 从水平样式调整为垂直样式：宽填满、高固定 36px、底部分隔线</summary>
+        private static void ApplyVerticalTabStyle(Border border)
+        {
+            border.Width = Double.NaN;          // 清除固定宽度，允许拉伸
+            border.MinWidth = 0;
+            border.MaxWidth = Double.PositiveInfinity;
+            border.Height = 36;
+            border.HorizontalAlignment = HorizontalAlignment.Stretch;
+            border.VerticalAlignment = VerticalAlignment.Top;
+            border.BorderThickness = new Thickness(0, 0, 0, 1);  // 底部分隔线替代右侧
+            border.Margin = new Thickness(0);
+        }
+
+        /// <summary>将标签 Border 恢复为水平样式：固定宽度 160px（由 LayoutManager 重算）、高 32px、右侧分隔线</summary>
+        private static void ApplyHorizontalTabStyle(Border border)
+        {
+            border.Width = LayoutManager.MaxTabWidth;
+            border.MinWidth = LayoutManager.MinTabWidth;
+            border.MaxWidth = LayoutManager.MaxTabWidth;
+            border.Height = 32;
+            border.HorizontalAlignment = HorizontalAlignment.Left;
+            border.VerticalAlignment = VerticalAlignment.Stretch;
+            border.BorderThickness = new Thickness(0, 0, 1, 0);  // 右侧分隔线
+            border.Margin = new Thickness(0);
+        }
+
+        private void VerticalTabToggleBtn_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleVerticalTabs();
+        }
+
+        private async void VerticalNewTabBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
         }
 
         private void UpdateStarButton()

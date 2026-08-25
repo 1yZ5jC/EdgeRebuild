@@ -53,6 +53,18 @@ namespace EdgeRebuild.Controls
             this.InitializeComponent();
             this.Loaded += OnLoaded;
             this.Unloaded += OnUnloaded;
+            this.SizeChanged += OnSizeChanged;
+        }
+
+        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            double w = e.NewSize.Width;
+            if (w >= 720)
+                VisualStateManager.GoToState(this, "Wide", false);
+            else if (w >= 540)
+                VisualStateManager.GoToState(this, "Medium", false);
+            else
+                VisualStateManager.GoToState(this, "Narrow", false);
         }
 
         private async void OnLoaded(object sender, RoutedEventArgs e)

@@ -22,9 +22,11 @@
 ### R3 功能演进（原 P2 遗留 + 新增）
 - [x] R3-1 集锦 Collections：CollectionGroup/CollectionItem 双表 + CollectionManager 单例 + Hub 第五区
       （分组列表→条目列表→右键添加→导出 Markdown/HTML）+ TabContextMenuManager/MetroPage 右键入口
-- [ ] R3-2 垂直标签试验
-- [ ] R3-3 命令栏窄窗自适应（VisualStateManager 收纳为溢出）
-- [ ] R3-4 EdgeHTML 能力对齐再评估：若 WebView2 化彻底，考虑裁剪 EdgeHTML 引擎维护面
+- [x] R3-2 垂直标签试验：RootGrid 双列 + VerticalTabSidebar（200px）+ 菜单切换，标签在水平/垂直面板间迁移
+- [x] R3-3 命令栏窄窗自适应：ToolbarControl VisualStateManager（≥720 全显 / 540-719 隐藏引擎选择器 /
+      <540 再隐藏收藏+捕获按钮），SizeChanged 触发状态切换
+- [x] R3-4 EdgeHTML 能力对齐再评估：结论——EdgeHTML 引用 21 文件（EdgeHtmlTab 412 行 vs WebView2Tab 895 行），
+      维护面可控；Metro IE 强依赖 EdgeHTML（ms-appx-web 协议），不裁剪
 
 ## P0 — 高价值低成本
 - [x] P0-4 多主窗口会话覆盖隐患：`SessionTabs` 单快照表，两个主窗口互踩（D1 同款）。方案：副窗口 `ParticipatesInSession=false`
@@ -42,7 +44,7 @@
 
 ## P2 — 战略级
 - [x] P2-11 集锦 Collections → 已合并至 R3-1（新表 + Hub 第五区 + 右键菜单 + 导出）
-- [ ] P2-12 垂直标签试验（TabManager 已解耦容器；需布局切换开关与标签条双宿主方案）
+- [x] P2-12 垂直标签试验 → 已合并至 R3-2（RootGrid 双列 + VerticalTabSidebar + 菜单切换）
 - [x] P2-13 Metro 窗口 InPrivate 开关（设置面板→隐私；IsInPrivateWindow 驱动，新标签生效、不持久化）
 
 ## AppBar 与 Win8.1 差异对齐

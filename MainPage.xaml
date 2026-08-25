@@ -193,9 +193,49 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 垂直标签栏侧边栏（默认隐藏，设置中切换） -->
+        <Border x:Name="VerticalTabSidebar" Grid.Row="0" Grid.RowSpan="4" Grid.Column="0"
+                Width="220" Visibility="Collapsed"
+                Background="{StaticResource ToolbarAcrylicBrush}"
+                BorderThickness="0,0,1,0" BorderBrush="{StaticResource SeparatorBrush}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Margin="8,6,4,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="垂直标签" FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Foreground="{StaticResource ForegroundBrush}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                        <Button x:Name="VerticalNewTabBtn" Content="&#xE710;"
+                                Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
+                                Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"/>
+                        <Button x:Name="VerticalTabToggleBtn" Content="&#xE711;"
+                                Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
+                                Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"/>
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="1" x:Name="VerticalTabEmptyHint" Visibility="Collapsed">
+                    <TextBlock Text="暂无标签页" FontSize="12" Opacity="0.4"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Grid>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel x:Name="VerticalTabPanel" Orientation="Vertical"/>
+                </ScrollViewer>
+            </Grid>
+        </Border>
 
         <!-- 标签栏 -->
-        <Border x:Name="TabBarBorder" Grid.Row="0" Background="{StaticResource ToolbarAcrylicBrush}"
+        <Border x:Name="TabBarBorder" Grid.Row="0" Grid.Column="1" Background="{StaticResource ToolbarAcrylicBrush}"
                 Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -253,7 +293,7 @@
 
         <!-- 工具栏 -->
         <controls:ToolbarControl x:Name="toolbarControl"
-                                 Grid.Row="1"
+                                 Grid.Row="1" Grid.Column="1"
                                  UrlSubmitted="ToolbarControl_UrlSubmitted"
                                  BackRequested="ToolbarControl_BackRequested"
                                  ForwardRequested="ToolbarControl_ForwardRequested"
@@ -265,7 +305,7 @@
                                  EngineSwitched="ToolbarControl_EngineSwitched"/>
 
         <!-- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行) -->
-        <Border x:Name="FavoritesBar" Grid.Row="2" Visibility="Collapsed"
+        <Border x:Name="FavoritesBar" Grid.Row="2" Grid.Column="1" Visibility="Collapsed"
                 Background="{StaticResource ToolbarAcrylicBrush}" Height="44">
             <Grid>
                 <ScrollViewer HorizontalScrollBarVisibility="Hidden"
@@ -282,7 +322,7 @@
         </Border>
 
         <!-- 网页区域 -->
-        <Grid Grid.Row="3">
+        <Grid Grid.Row="3" Grid.Column="1">
             <SplitView x:Name="HubSplitView" DisplayMode="Overlay"
                        OpenPaneLength="520" PanePlacement="Right"
                        PaneBackground="{StaticResource ToolbarAcrylicBrush}">

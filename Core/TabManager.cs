@@ -539,8 +539,12 @@ namespace EdgeRebuild.Core
 
             _tabs.Remove(viewItem);
 
-            if (viewItem.Container != null && _tabBarPanel != null)
-                _tabBarPanel.Children.Remove(viewItem.Container);
+            if (viewItem.Container != null)
+            {
+                // 垂直标签模式：border 可能在 VerticalTabPanel 而非 _tabBarPanel
+                var parent = viewItem.Container.Parent as Panel;
+                parent?.Children.Remove(viewItem.Container);
+            }
             if (viewItem.ContentContainer != null && _contentContainer != null)
                 _contentContainer.Children.Remove(viewItem.ContentContainer);
 
