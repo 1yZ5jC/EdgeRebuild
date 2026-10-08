@@ -7,6 +7,7 @@ using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using Windows.UI.WindowManagement;
+using Windows.ApplicationModel.Core;
 using EdgeRebuild.Controls;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
@@ -104,8 +105,12 @@ namespace EdgeRebuild
 
             var colors = ThemeManager.Colors;
             toolbar.ApplySkin(colors, ThemeManager.IsDarkTheme);
-            TabBarBorder.Background = TabStripBrush(ThemeManager.IsDarkTheme);
+            // 背景放在 TitleBarHost（= 标题栏拖拽区）上；TabBarBorder 不设背景，
+            // 否则会拦掉 Window.SetTitleBar 的命中，导致标签条空白处无法拖动窗口
+            TitleBarHost.Background = colors.ToolbarBackground;
             ThemeManager.ThemeChanged += OnThemeChanged;
+
+            SetupTitleBar();
 
             string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
             string url = string.IsNullOrEmpty(_pendingUrl) ? homeUrl : _pendingUrl;
@@ -214,10 +219,56 @@ namespace EdgeRebuild
             _ => "主窗口"
         };
 
-        private static Brush TabStripBrush(bool isDark)
-            => new SolidColorBrush(isDark
-                ? Color.FromArgb(0xFF, 0x20, 0x20, 0x20)
-                : Color.FromArgb(0xFF, 0xF2, 0xF2, 0xF2));
+        // ================================================================
+        //  标题栏：内容扩展进标题栏（系统标题栏条消失，按钮保留透明底）
+        // ================================================================
+
+        private void SetupTitleBar()
+        {
+            try
+            {
+                if (_appWindow != null)
+                {
+                    // AppWindow 副窗口
+                    _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
+                    ApplyAppWindowTitleBarColors();
+                }
+                else
+                {
+                    // 主窗口 + 原生多视图窗口：各自是独立视图，按当前线程取视图
+                    CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
+                    Window.Current.SetTitleBar(TitleBarDragArea);
+                    ThemeManager.UpdateTitleBarColors();
+                }
+                Diagnostics.Log($"[Demo] 已隐藏系统标题栏 slot={_slot} mode={PresentationLabel()}");
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[Demo] 隐藏标题栏失败 slot={_slot}: {ex.Message}");
+            }
+        }
+
+        private void ApplyAppWindowTitleBarColors()
+        {
+            if (_appWindow == null) return;
+            bool isDark = ThemeManager.IsDarkTheme;
+            var transparent = Color.FromArgb(0, 0, 0, 0);
+            var fg = isDark ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(255, 0, 0, 0);
+
+            var tb = _appWindow.TitleBar;
+            tb.ForegroundColor = fg;
+            tb.BackgroundColor = transparent;
+            tb.InactiveBackgroundColor = transparent;
+            tb.ButtonForegroundColor = fg;
+            tb.ButtonBackgroundColor = transparent;
+            tb.ButtonInactiveBackgroundColor = transparent;
+            tb.ButtonHoverBackgroundColor = isDark
+                ? Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0x30, 0x00, 0x00, 0x00);
+            tb.ButtonPressedBackgroundColor = isDark
+                ? Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)
+                : Color.FromArgb(0x40, 0x00, 0x00, 0x00);
+        }
 
         private async void OnNewTab(object sender, RoutedEventArgs e)
         {
@@ -264,7 +315,9 @@ namespace EdgeRebuild
                 return;
             }
             toolbar.ApplySkin(colors, isDark);
-            TabBarBorder.Background = TabStripBrush(isDark);
+            TitleBarHost.Background = colors.ToolbarBackground;
+            if (_appWindow != null) ApplyAppWindowTitleBarColors();
+            else ThemeManager.UpdateTitleBarColors();
             _tabManager?.UpdateTheme(colors);
         }
 
