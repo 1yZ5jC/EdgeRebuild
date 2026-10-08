@@ -25,10 +25,10 @@ namespace EdgeRebuild.Core
     {
         /// <summary>
         /// 是否优先尝试原生独立视图（CoreApplication.CreateNewView）。
-        /// 默认 false —— AppWindow 回退路径已验证可用，原生路径待调试。
-        /// 开启后每个新窗口先尝试原生视图，失败自动回退。
+        /// true = 每个新窗口先走独立 CoreWindow + 独立 UI 线程，失败自动回退 AppWindow。
+        /// 注意：原生模式下 SlotActivated 会在发起线程触发，订阅方必须自行 marshal 回自己的 UI 线程。
         /// </summary>
-        public static bool PreferNativeView = false;
+        public static bool PreferNativeView = true;
 
         // ---- 窗口注册表 ----
         private sealed class Entry
@@ -101,28 +101,32 @@ namespace EdgeRebuild.Core
                     RestoreSlot = restoreSlot
                 };
 
-                // ---- 策略 1：原生独立视图（CreateNewView）—— Demo 阶段整体停用 ----
-                // 停用原因：未上屏的视图线程不再泵消息，回退时 CloseAsync 里的
-                // Dispatcher.RunAsync 会永久挂起，把后续开窗一起堵死（见 crash.log 21:18）。
-                // 恢复方法：去掉本段注释，并把 PreferNativeView 置 true。
-                //if (PreferNativeView)
-                //{
-                //    var nativeWin = await NativeWindow.CreateNativeViewAsync(pageType, args, slot);
-                //    if (nativeWin != null)
-                //    {
-                //        bool shown = await nativeWin.ShowAsync(timeoutMs: 2500);
-                //        if (shown)
-                //        {
-                //            RegisterWindow(nativeWin, slot, participates, pageType, isInPrivate);
-                //            Diagnostics.Log($"[NativeWM] ✅ 原生视图窗口成功 slot={slot}");
-                //            return true;
-                //        }
-                //        Diagnostics.Log($"[NativeWM] 原生视图展示失败，回退 AppWindow slot={slot}");
-                //        // 不 await：视图从未上屏时其线程可能不再泵消息，
-                //        // Dispatcher.RunAsync 会永久挂起，把后续开窗一起堵死
-                //        _ = CloseQuietlyAsync(nativeWin);
-                //    }
-                //}
+                // ---- 策略 1：原生独立视图（CreateNewView，独立 CoreWindow + 独立 UI 线程）----
+                // 曾经的"展示失败"其实是 _viewId 哨兵值 bug：ApplicationView.Id 是负数，
+                // 被 `if (_viewId < 0) return false` 拦在 TryShowAsStandaloneAsync 之前。
+                // 修好哨兵后重新启用；展示仍带 2.5s 超时，失败自动回退 AppWindow。
+                if (PreferNativeView)
+                {
+                    var nativeWin = await NativeWindow.CreateNativeViewAsync(pageType, args, slot);
+                    if (nativeWin != null)
+                    {
+                        bool shown = await nativeWin.ShowAsync(timeoutMs: 2500);
+                        if (shown)
+                        {
+                            RegisterWindow(nativeWin, slot, participates, pageType, isInPrivate);
+                            // 与 AppWindow 路径对齐：开窗即视为激活，否则新窗口
+                            // 的 ActiveText 会一直显示上一个槽位
+                            ActiveSlot = slot;
+                            SlotActivated?.Invoke(slot);
+                            Diagnostics.Log($"[NativeWM] ✅ 原生视图窗口成功 slot={slot}");
+                            return true;
+                        }
+                        Diagnostics.Log($"[NativeWM] 原生视图展示失败，回退 AppWindow slot={slot}");
+                        // 不 await：视图从未上屏时其线程可能不再泵消息，
+                        // Dispatcher.RunAsync 会永久挂起，把后续开窗一起堵死
+                        _ = CloseQuietlyAsync(nativeWin);
+                    }
+                }
 
                 // ---- 策略 2：AppWindow（Demo 当前唯一通路）----
                 Diagnostics.Log($"[NativeWM] 进入 AppWindow 路径 slot={slot}");

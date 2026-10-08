@@ -35,6 +35,15 @@ namespace EdgeRebuild
                 Services.Diagnostics.Log($"[UnobservedTask] {e.Exception}");
                 e.SetObserved();   // 防止进程级击穿
             };
+
+            // Application.UnhandledException 不覆盖所有线程（尤其非 UI 线程 / 线程池），
+            // 原生多视图下崩溃常发生在副窗口线程，这里兜底
+            AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+            {
+                Services.Diagnostics.Log(
+                    $"[AppDomain] UnhandledException (线程 {Environment.CurrentManagedThreadId}, " +
+                    $"IsTerminating={e.IsTerminating}): {e.ExceptionObject}");
+            };
         }
 
         protected override async void OnLaunched(LaunchActivatedEventArgs e)
@@ -120,6 +129,11 @@ namespace EdgeRebuild
                     // 与会话恢复暂不参与启动。副窗口由 DemoPage 按钮经 WindowManager 打开。
                     rootFrame.Navigate(typeof(DemoPage), e.Arguments);
                 }
+                // 主窗口（slot=0）不经 NativeWindowManager.RegisterWindow，
+                // 关闭时不会有任何 [NativeWM] 窗口关闭 日志——这里补一条，
+                // 用来区分"主窗口被关掉（进程正常退出）"和"进程崩溃"
+                Window.Current.Closed += (s, a) =>
+                    Services.Diagnostics.Log("[App] 主窗口 Closed（slot=0 未注册，进程随后退出属正常）");
                 Window.Current.Activate();
             }
         }

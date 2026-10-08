@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
@@ -43,7 +44,10 @@ namespace EdgeRebuild.Core
         public event Action<NativeWindow> Closed;
 
         // ---- 内部 ----
-        private int _viewId = -1;
+        // 注意：ApplicationView.Id 在本机是负数（如 -198299），
+        // 绝不能用 -1 当"未取得"哨兵，否则 ShowNativeViewAsync 永远提前返回。
+        private const int NoViewId = int.MinValue;
+        private int _viewId = NoViewId;
 
         private NativeWindow(WindowMode mode) { Mode = mode; }
 
@@ -66,6 +70,14 @@ namespace EdgeRebuild.Core
                 {
                     try
                     {
+                        // 关键：CreateNewView 的新视图线程默认没有 SynchronizationContext，
+                        // 导致该线程上所有 await 续体掉进线程池 → 一碰 XAML 就
+                        // RPC_E_WRONG_THREAD (0x8001010E) → 进程静默死亡。
+                        // 主窗口之所以没事，是 WinUI2 装了 DispatcherQueueSynchronizationContext。
+                        if (SynchronizationContext.Current == null)
+                            SynchronizationContext.SetSynchronizationContext(
+                                new ViewSyncContext(view.Dispatcher));
+
                         win.Frame = new Frame();
                         win.Frame.Navigate(pageType, navigationArg);
                         Window.Current.Content = win.Frame;
@@ -73,6 +85,11 @@ namespace EdgeRebuild.Core
 
                         // 原生 per-window 激活事件
                         var cw = Window.Current.CoreWindow;
+                        // 关闭信号：实测用户点系统标题栏 X 时 CoreWindow.Closed 不触发，
+                        // UWP 多视图的权威关闭信号是 ApplicationView.Consolidated——两个都挂，
+                        // 用 RaiseClosed 去重，否则 RegisterWindow 的清理会跑两遍。
+                        cw.Closed += (s, e) => win.RaiseClosed();
+                        ApplicationView.GetForCurrentView().Consolidated += (s, e) => win.RaiseClosed();
                         cw.Activated += (s, e) =>
                         {
                             if (e.WindowActivationState == CoreWindowActivationState.Deactivated)
@@ -88,7 +105,8 @@ namespace EdgeRebuild.Core
                         };
 
                         win._viewId = ApplicationView.GetForCurrentView().Id;
-                        Diagnostics.Log($"[NativeWindow] 视图线程就绪 viewId={win._viewId} slot={slot}");
+                        Diagnostics.Log($"[NativeWindow] 视图线程就绪 viewId={win._viewId} slot={slot} " +
+                            $"ctx={(SynchronizationContext.Current?.GetType().Name ?? "NULL")}");
                         tcs.SetResult(true);
                     }
                     catch (Exception ex)
@@ -178,31 +196,43 @@ namespace EdgeRebuild.Core
 
         private async Task<bool> ShowNativeViewAsync(int timeoutMs)
         {
-            if (_viewId < 0) return false;
-
-            // 策略 1：TryShowAsStandaloneAsync（独立窗口展示）
-            Diagnostics.Log($"[NativeWindow] 尝试 TryShowAsStandaloneAsync viewId={_viewId}");
-            if (await RunWithTimeout(
-                ApplicationViewSwitcher.TryShowAsStandaloneAsync(_viewId).AsTask(), timeoutMs))
+            if (_viewId == NoViewId)
             {
-                Diagnostics.Log("[NativeWindow] ✅ TryShowAsStandaloneAsync 成功");
-                return true;
+                Diagnostics.Log("[NativeWindow] ❌ viewId 未取得，无法展示");
+                return false;
             }
 
-            // 策略 2：SwitchAsync（切换前台视图；需两个 viewId）
-            Diagnostics.Log($"[NativeWindow] 尝试 SwitchAsync viewId={_viewId}");
-            if (await RunWithTimeout(
-                ApplicationViewSwitcher.SwitchAsync(_viewId, _viewId).AsTask(), timeoutMs))
+            try
             {
-                Diagnostics.Log("[NativeWindow] ✅ SwitchAsync 成功");
-                return true;
-            }
+                // 策略 1：TryShowAsStandaloneAsync（独立窗口展示）
+                if (await RunWithTimeout(
+                    ApplicationViewSwitcher.TryShowAsStandaloneAsync(_viewId).AsTask(),
+                    timeoutMs, "TryShowAsStandaloneAsync"))
+                {
+                    Diagnostics.Log("[NativeWindow] ✅ TryShowAsStandaloneAsync 成功");
+                    return true;
+                }
 
-            Diagnostics.Log("[NativeWindow] ❌ 所有展示策略均失败");
-            return false;
+                // 策略 2：SwitchAsync（切换前台视图；两个参数相同 = 仅请求展示）
+                if (await RunWithTimeout(
+                    ApplicationViewSwitcher.SwitchAsync(_viewId, _viewId).AsTask(),
+                    timeoutMs, "SwitchAsync"))
+                {
+                    Diagnostics.Log("[NativeWindow] ✅ SwitchAsync 成功");
+                    return true;
+                }
+
+                Diagnostics.Log("[NativeWindow] ❌ 所有展示策略均失败");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[NativeWindow] ShowNativeView 异常: {ex}");
+                return false;
+            }
         }
 
-        private static async Task<bool> RunWithTimeout(Task task, int timeoutMs)
+        private static async Task<bool> RunWithTimeout(Task task, int timeoutMs, string what = "操作")
         {
             try
             {
@@ -213,28 +243,28 @@ namespace EdgeRebuild.Core
                     if (task is Task<bool> tb) return tb.Result;
                     return true;
                 }
-                Diagnostics.Log($"[NativeWindow] 操作超时 ({timeoutMs}ms)");
+                Diagnostics.Log($"[NativeWindow] {what} 超时 ({timeoutMs}ms)，未完成（已放弃等待）");
                 return false;
             }
             catch (Exception ex)
             {
-                Diagnostics.Log($"[NativeWindow] 操作异常: {ex.Message}");
+                Diagnostics.Log($"[NativeWindow] {what} 异常: {ex.Message}");
                 return false;
             }
         }
 
-        private static async Task<bool> RunWithTimeout(Task<bool> task, int timeoutMs)
+        private static async Task<bool> RunWithTimeout(Task<bool> task, int timeoutMs, string what = "操作")
         {
             try
             {
                 var completed = await Task.WhenAny(task, Task.Delay(timeoutMs));
                 if (completed == task) return await task;
-                Diagnostics.Log($"[NativeWindow] 操作超时 ({timeoutMs}ms)");
+                Diagnostics.Log($"[NativeWindow] {what} 超时 ({timeoutMs}ms)，未完成（已放弃等待）");
                 return false;
             }
             catch (Exception ex)
             {
-                Diagnostics.Log($"[NativeWindow] 操作异常: {ex.Message}");
+                Diagnostics.Log($"[NativeWindow] {what} 异常: {ex.Message}");
                 return false;
             }
         }
@@ -259,7 +289,6 @@ namespace EdgeRebuild.Core
         public async Task CloseAsync()
         {
             if (IsClosed) return;
-            IsClosed = true;
 
             try
             {
@@ -279,8 +308,43 @@ namespace EdgeRebuild.Core
                 Diagnostics.Log($"[NativeWindow] CloseAsync 异常: {ex.Message}");
             }
 
-            Closed?.Invoke(this);
+            RaiseClosed();
             Dispose();
+        }
+
+        /// <summary>关闭信号去重入口（CoreWindow.Closed / ApplicationView.Consolidated 共用）。</summary>
+        internal void RaiseClosed()
+        {
+            if (IsClosed) return;
+            IsClosed = true;
+            Closed?.Invoke(this);
+        }
+
+        /// <summary>
+        /// 视图线程专用 SynchronizationContext：把 await 续体投回该视图的 CoreDispatcher，
+        /// 否则续体落在进程线程池上，访问本线程创建的 XAML 对象会 0x8001010E。
+        /// </summary>
+        private sealed class ViewSyncContext : SynchronizationContext
+        {
+            private readonly CoreDispatcher _dispatcher;
+            public ViewSyncContext(CoreDispatcher dispatcher) { _dispatcher = dispatcher; }
+
+            public override void Post(SendOrPostCallback d, object state)
+                => _ = _dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => d(state));
+
+            public override void Send(SendOrPostCallback d, object state)
+            {
+                if (_dispatcher.HasThreadAccess) { d(state); return; }
+                var tcs = new TaskCompletionSource<object>();
+                _ = _dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                {
+                    try { d(state); tcs.SetResult(null); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                tcs.Task.GetAwaiter().GetResult();
+            }
+
+            public override SynchronizationContext CreateCopy() => this;
         }
 
         public void Dispose()

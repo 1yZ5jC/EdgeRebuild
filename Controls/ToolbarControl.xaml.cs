@@ -82,7 +82,13 @@ namespace EdgeRebuild.Controls
             Random rand = new Random();
             UrlBox.PlaceholderText = placeholders[rand.Next(placeholders.Length)];
 
+            var uiThread = Environment.CurrentManagedThreadId;
+            var uiDispatcher = Dispatcher;
             _searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
+            Services.Diagnostics.Log($"[Toolbar] OnLoaded续体 thread={Environment.CurrentManagedThreadId} " +
+                $"(await前线程={uiThread}) " +
+                $"ctx={(System.Threading.SynchronizationContext.Current?.GetType().Name ?? "NULL")} " +
+                $"hasAccess={uiDispatcher.HasThreadAccess}");
             SettingsManager.SettingChanged += OnSettingChanged;
             UpdateSearchEngineIndicator();
 

@@ -67,7 +67,13 @@ namespace EdgeRebuild
         {
             Diagnostics.Log($"[Demo] 初始化 slot={_slot} thread={Environment.CurrentManagedThreadId}");
 
+            var uiThread = Environment.CurrentManagedThreadId;
+            var uiDispatcher = Dispatcher;
             string eng = await SettingsManager.GetAsync("DefaultEngine") ?? "EdgeHtml";
+            Diagnostics.Log($"[Demo] GetAsync后续体 thread={Environment.CurrentManagedThreadId} " +
+                $"(await前线程={uiThread}) " +
+                $"ctx={(System.Threading.SynchronizationContext.Current?.GetType().Name ?? "NULL")} " +
+                $"hasAccess={uiDispatcher.HasThreadAccess} slot={_slot}");
             _defaultEngine = eng == "WebView2" ? EngineType.WebView2 : EngineType.EdgeHtml;
 
             _tabManager = new TabManager
@@ -205,6 +211,13 @@ namespace EdgeRebuild
 
         private void OnThemeChanged(SkinManager.SkinColors colors, bool isDark)
         {
+            // 原生多视图模式下事件可能在别的窗口线程触发，回派到本页线程
+            if (!Dispatcher.HasThreadAccess)
+            {
+                _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
+                    () => OnThemeChanged(colors, isDark));
+                return;
+            }
             toolbar.ApplySkin(colors, isDark);
             _tabManager?.UpdateTheme(colors);
         }
@@ -312,6 +325,13 @@ namespace EdgeRebuild
 
         private void OnSlotActivated(int slot)
         {
+            // SlotActivated 由触发线程同步广播；原生多视图下必须回派到本页线程
+            if (!Dispatcher.HasThreadAccess)
+            {
+                _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal,
+                    () => OnSlotActivated(slot));
+                return;
+            }
             ActiveText.Text = $"激活槽位：{slot}" + (slot == _slot ? "（本窗口）" : "");
         }
     }
