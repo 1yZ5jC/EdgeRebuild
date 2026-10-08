@@ -11,6 +11,14 @@ namespace EdgeRebuild.Core
         public bool IsMetro { get; set; }
         public bool IsInPrivate { get; set; }
 
+        /// <summary>
+        /// 窗口呈现方案（由 NativeWindow.Create*Async 在 Navigate 之前写入，供页面显示在调试条）：
+        /// "NativeView" = CoreApplication.CreateNewView 独立 UI 线程；
+        /// "AppWindow"  = AppWindow + ElementCompositionPreview 同线程；
+        /// 主窗口不走 NewWindowArgs，保持 null → 页面显示"主窗口"。
+        /// </summary>
+        public string Presentation { get; set; }
+
         /// <summary>本窗口的会话槽位（1..n；主窗口恒 0）。</summary>
         public int SessionSlot { get; set; }
 

@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Navigation;
 using Windows.UI.WindowManagement;
 using EdgeRebuild.Controls;
@@ -13,9 +15,10 @@ namespace EdgeRebuild
 {
     /// <summary>
     /// 多窗口 Demo 页。
-    /// 本轮已恢复：地址栏工具栏（ToolbarControl）+ 浏览器窗体（TabManager 单标签网页区域）。
-    /// 暂未恢复：标签条、收藏夹栏、Hub/设置面板、网页捕获、快捷键、会话持久化。
+    /// 已恢复：地址栏工具栏（ToolbarControl）、标签条、浏览器窗体（TabManager）。
+    /// 暂未恢复：收藏夹栏、Hub/设置面板、网页捕获、快捷键、会话持久化。
     /// 主窗口 slot=0（App 直接导航），副窗口 slot=1..n（WindowManager 分配）。
+    /// 底部调试条显示本窗口的呈现方案（原生多视图 / AppWindow 同线程 / 主窗口）。
     /// </summary>
     public sealed partial class DemoPage : Page
     {
@@ -25,7 +28,9 @@ namespace EdgeRebuild
         private TabManager _tabManager;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
         private string _pendingUrl;
+        private string _presentation;
         private bool _isEngineSwitching;
+        private bool _setupStarted;
 
         public DemoPage()
         {
@@ -42,6 +47,7 @@ namespace EdgeRebuild
                 _slot = args.SessionSlot;
                 _appWindow = args.AppWindow;
                 _pendingUrl = args.Url;
+                _presentation = args.Presentation;
             }
         }
 
@@ -51,8 +57,13 @@ namespace EdgeRebuild
 
         private async void OnPageLoaded(object sender, RoutedEventArgs e)
         {
-            if (_tabManager == null)
+            // 必须在第一个 await 之前同步占位：SetupAsync 里 _tabManager 的赋值晚于
+            // await SettingsManager，期间 Loaded 再次触发会跑两遍，开出重复标签
+            if (!_setupStarted)
+            {
+                _setupStarted = true;
                 await SetupAsync();
+            }
 
             if (!_bound)
             {
@@ -91,13 +102,16 @@ namespace EdgeRebuild
             _tabManager.TabCanGoForwardChanged += OnTabGoForwardChanged;
             _tabManager.TabCountChanged += OnTabCountChanged;
 
-            toolbar.ApplySkin(ThemeManager.Colors, ThemeManager.IsDarkTheme);
+            var colors = ThemeManager.Colors;
+            toolbar.ApplySkin(colors, ThemeManager.IsDarkTheme);
+            TabBarBorder.Background = TabStripBrush(ThemeManager.IsDarkTheme);
             ThemeManager.ThemeChanged += OnThemeChanged;
 
             string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
             string url = string.IsNullOrEmpty(_pendingUrl) ? homeUrl : _pendingUrl;
             await _tabManager.CreateTabAsync(_defaultEngine, url);
 
+            UpdateModeText();
             Diagnostics.Log($"[Demo] 首个标签 engine={_defaultEngine} url={url}");
         }
 
@@ -176,9 +190,40 @@ namespace EdgeRebuild
 
         private void OnTabCountChanged(int count)
         {
+            UpdateModeText();
             // 关掉最后一个标签 → 重建一个空标签（引擎切换时由 _isEngineSwitching 屏蔽）
             if (count == 0 && !_isEngineSwitching)
                 _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
+        }
+
+        // ================================================================
+        //  底部调试条：窗口呈现方案
+        // ================================================================
+
+        private void UpdateModeText()
+        {
+            ModeText.Text =
+                $"{PresentationLabel()} · 线程 {Environment.CurrentManagedThreadId}" +
+                $" · slot {_slot} · 标签 {_tabManager?.Tabs.Count ?? 0}";
+        }
+
+        private string PresentationLabel() => _presentation switch
+        {
+            nameof(NativeWindow.WindowMode.NativeView) => "原生多视图 CreateNewView",
+            nameof(NativeWindow.WindowMode.AppWindow) => "AppWindow 同线程",
+            _ => "主窗口"
+        };
+
+        private static Brush TabStripBrush(bool isDark)
+            => new SolidColorBrush(isDark
+                ? Color.FromArgb(0xFF, 0x20, 0x20, 0x20)
+                : Color.FromArgb(0xFF, 0xF2, 0xF2, 0xF2));
+
+        private async void OnNewTab(object sender, RoutedEventArgs e)
+        {
+            if (_tabManager == null) return;
+            await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
+            SetFocusToContent();
         }
 
         private void ApplyNavState(IBrowserTab tab)
@@ -219,6 +264,7 @@ namespace EdgeRebuild
                 return;
             }
             toolbar.ApplySkin(colors, isDark);
+            TabBarBorder.Background = TabStripBrush(isDark);
             _tabManager?.UpdateTheme(colors);
         }
 

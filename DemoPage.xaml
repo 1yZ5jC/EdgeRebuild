@@ -6,14 +6,44 @@
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="34"/>
             <RowDefinition Height="40"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 地址栏工具栏（本轮恢复） -->
+        <!-- 标签条（本轮加入）：TabManager 在代码里往 TabBarPanel 塞标签 -->
+        <Border x:Name="TabBarBorder" Grid.Row="0"
+                BorderBrush="#40000000" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ScrollViewer Grid.Column="0"
+                              HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled"
+                              Background="Transparent"
+                              VerticalAlignment="Stretch"
+                              HorizontalScrollMode="Enabled">
+                    <StackPanel x:Name="TabBarPanel"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Stretch"
+                                Background="Transparent"/>
+                </ScrollViewer>
+                <Button x:Name="NewTabBtn" Grid.Column="1"
+                        Content="+"
+                        Width="34" Height="30"
+                        VerticalAlignment="Center"
+                        Margin="2,0,4,0"
+                        Click="OnNewTab"
+                        ToolTipService.ToolTip="新建标签页"/>
+            </Grid>
+        </Border>
+
+        <!-- 地址栏工具栏 -->
         <controls:ToolbarControl x:Name="toolbar"
-                                 Grid.Row="0"
+                                 Grid.Row="1"
                                  UrlSubmitted="OnUrlSubmitted"
                                  BackRequested="OnBackRequested"
                                  ForwardRequested="OnForwardRequested"
@@ -21,28 +51,35 @@
                                  EngineSwitched="OnEngineSwitched"
                                  MenuClicked="OnMenuClicked"/>
 
-        <!-- 标签条占位：TabManager 需要此面板，本轮暂不显示（下一轮恢复） -->
-        <StackPanel x:Name="TabBarPanel" Grid.Row="0"
-                    Orientation="Horizontal"
-                    Visibility="Collapsed"/>
+        <!-- 浏览器窗体：网页区域 -->
+        <Grid x:Name="ContentContainer" Grid.Row="2" Background="White"/>
 
-        <!-- 浏览器窗体：网页区域（本轮恢复） -->
-        <Grid x:Name="ContentContainer" Grid.Row="1" Background="White"/>
-
-        <!-- Demo 状态条 -->
-        <Border Grid.Row="2"
+        <!-- Demo 状态/调试条 -->
+        <Border Grid.Row="3"
                 BorderBrush="#40000000" BorderThickness="0,1,0,0"
                 Padding="10,6">
             <Grid>
-                <StackPanel Orientation="Horizontal" Spacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                     <Button x:Name="NewWindowBtn" Content="打开新窗口" Click="OnNewWindow"/>
-                    <TextBlock x:Name="TitleText" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TitleText" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                     <TextBlock x:Name="ActiveText" VerticalAlignment="Center" Opacity="0.7"/>
                 </StackPanel>
-                <TextBlock x:Name="LogText"
-                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                           FontSize="11" Opacity="0.45"
-                           Text="日志：LocalState\crash.log"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14"
+                            HorizontalAlignment="Right">
+                    <TextBlock x:Name="ModeText" VerticalAlignment="Center"
+                               FontSize="11" Opacity="0.75"/>
+                    <TextBlock x:Name="LogText"
+                               VerticalAlignment="Center"
+                               FontSize="11" Opacity="0.45"
+                               Text="日志：LocalState\crash.log"/>
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

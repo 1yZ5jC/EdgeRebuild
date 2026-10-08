@@ -65,6 +65,9 @@ namespace EdgeRebuild.Core
                 var view = CoreApplication.CreateNewView();
                 win.CoreView = view;
 
+                if (navigationArg is NewWindowArgs nwaNative)
+                    nwaNative.Presentation = WindowMode.NativeView.ToString();
+
                 var tcs = new TaskCompletionSource<bool>();
                 await view.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                 {
@@ -146,7 +149,10 @@ namespace EdgeRebuild.Core
 
                 // 必须在 Navigate 之前设置：MainPage.OnNavigatedTo 读取 args.AppWindow
                 if (navigationArg is NewWindowArgs nwa)
+                {
                     nwa.AppWindow = appWindow;
+                    nwa.Presentation = WindowMode.AppWindow.ToString();
+                }
 
                 win.Frame = new Frame();
                 win.Frame.Navigate(pageType, navigationArg);
