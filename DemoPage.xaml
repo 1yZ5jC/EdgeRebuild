@@ -12,13 +12,12 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题栏拖拽区：ExtendViewIntoTitleBar 之后顶部这行就是标题栏（与 MainPage 同构） -->
-        <Border x:Name="TitleBarHost" Grid.Row="0" Background="Transparent">
-            <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
-                       HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-        </Border>
+        <!-- 顶部亚克力背景：ExtendViewIntoTitleBar 之后这一行就是标题栏 -->
+        <Border x:Name="TitleBarHost" Grid.Row="0" Background="Transparent"/>
 
-        <!-- 标签条：覆盖在标题栏拖拽区上，TabManager 在代码里往 TabBarPanel 塞标签 -->
+        <!-- 标签条：TabManager 在代码里往 TabBarPanel 塞标签。
+             注意 TitleBarDragArea 必须放在 ScrollViewer 内容里——否则空白处命中的是
+             ScrollViewer 自身，会盖掉 Window.SetTitleBar，标签条就拖不动窗口了 -->
         <Border x:Name="TabBarBorder" Grid.Row="0">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -30,9 +29,15 @@
                               VerticalScrollBarVisibility="Disabled"
                               VerticalAlignment="Stretch"
                               HorizontalScrollMode="Enabled">
-                    <StackPanel x:Name="TabBarPanel"
-                                Orientation="Horizontal"
-                                VerticalAlignment="Stretch"/>
+                    <Grid VerticalAlignment="Stretch">
+                        <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
+                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                        <!-- 标签在拖拽区之上，命中优先，点击照常可用 -->
+                        <StackPanel x:Name="TabBarPanel"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Stretch"/>
+                    </Grid>
                 </ScrollViewer>
                 <!-- 右侧留 142px 给系统标题栏按钮（隐藏标题栏后仍会悬浮在顶部右角） -->
                 <Button x:Name="NewTabBtn" Grid.Column="1"
