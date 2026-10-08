@@ -54,11 +54,16 @@
 - [x] A4 [-] Win+Z 键盘唤出：**放弃**——Win11 中 Win+Z 被系统抢占为贴靠布局，无法可靠拦截
 - [x] A5 [-] 超时自动隐藏：**不加**——真实 8.1 为 light-dismiss（点外即收），我们已一致
 
-## 多窗口稳定性（AppWindow 模型 + 会话槽位化；真·多视图实验结论见下）
-- [x] MW0 **真·多视图实验（已回退）**：CoreApplication.CreateNewView 在本机环境
-      TryShowAsStandaloneAsync 无限挂起、SwitchAsync 无法上屏、DisableSystemViewActivationPolicy
-      无效——窗口永不显示。结论：UWP 多视图在此机器/运行时组合不可用；
-      **迁移 WinUI 3（每窗口原生 HWND + AppWindow.Activated 原生事件）是获得真正多窗的正途**。
+## 多窗口稳定性（AppWindow 模型 + 会话槽位化）
+- [x] MW0 **真·多视图 CreateNewView 已打通（2026-10-08，分支 `feature/multi-window-rewrite`）**：
+      此前判定「UWP 多视图在此机器不可用、须迁 WinUI 3」的结论**作废**——当时被两个 bug 假阻塞：
+      ① `viewId` 用 `-1` 哨兵而 `ApplicationView.Id` 是负数，`TryShowAsStandaloneAsync` 从未执行；
+      ② `CreateNewView` 线程无 `SynchronizationContext`，`await` 续体掉线程池碰 XAML 即
+      `RPC_E_WRONG_THREAD` 静默崩溃。修复后原生多视图窗口上屏、关闭、清理全链路验证通过。
+      详细问题清单（15 条：现象/根因/修复/回归验证 + 反向集成 review 清单）见
+      **`docs/multiview-solved-issues.md`**。当前 `PreferNativeView = true`，
+      AppWindow 同线程方案保留为回退分支。
+
 - [x] MW1 快捷键焦点守卫：AppWindow 同线程模式采用「GotFocus 上报槽位 + WindowManager
       广播 + IsFocusedWindow 双重判定」（失活窗口焦点元素残留问题）
 - [x] MW2 关闭副窗口禁用全局快捷键：核查后**非缺陷**——ShortcutManager.Enable/Disable 为引用计数
