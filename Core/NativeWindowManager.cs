@@ -71,6 +71,10 @@ namespace EdgeRebuild.Core
         public static async Task<bool> OpenMetroWindowAsync(EngineType engine, string url)
             => await OpenCoreAsync(engine, url, typeof(MetroPage), true, false);
 
+        /// <summary>多窗口 Demo：开一个新的 DemoPage 独立窗口（不写会话）。</summary>
+        public static async Task<bool> OpenDemoWindowAsync()
+            => await OpenCoreAsync(EngineType.EdgeHtml, "about:blank", typeof(DemoPage), false, false);
+
         // ================================================================
         //  核心开窗流程
         // ================================================================
@@ -83,7 +87,9 @@ namespace EdgeRebuild.Core
                 Diagnostics.Log($"[NativeWM] 开窗 page={pageType.Name} url={url} restoreSlot={restoreSlot}");
 
                 bool participates = pageType == typeof(MainPage) && !isInPrivate;
-                int slot = (restoreSlot >= 1) ? restoreSlot : AllocateSlot(participates);
+                // Demo 窗口同样分配槽位（便于界面区分），但不写会话
+                bool needSlot = participates || pageType == typeof(DemoPage);
+                int slot = (restoreSlot >= 1) ? restoreSlot : AllocateSlot(needSlot);
 
                 var args = new NewWindowArgs
                 {
@@ -95,27 +101,30 @@ namespace EdgeRebuild.Core
                     RestoreSlot = restoreSlot
                 };
 
-                // ---- 策略 1：原生独立视图（仅 PreferNativeView=true 时尝试）----
-                if (PreferNativeView)
-                {
-                    var nativeWin = await NativeWindow.CreateNativeViewAsync(pageType, args, slot);
-                    if (nativeWin != null)
-                    {
-                        bool shown = await nativeWin.ShowAsync(timeoutMs: 2500);
-                        if (shown)
-                        {
-                            RegisterWindow(nativeWin, slot, participates, pageType, isInPrivate);
-                            Diagnostics.Log($"[NativeWM] ✅ 原生视图窗口成功 slot={slot}");
-                            return true;
-                        }
-                        Diagnostics.Log($"[NativeWM] 原生视图展示失败，回退 AppWindow slot={slot}");
-                        // 不 await：视图从未上屏时其线程可能不再泵消息，
-                        // Dispatcher.RunAsync 会永久挂起，把后续开窗一起堵死
-                        _ = CloseQuietlyAsync(nativeWin);
-                    }
-                }
+                // ---- 策略 1：原生独立视图（CreateNewView）—— Demo 阶段整体停用 ----
+                // 停用原因：未上屏的视图线程不再泵消息，回退时 CloseAsync 里的
+                // Dispatcher.RunAsync 会永久挂起，把后续开窗一起堵死（见 crash.log 21:18）。
+                // 恢复方法：去掉本段注释，并把 PreferNativeView 置 true。
+                //if (PreferNativeView)
+                //{
+                //    var nativeWin = await NativeWindow.CreateNativeViewAsync(pageType, args, slot);
+                //    if (nativeWin != null)
+                //    {
+                //        bool shown = await nativeWin.ShowAsync(timeoutMs: 2500);
+                //        if (shown)
+                //        {
+                //            RegisterWindow(nativeWin, slot, participates, pageType, isInPrivate);
+                //            Diagnostics.Log($"[NativeWM] ✅ 原生视图窗口成功 slot={slot}");
+                //            return true;
+                //        }
+                //        Diagnostics.Log($"[NativeWM] 原生视图展示失败，回退 AppWindow slot={slot}");
+                //        // 不 await：视图从未上屏时其线程可能不再泵消息，
+                //        // Dispatcher.RunAsync 会永久挂起，把后续开窗一起堵死
+                //        _ = CloseQuietlyAsync(nativeWin);
+                //    }
+                //}
 
-                // ---- 策略 2：AppWindow（默认路径）----
+                // ---- 策略 2：AppWindow（Demo 当前唯一通路）----
                 Diagnostics.Log($"[NativeWM] 进入 AppWindow 路径 slot={slot}");
                 var fallback = await NativeWindow.CreateAppWindowAsync(pageType, args, slot);
                 if (fallback == null)

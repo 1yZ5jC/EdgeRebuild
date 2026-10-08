@@ -100,22 +100,25 @@ namespace EdgeRebuild
                         return;
                     }
 
-                    // 各数据源加载互相独立：单项失败只降级该功能，不阻断启动
-                    foreach (var (name, load) in new (string, Func<Task>)[]
-                    {
-                        ("收藏夹", () => FavoritesManager.Instance.LoadAsync()),
-                        ("稍后读", () => ReadingListManager.Instance.LoadAsync()),
-                        ("历史记录", () => HistoryManager.LoadAsync()),
-                        ("下载记录", () => DownloadManager.LoadDownloadsAsync()),
-                        ("集锦", () => CollectionManager.Instance.LoadGroupsAsync())
-                    })
-                    {
-                        try { await load(); }
-                        catch (Exception ex) { Services.Diagnostics.Log($"[启动] {name}加载失败（已降级）: {ex.Message}"); }
-                    }
+                    // ---- Demo 阶段：数据源加载全部停用（MainPage 未参与启动）----
+                    // 恢复方法：去掉下面整段注释。
+                    //foreach (var (name, load) in new (string, Func<Task>)[]
+                    //{
+                    //    ("收藏夹", () => FavoritesManager.Instance.LoadAsync()),
+                    //    ("稍后读", () => ReadingListManager.Instance.LoadAsync()),
+                    //    ("历史记录", () => HistoryManager.LoadAsync()),
+                    //    ("下载记录", () => DownloadManager.LoadDownloadsAsync()),
+                    //    ("集锦", () => CollectionManager.Instance.LoadGroupsAsync())
+                    //})
+                    //{
+                    //    try { await load(); }
+                    //    catch (Exception ex) { Services.Diagnostics.Log($"[启动] {name}加载失败（已降级）: {ex.Message}"); }
+                    //}
                     ThemeManager.Initialize();
 
-                    rootFrame.Navigate(typeof(MainPage), e.Arguments);
+                    // Demo：主窗口只挂一个极简 DemoPage，浏览器主窗（MainPage）
+                    // 与会话恢复暂不参与启动。副窗口由 DemoPage 按钮经 WindowManager 打开。
+                    rootFrame.Navigate(typeof(DemoPage), e.Arguments);
                 }
                 Window.Current.Activate();
             }

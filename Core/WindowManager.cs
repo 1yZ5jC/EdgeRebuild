@@ -50,6 +50,13 @@ namespace EdgeRebuild.Core
         public static Task<bool> OpenMetroWindowAsync(EngineType engine, string url)
             => NativeWindowManager.OpenMetroWindowAsync(engine, url);
 
+        /// <summary>多窗口 Demo：开一个新的 DemoPage 独立窗口。</summary>
+        public static Task<bool> OpenDemoWindowAsync()
+            => NativeWindowManager.OpenDemoWindowAsync();
+
+        /// <summary>已注册的副窗口数（Demo 界面诊断用）。</summary>
+        public static int WindowCount => NativeWindowManager.WindowCount;
+
         public static Task RestoreSecondaryWindowsAsync()
             => NativeWindowManager.RestoreSecondaryWindowsAsync();
     }
