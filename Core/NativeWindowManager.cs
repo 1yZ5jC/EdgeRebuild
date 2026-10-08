@@ -73,7 +73,7 @@ namespace EdgeRebuild.Core
 
         /// <summary>多窗口 Demo：开一个新的 DemoPage 独立窗口（不写会话）。</summary>
         public static async Task<bool> OpenDemoWindowAsync()
-            => await OpenCoreAsync(EngineType.EdgeHtml, "about:blank", typeof(DemoPage), false, false);
+            => await OpenCoreAsync(EngineType.EdgeHtml, "", typeof(DemoPage), false, false);
 
         // ================================================================
         //  核心开窗流程
@@ -189,6 +189,7 @@ namespace EdgeRebuild.Core
                 // 页面清理由 Frame 承担
                 (w.Frame?.Content as MainPage)?.Shutdown();
                 (w.Frame?.Content as MetroPage)?.Shutdown();
+                (w.Frame?.Content as DemoPage)?.Shutdown();
                 w.Frame = null;
             };
 
