@@ -78,6 +78,10 @@
     <PackageReference Include="Microsoft.UI.Xaml" Version="2.8.7" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="sqlite-net-pcl" Version="1.11.285" />
+    <!-- AOT 原生编译：显式钉到 9.0.20，与运行时包(microsoft.netcore.app.runtime.win-x86 9.0.20)对齐，
+         解决 “Overriding System.Private.CoreLib.dll with a newer version is not supported”
+         （SDK 隐式拉到的 ILCompiler 为 9.0.19，与运行时 9.0.20 差一个补丁号）。 -->
+    <PackageReference Include="Microsoft.DotNet.ILCompiler" Version="9.0.20" />
   </ItemGroup>
   <ItemGroup>
     <PRIResource Remove="docs\**" />
