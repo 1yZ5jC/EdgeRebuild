@@ -168,16 +168,23 @@
 
 ## F. 反向集成 review 清单（合并到 `master` 前）
 
-分支领先 `master` **7 个提交、0 落后**，差异 8 个文件（+1273 / -151），**可直接 merge 无冲突**。但需按四类分别处理：
+分支领先 `master` **9 个提交、0 落后**，差异 18 个文件（+1984 / -259），**可直接 fast-forward 无冲突**。四类处理结果如下（2026-10-09 复核）：
 
 | 类别 | 文件 | 处理 |
 |---|---|---|
-| ① 基建（直接合） | `Core/NativeWindow.cs`（363 行，新增）、`Core/NativeWindowManager.cs`（243 行，新增）、`Core/WindowManager.cs`（改为委托）、`Controls/ToolbarControl.xaml.cs`（跨线程 marshal）、`Services/WindowGeometryManager.cs`（65 行，新增） | ✅ 合入 |
-| ② 崩溃兜底（直接合） | `App.xaml.cs` 的 `AppDomain.UnhandledException`、`TaskScheduler.UnobservedTaskException`、`Window.Current.Closed` 日志 | ✅ 合入 |
-| ③ Demo 状态（合前还原） | `App.xaml.cs:114-125` **注释掉的数据源加载**、`App.xaml.cs:130` **`Navigate(typeof(DemoPage))` 应改回 `MainPage`** | ⚠️ 合并前还原 |
-| ④ DemoPage | `DemoPage.xaml` / `DemoPage.xaml.cs`（新增 95 + 437 行） | 待决策：作为启动页合入 / 保留但不启动 / 不合 |
+| ① 基建（直接合） | `Core/NativeWindow.cs`（364 行，新增）、`Core/NativeWindowManager.cs`（243 行，新增）、`Core/WindowManager.cs`（改为委托）、`Controls/ToolbarControl.xaml.cs`（跨线程 marshal）、`Services/WindowGeometryManager.cs`（65 行，新增） | ✅ 已合入 |
+| ② 崩溃兜底（直接合） | `App.xaml.cs` 的 `AppDomain.UnhandledException`、`TaskScheduler.UnobservedTaskException`、`Window.Current.Closed` 日志 | ✅ 已合入 |
+| ③ Demo 状态（合前还原） | ~~`App.xaml.cs` 注释掉的数据源加载~~ → 现为 `App.xaml.cs:115-126` 主动加载 5 个数据源；~~`Navigate(typeof(DemoPage))`~~ → 现为 `App.xaml.cs:131` **`Navigate(typeof(MainPage))`** | ✅ 已还原 |
+| ④ DemoPage | `DemoPage.xaml` / `DemoPage.xaml.cs`（新增 180 + 622 行） | ✅ 决策：**保留但不作启动页**——由主菜单「打开多窗口测试页」经 `WindowManager.OpenDemoWindowAsync()` 进入 |
 
-**合并决策待定**，本分支暂不合并（2026-10-08 决定：先写文档）。
+**启动页切换验证（2026-10-09 12:46–13:00，Debug/x86，`exit=0`）**：
+
+1. 冷启动 → 主窗口渲染 **MainPage**（标签条 + 工具栏 + 新标签页），不再是 Demo 状态栏 ✅
+2. 主菜单出现新项 **「打开多窗口测试页」**（`AppMenuManager` 菜单项，位于「打开 Metro IE 窗口」之后）→ 点击开 Demo 副窗口 `slot=1 thread=12` ✅
+3. Demo 状态栏 `MainPageWinBtn` → MainPage 副窗口 `slot=2 thread=16`，`OnLoaded 完成`、`已注册副窗口=2`、进程存活、**无 0x8001010E**（G2 回归通过）✅
+4. 杀进程重启 → 主窗口重建 slot=0 标签 + **`[NativeWM] 恢复副窗口 slot=2` 自动重建**（此项此前无入口：`RestoreSecondaryWindowsAsync` 只在 `MainPage.xaml.cs:457` 调用，启动页是 Demo 时从不执行）✅
+
+**合并方式**：本地 fast-forward 后推送 `EdgeRebuild/master`（2026-10-09 决定）。
 
 ---
 

@@ -126,9 +126,11 @@ namespace EdgeRebuild
                     }
                     ThemeManager.Initialize();
 
-                    // Demo：主窗口只挂一个极简 DemoPage，浏览器主窗（MainPage）
-                    // 与会话恢复暂不参与启动。副窗口由 DemoPage 按钮经 WindowManager 打开。
-                    rootFrame.Navigate(typeof(DemoPage), e.Arguments);
+                    // 启动页 = 浏览器主窗 MainPage（slot=0）：
+                    // OnNavigatedTo 里走主窗口分支 → 恢复 slot=0 会话 →
+                    // RestoreSecondaryWindowsAsync 按持久化槽位重建副窗口。
+                    // 多窗口测试页 DemoPage 由菜单「打开多窗口测试页」经 WindowManager 进入。
+                    rootFrame.Navigate(typeof(MainPage), e.Arguments);
                 }
                 // 主窗口（slot=0）不经 NativeWindowManager.RegisterWindow，
                 // 关闭时不会有任何 [NativeWM] 窗口关闭 日志——这里补一条，

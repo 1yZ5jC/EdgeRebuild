@@ -339,7 +339,8 @@ namespace EdgeRebuild
                     () => ReadAloudService.IsActive
                         ? (ReadAloudService.IsPaused ? "继续朗读" : "停止朗读")
                         : "大声朗读",
-                    ToggleReadAloud
+                    ToggleReadAloud,
+                    () => { _ = WindowManager.OpenDemoWindowAsync(); }
                 );
 
                 // ---- 为所有标签附加拖拽事件 ----

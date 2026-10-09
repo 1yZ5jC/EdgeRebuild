@@ -40,6 +40,7 @@ namespace EdgeRebuild.Core
         private readonly Action _onToggleReaderMode;
         private readonly Func<string> _getReadAloudLabel;
         private readonly Action _onToggleReadAloud;
+        private readonly Action _onOpenDemoWindow;
 
         public AppMenuManager(
             TabManager tabManager,
@@ -71,7 +72,8 @@ namespace EdgeRebuild.Core
             Func<bool> isReaderModeActive,
             Action onToggleReaderMode,
             Func<string> getReadAloudLabel,
-            Action onToggleReadAloud)
+            Action onToggleReadAloud,
+            Action onOpenDemoWindow = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -103,6 +105,7 @@ namespace EdgeRebuild.Core
             _onToggleReaderMode = onToggleReaderMode;
             _getReadAloudLabel = getReadAloudLabel;
             _onToggleReadAloud = onToggleReadAloud;
+            _onOpenDemoWindow = onOpenDemoWindow;
         }
 
         public MenuFlyout BuildMenu()
@@ -143,6 +146,11 @@ namespace EdgeRebuild.Core
             var metroWindowItem = new MenuFlyoutItem { Text = "打开 Metro IE 窗口" };
             metroWindowItem.Click += (_, _) => _onOpenMetroWindow?.Invoke();
             menu.Items.Add(metroWindowItem);
+
+            // 多窗口测试页（Demo）：标签条 + 副窗口按钮（MainPageWinBtn）
+            var demoWindowItem = new MenuFlyoutItem { Text = "打开多窗口测试页" };
+            demoWindowItem.Click += (_, _) => _onOpenDemoWindow?.Invoke();
+            menu.Items.Add(demoWindowItem);
             menu.Items.Add(new MenuFlyoutSeparator());
 
             // 缩放子菜单

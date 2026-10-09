@@ -83,6 +83,8 @@
       标签条行改 4 列 `Auto/Auto/Auto/*` + 溢出左右滚动按钮 + `DragCanvas` + 垫底 `TitleBarDragArea`；
       真实鼠标验证通过（新建/右键 7 项/拖拽排序/拖出/标题栏拖拽），详见 I 节
 - [x] Phase 2 数据源加载：还原 `App.xaml.cs:114-125` 注释（5 项各自 try/catch 降级；启动日志无「加载失败」）
+- [x] Phase 2.5 启动页改 `MainPage`（`App.xaml.cs:131`）+ 主菜单加「打开多窗口测试页」进 Demo；
+      重启后 `RestoreSecondaryWindowsAsync` 生效（启动页是 Demo 时该路径从不执行）。验证见 F 节
 - [ ] Phase 3 悬停缩略图预览 + Pin 固定标签（`MainPage.xaml.cs:1367-1451`、`TogglePinTabAsync`）
 - [ ] Phase 4 收藏夹栏（→5 行布局）+ 快捷键（`ShortcutManager` 按页 KeyDown）
 - [ ] Phase 5 垂直标签侧栏（`VerticalTabSidebar` + `ApplyVerticalTabs`）
