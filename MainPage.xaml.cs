@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
 using Windows.ApplicationModel.DataTransfer;
@@ -18,9 +17,9 @@ using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Pickers;
 using Windows.Storage.Streams;
+using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
-using Windows.UI.ViewManagement;
 using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -28,8 +27,6 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
-using Windows.System;
-
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
 
 namespace EdgeRebuild
@@ -246,11 +243,11 @@ namespace EdgeRebuild
                 );
                 _layoutManager.LayoutUpdated += OnLayoutUpdated;
 
-            // ---- 标签管理器 ----
-            // 多窗口会话：每个 MainPage 窗口持独立 Slot（0=主窗），互不覆盖；
-            // InPrivate 不持久化；MetroPage ParticipatesInSession=false
-            // （_sessionSlot 已在上面的激活态分支里赋值）
-            _tabManager = new TabManager
+                // ---- 标签管理器 ----
+                // 多窗口会话：每个 MainPage 窗口持独立 Slot（0=主窗），互不覆盖；
+                // InPrivate 不持久化；MetroPage ParticipatesInSession=false
+                // （_sessionSlot 已在上面的激活态分支里赋值）
+                _tabManager = new TabManager
                 {
                     IsInPrivateWindow = _isInPrivate,
                     ParticipatesInSession = !_isInPrivate,
@@ -673,15 +670,15 @@ namespace EdgeRebuild
                     _ = CreateNewTabAndFocusAsync();
                     break;
                 case PageShortcutKey.CloseTab:
-                {
-                    var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
-                    if (viewItem != null) _ = _tabManager.CloseTabAsync(viewItem);
-                    break;
-                }
+                    {
+                        var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
+                        if (viewItem != null) _ = _tabManager.CloseTabAsync(viewItem);
+                        break;
+                    }
                 case PageShortcutKey.FocusUrl:
                     toolbarControl.FocusAddressBarAndClear();
                     break;
-                // 主窗口无全屏模式，忽略
+                    // 主窗口无全屏模式，忽略
             }
         }
 
@@ -1071,8 +1068,16 @@ namespace EdgeRebuild
 
         private async Task<byte[]> RenderCaptureCompositeAsync()
         {
+            // 渲染前隐藏裁剪选框/尺寸文字，避免被“烤”进导出图（还原 UI 状态见下方）
+            var cropLayerVisibility = CaptureCropLayer.Visibility;
+            CaptureCropLayer.Visibility = Visibility.Collapsed;
+            CaptureImageGrid.UpdateLayout();
+
             var rtb = new RenderTargetBitmap();
             await rtb.RenderAsync(CaptureImageGrid);
+
+            CaptureCropLayer.Visibility = cropLayerVisibility;   // 还原裁剪框显示状态
+
             var pixels = await rtb.GetPixelsAsync();
             var ras = new InMemoryRandomAccessStream();
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, ras);

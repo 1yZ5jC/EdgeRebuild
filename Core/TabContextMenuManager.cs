@@ -1,4 +1,5 @@
-﻿using System;
+﻿using EdgeRebuild.Services;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.Foundation;
@@ -6,7 +7,6 @@ using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
-using EdgeRebuild.Services;
 
 namespace EdgeRebuild.Core
 {
@@ -52,7 +52,8 @@ namespace EdgeRebuild.Core
             catch { }
         }
 
-        public void ShowTabRightClickMenu(Border tabBorder, TabViewItem viewItem)        {
+        public void ShowTabRightClickMenu(Border tabBorder, TabViewItem viewItem)
+        {
             if (viewItem == null) return;
 
             var menu = new MenuFlyout();

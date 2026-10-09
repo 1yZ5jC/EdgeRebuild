@@ -1,16 +1,15 @@
-using System;
-using System.Linq;
-using System.Threading.Tasks;
-using Windows.UI;
-using Windows.UI.Xaml;
-using Windows.UI.Xaml.Controls;
-using Windows.UI.Xaml.Media;
-using Windows.UI.Xaml.Navigation;
-using Windows.UI.WindowManagement;
-using Windows.ApplicationModel.Core;
 using EdgeRebuild.Controls;
 using EdgeRebuild.Core;
 using EdgeRebuild.Services;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Windows.ApplicationModel.Core;
+using Windows.UI;
+using Windows.UI.WindowManagement;
+using Windows.UI.Xaml;
+using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Navigation;
 
 namespace EdgeRebuild
 {

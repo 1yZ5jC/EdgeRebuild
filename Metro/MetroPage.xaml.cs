@@ -1,15 +1,13 @@
-﻿using System;
+﻿using EdgeRebuild.Core;
+using EdgeRebuild.Services;
+using Microsoft.Web.WebView2.Core;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
-using EdgeRebuild.Core;
-using EdgeRebuild.Services;
-using Microsoft.Web.WebView2.Core;
-using Windows.ApplicationModel.Core;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.System;
-using Windows.UI.ViewManagement;
 using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -1023,7 +1021,7 @@ namespace EdgeRebuild.Metro
 
         private void OpenGrid()
         {
-            MetroDebug($"OpenGrid: 标签数={_tabManager.Tabs.Count} 当前={( _tabManager.CurrentTab == null ? "null" : _tabManager.CurrentTab.Title)}");
+            MetroDebug($"OpenGrid: 标签数={_tabManager.Tabs.Count} 当前={(_tabManager.CurrentTab == null ? "null" : _tabManager.CurrentTab.Title)}");
             _gridOpen = true;
             ShowBottomBar();   // 网格覆盖全屏时保持 chrome 一致
             // 覆盖层始终 Visible(构造即可见,窗口显示时完成首次布局——延迟可见化的

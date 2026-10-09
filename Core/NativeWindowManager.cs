@@ -1,10 +1,9 @@
+using EdgeRebuild.Metro;
+using EdgeRebuild.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.UI.Xaml.Controls;
-using EdgeRebuild.Services;
-using EdgeRebuild.Metro;
 
 namespace EdgeRebuild.Core
 {

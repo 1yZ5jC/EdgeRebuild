@@ -1,7 +1,7 @@
+using EdgeRebuild.Core;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using EdgeRebuild.Core;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;

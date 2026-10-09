@@ -1,6 +1,5 @@
 using EdgeRebuild.Core;
 using System;
-using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.Storage;

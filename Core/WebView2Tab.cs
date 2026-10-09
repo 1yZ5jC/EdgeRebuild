@@ -1,13 +1,12 @@
-﻿using Microsoft.UI.Xaml.Controls;
+﻿using EdgeRebuild.Services;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
-using EdgeRebuild.Services;
 using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
 using Windows.Storage;
-using Windows.UI.Core;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 

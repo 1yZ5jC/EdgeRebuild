@@ -1,6 +1,6 @@
+using EdgeRebuild.Services;
 using Windows.UI;
 using Windows.UI.Xaml.Media;
-using EdgeRebuild.Services;
 
 namespace EdgeRebuild.Metro
 {

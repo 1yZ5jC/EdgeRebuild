@@ -1,10 +1,10 @@
-﻿using System;
+﻿using EdgeRebuild.Services;
+using System;
 using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
-using EdgeRebuild.Services;
 
 namespace EdgeRebuild.Core
 {

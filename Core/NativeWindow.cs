@@ -1,3 +1,4 @@
+using EdgeRebuild.Services;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,7 +7,6 @@ using Windows.UI.Core;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
-using EdgeRebuild.Services;
 
 namespace EdgeRebuild.Core
 {

@@ -1,6 +1,6 @@
+using EdgeRebuild.Services;
 using System;
 using System.Globalization;
-using EdgeRebuild.Services;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 

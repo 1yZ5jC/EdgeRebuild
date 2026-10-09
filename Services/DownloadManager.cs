@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Microsoft.Web.WebView2.Core;
+using SQLite;
+using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -6,8 +8,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Windows.Storage;
 using Windows.Storage.AccessCache;
-using Microsoft.Web.WebView2.Core;
-using SQLite;
 
 namespace EdgeRebuild.Services
 {

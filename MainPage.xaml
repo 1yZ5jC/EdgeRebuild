@@ -394,7 +394,7 @@
 
         <!-- 网页捕获覆盖层：截图 + 画笔批注（保留在可视树中以便 RenderTargetBitmap 合成） -->
         <!-- 网页捕获覆盖层：只覆盖网页区域（Row 2），地址栏/标签栏保持可见，如同旧版 Edge 批注模式 -->
-        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="3" Canvas.ZIndex="90"
+        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="3" Grid.Column="1" Canvas.ZIndex="90"
               Background="#A0000000" Tapped="CaptureOverlay_Tapped">
                 <Border x:Name="CaptureBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
                         BorderBrush="Gray" BorderThickness="1" Padding="12">

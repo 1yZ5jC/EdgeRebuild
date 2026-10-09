@@ -1,5 +1,4 @@
-﻿using Windows.Data.Xml.Dom;
-using Windows.UI.Notifications;
+﻿using Windows.UI.Notifications;
 
 namespace EdgeRebuild.Services
 {

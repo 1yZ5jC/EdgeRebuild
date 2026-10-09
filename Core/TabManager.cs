@@ -1,4 +1,5 @@
-﻿using System;
+﻿using EdgeRebuild.Services;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,8 +10,6 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
-using EdgeRebuild.Services;
-using EdgeRebuild.Controls;   // ToolbarControl.IsNtpUrl（历史记录过滤 NTP 地址）
 
 namespace EdgeRebuild.Core
 {
@@ -165,156 +164,156 @@ namespace EdgeRebuild.Core
             // 无标签条模式（Metro 窗口）：不构建顶部标签 UI，仅内容容器
             if (_tabBarPanel != null && colors != null)
             {
-            var tabBorder = new Border
-            {
-                Height = 32,
-                Background = colors.TabInactiveBackground,
-                BorderBrush = ThemeManager.GetSeparatorBrush(),
-                BorderThickness = new Thickness(0, 0, 1, 0),
-                Padding = new Thickness(4, 0, 4, 0),
-                VerticalAlignment = VerticalAlignment.Stretch,
-                Width = LayoutManager.MaxTabWidth
-            };
+                var tabBorder = new Border
+                {
+                    Height = 32,
+                    Background = colors.TabInactiveBackground,
+                    BorderBrush = ThemeManager.GetSeparatorBrush(),
+                    BorderThickness = new Thickness(0, 0, 1, 0),
+                    Padding = new Thickness(4, 0, 4, 0),
+                    VerticalAlignment = VerticalAlignment.Stretch,
+                    Width = LayoutManager.MaxTabWidth
+                };
 
-            var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
-            tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
+                tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var engineMark = new TextBlock
-            {
-                Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
-                Foreground = tab.Engine == EngineType.EdgeHtml
-                    ? new SolidColorBrush(Colors.DodgerBlue)
-                    : new SolidColorBrush(Colors.MediumSeaGreen),
-                FontSize = 11,
-                FontWeight = Windows.UI.Text.FontWeights.Bold,
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 4, 0)
-            };
-            var faviconPlaceholder = new FontIcon
-            {
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                Glyph = "\xE774",
-                FontSize = 12,
-                Foreground = ThemeManager.GetMutedForegroundBrush(),
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            var faviconImage = new Image
-            {
-                Width = 14,
-                Height = 14,
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed
-            };
-            var titleText = new TextBlock
-            {
-                Text = "新标签页",
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                FontSize = 10,
-                Foreground = colors.ForegroundBrush,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            ToolTipService.SetToolTip(titleText, "新标签页");
+                var engineMark = new TextBlock
+                {
+                    Text = tab.Engine == EngineType.EdgeHtml ? "E" : "W",
+                    Foreground = tab.Engine == EngineType.EdgeHtml
+                        ? new SolidColorBrush(Colors.DodgerBlue)
+                        : new SolidColorBrush(Colors.MediumSeaGreen),
+                    FontSize = 11,
+                    FontWeight = Windows.UI.Text.FontWeights.Bold,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                var faviconPlaceholder = new FontIcon
+                {
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    Glyph = "\xE774",
+                    FontSize = 12,
+                    Foreground = ThemeManager.GetMutedForegroundBrush(),
+                    Margin = new Thickness(0, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var faviconImage = new Image
+                {
+                    Width = 14,
+                    Height = 14,
+                    Margin = new Thickness(0, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Visibility = Visibility.Collapsed
+                };
+                var titleText = new TextBlock
+                {
+                    Text = "新标签页",
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    FontSize = 10,
+                    Foreground = colors.ForegroundBrush,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                ToolTipService.SetToolTip(titleText, "新标签页");
 
-            var suspendedIndicator = new TextBlock
-            {
-                Text = "💤",
-                FontSize = 10,
-                Foreground = ThemeManager.GetMutedForegroundBrush(),
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed
-            };
+                var suspendedIndicator = new TextBlock
+                {
+                    Text = "💤",
+                    FontSize = 10,
+                    Foreground = ThemeManager.GetMutedForegroundBrush(),
+                    Margin = new Thickness(0, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Visibility = Visibility.Collapsed
+                };
 
-            var loadingRing = new ProgressRing
-            {
-                Width = 20,
-                Height = 20,
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed,
-                IsActive = true,
-                RenderTransform = new ScaleTransform { ScaleX = 0.5, ScaleY = 0.5 },
-                RenderTransformOrigin = new Point(0.5, 0.5)
-            };
+                var loadingRing = new ProgressRing
+                {
+                    Width = 20,
+                    Height = 20,
+                    Margin = new Thickness(0, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Visibility = Visibility.Collapsed,
+                    IsActive = true,
+                    RenderTransform = new ScaleTransform { ScaleX = 0.5, ScaleY = 0.5 },
+                    RenderTransformOrigin = new Point(0.5, 0.5)
+                };
 
-            var infoPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            var audioIndicator = new FontIcon
-            {
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                Glyph = "\xE767",   // Volume
-                FontSize = 11,
-                Foreground = ThemeManager.GetMutedForegroundBrush(),
-                Margin = new Thickness(0, 0, 2, 0),
-                VerticalAlignment = VerticalAlignment.Center,
-                Visibility = Visibility.Collapsed
-            };
-            infoPanel.Children.Add(engineMark);
-            infoPanel.Children.Add(faviconPlaceholder);
-            infoPanel.Children.Add(faviconImage);
-            infoPanel.Children.Add(loadingRing);
-            infoPanel.Children.Add(suspendedIndicator);
-            infoPanel.Children.Add(titleText);
-            infoPanel.Children.Add(audioIndicator);
-            Grid.SetColumn(infoPanel, 0);
-            tabPanel.Children.Add(infoPanel);
+                var infoPanel = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var audioIndicator = new FontIcon
+                {
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    Glyph = "\xE767",   // Volume
+                    FontSize = 11,
+                    Foreground = ThemeManager.GetMutedForegroundBrush(),
+                    Margin = new Thickness(0, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Visibility = Visibility.Collapsed
+                };
+                infoPanel.Children.Add(engineMark);
+                infoPanel.Children.Add(faviconPlaceholder);
+                infoPanel.Children.Add(faviconImage);
+                infoPanel.Children.Add(loadingRing);
+                infoPanel.Children.Add(suspendedIndicator);
+                infoPanel.Children.Add(titleText);
+                infoPanel.Children.Add(audioIndicator);
+                Grid.SetColumn(infoPanel, 0);
+                tabPanel.Children.Add(infoPanel);
 
-            var closeBtn = new Button
-            {
-                Content = "\xE711",
-                FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 10,
-                Foreground = colors.MutedForegroundBrush,
-                Background = new SolidColorBrush(Colors.Transparent),
-                BorderThickness = new Thickness(0),
-                Padding = new Thickness(0),
-                Width = 20,
-                Height = 20,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 0, 4, 0)
-            };
-            Grid.SetColumn(closeBtn, 1);
-            tabPanel.Children.Add(closeBtn);
+                var closeBtn = new Button
+                {
+                    Content = "\xE711",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 10,
+                    Foreground = colors.MutedForegroundBrush,
+                    Background = new SolidColorBrush(Colors.Transparent),
+                    BorderThickness = new Thickness(0),
+                    Padding = new Thickness(0),
+                    Width = 20,
+                    Height = 20,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    Margin = new Thickness(0, 0, 4, 0)
+                };
+                Grid.SetColumn(closeBtn, 1);
+                tabPanel.Children.Add(closeBtn);
 
-            // 选中标签顶部强调条（Edge/Fluent 风格，高对比标识当前标签）
-            var accentBar = new Border
-            {
-                Height = 2,
-                VerticalAlignment = VerticalAlignment.Top,
-                Background = colors.AccentBrush ?? new SolidColorBrush(Colors.DodgerBlue),
-                Visibility = Visibility.Collapsed,
-                IsHitTestVisible = false
-            };
+                // 选中标签顶部强调条（Edge/Fluent 风格，高对比标识当前标签）
+                var accentBar = new Border
+                {
+                    Height = 2,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Background = colors.AccentBrush ?? new SolidColorBrush(Colors.DodgerBlue),
+                    Visibility = Visibility.Collapsed,
+                    IsHitTestVisible = false
+                };
 
-            var tabRoot = new Grid();
-            tabRoot.Children.Add(tabPanel);
-            tabRoot.Children.Add(accentBar);
-            tabBorder.Child = tabRoot;
+                var tabRoot = new Grid();
+                tabRoot.Children.Add(tabPanel);
+                tabRoot.Children.Add(accentBar);
+                tabBorder.Child = tabRoot;
 
-            _tabBarPanel.Children.Add(tabBorder);
+                _tabBarPanel.Children.Add(tabBorder);
 
-            viewItem.Container = tabBorder;
-            viewItem.TitleText = titleText;
-            viewItem.CloseButton = closeBtn;
-            viewItem.FaviconImage = faviconImage;
-            viewItem.FaviconPlaceholder = faviconPlaceholder;
-            viewItem.EngineMark = engineMark;
-            viewItem.SuspendedIndicator = suspendedIndicator;
-            viewItem.LoadingRing = loadingRing;
-            viewItem.TabAccentBar = accentBar;
-            viewItem.AudioIndicator = audioIndicator;
-            closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
+                viewItem.Container = tabBorder;
+                viewItem.TitleText = titleText;
+                viewItem.CloseButton = closeBtn;
+                viewItem.FaviconImage = faviconImage;
+                viewItem.FaviconPlaceholder = faviconPlaceholder;
+                viewItem.EngineMark = engineMark;
+                viewItem.SuspendedIndicator = suspendedIndicator;
+                viewItem.LoadingRing = loadingRing;
+                viewItem.TabAccentBar = accentBar;
+                viewItem.AudioIndicator = audioIndicator;
+                closeBtn.Click += (s, e) => _ = CloseTabAsync(viewItem);
 
-            // 悬停缩略图预览（旧版 Edge 标签悬停卡片）：宿主决定是否展示
-            tabBorder.PointerEntered += (s, e) => TabHoverStarted?.Invoke(viewItem);
-            tabBorder.PointerExited += (s, e) => TabHoverEnded?.Invoke(viewItem);
+                // 悬停缩略图预览（旧版 Edge 标签悬停卡片）：宿主决定是否展示
+                tabBorder.PointerEntered += (s, e) => TabHoverStarted?.Invoke(viewItem);
+                tabBorder.PointerExited += (s, e) => TabHoverEnded?.Invoke(viewItem);
             }
 
             var contentBorder = new Border
@@ -438,26 +437,26 @@ namespace EdgeRebuild.Core
         {
             RunOnUiThread(() =>
             {
-                    if (viewItem.FaviconPlaceholder == null || viewItem.FaviconImage == null) return;   // 无标签条模式（Metro）没有 favicon UI（网格卡片自行加载）
-                    if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
-                    {
-                        viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
-                        viewItem.FaviconImage.Visibility = Visibility.Collapsed;
-                        viewItem.FaviconImage.Source = null;
-                        return;
-                    }
-                    try
-                    {
-                        var bitmap = new BitmapImage { UriSource = uri };
-                        viewItem.FaviconImage.Source = bitmap;
-                        viewItem.FaviconImage.Visibility = Visibility.Visible;
-                        viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
-                    }
-                    catch
-                    {
-                        viewItem.FaviconImage.Visibility = Visibility.Collapsed;
-                        viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
-                    }
+                if (viewItem.FaviconPlaceholder == null || viewItem.FaviconImage == null) return;   // 无标签条模式（Metro）没有 favicon UI（网格卡片自行加载）
+                if (string.IsNullOrEmpty(faviconUrl) || !Uri.TryCreate(faviconUrl, UriKind.Absolute, out var uri) || (uri.Scheme != "http" && uri.Scheme != "https"))
+                {
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                    viewItem.FaviconImage.Source = null;
+                    return;
+                }
+                try
+                {
+                    var bitmap = new BitmapImage { UriSource = uri };
+                    viewItem.FaviconImage.Source = bitmap;
+                    viewItem.FaviconImage.Visibility = Visibility.Visible;
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
+                }
+                catch
+                {
+                    viewItem.FaviconImage.Visibility = Visibility.Collapsed;
+                    viewItem.FaviconPlaceholder.Visibility = Visibility.Visible;
+                }
             });
         }
 

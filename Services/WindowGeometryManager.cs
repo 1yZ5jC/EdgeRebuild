@@ -1,5 +1,4 @@
 using SQLite;
-using System;
 using System.Threading.Tasks;
 
 namespace EdgeRebuild.Services
@@ -32,8 +31,11 @@ namespace EdgeRebuild.Services
             {
                 await DatabaseService.Database.InsertOrReplaceAsync(new WindowGeometryRecord
                 {
-                    Slot = slot, X = x, Y = y,
-                    Width = width, Height = height,
+                    Slot = slot,
+                    X = x,
+                    Y = y,
+                    Width = width,
+                    Height = height,
                     IsMaximized = maximized
                 });
             }

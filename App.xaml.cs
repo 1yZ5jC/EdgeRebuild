@@ -1,12 +1,10 @@
 ﻿using EdgeRebuild.Core;
 using EdgeRebuild.Services;
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel;
-using Windows.Foundation.Metadata;
 using Windows.ApplicationModel.Activation;
-using Windows.Storage;
+using Windows.Foundation.Metadata;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -91,11 +89,11 @@ namespace EdgeRebuild
                         // 数据库打不开属致命错误：先落日志，再提示；此时窗口尚未 Activate，
                         // ContentDialog 无 XamlRoot 可挂会抛"Only a single ContentDialog"，改用 MessageDialog
                         Services.Diagnostics.Log($"[启动失败] {ex}");
-            // 真·多视图（CreateNewView）实验结论：TryShowAsStandaloneAsync 的展示请求
-            // 在本机环境不完成（挂起），SwitchAsync 亦无法上屏，DisableSystemViewActivationPolicy
-            // 无效——已回退 AppWindow 同线程模型。保留本调用无害；若未来迁移 WinUI3，
-            // 该开关是标准前置。详见 Docs/ROADMAP.md「多窗口」节。
-            try
+                        // 真·多视图（CreateNewView）实验结论：TryShowAsStandaloneAsync 的展示请求
+                        // 在本机环境不完成（挂起），SwitchAsync 亦无法上屏，DisableSystemViewActivationPolicy
+                        // 无效——已回退 AppWindow 同线程模型。保留本调用无害；若未来迁移 WinUI3，
+                        // 该开关是标准前置。详见 Docs/ROADMAP.md「多窗口」节。
+                        try
                         {
                             var dialog = new Windows.UI.Popups.MessageDialog(
                                 $"数据库初始化失败：{ex.Message}", "EdgeRebuild 启动失败");
