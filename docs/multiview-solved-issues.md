@@ -103,6 +103,21 @@
   `Services/SessionManager.cs:36-37`、`Services/HistoryManager.cs:11`、`Core/FavoritesManager.cs:13`、`Core/ReadingListManager.cs:15`
 - **回归验证**：会话自动保存在副窗口打开时仍正常触发。
 
+### C5. `DownloadManager.ShowToastOnUIThread` 跨 ASTA 取 `MainView.CoreWindow` → 进程直接崩
+
+- **现象**：拖出标签开第二个窗口（或点"打开新窗口"）约 1 秒后 `Unhandled Exception (线程 1): COMException 0x8000001F (RPC_E_WRONG_THREAD)`，整进程退出。
+- **根因**：`ShowToastOnUIThread` 是 `async void`，首句 `await CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(...)` 在**副窗口线程**上取 `MainView.CoreWindow` 属于跨 ASTA COM 调用 → 抛异常；`async void` 的异常经 `ViewSyncContext.Post` 重新抛出，绕过了调用方的 `try/catch`，直接打崩进程。触发点：新窗口加载 `DownloadManager` → 系统下载目录不可用 → 提示 toast（`DownloadManager.cs:211`）。
+- **修复**：toast 本身不依赖 UI 线程，去掉 dispatcher 投递，直接 `try { NotificationService.ShowToast(...) } catch { }`。
+  `Services/DownloadManager.cs:294-300`
+- **回归验证**：拖出标签开 MainPage 副窗口 → `[下载目录]` 日志照常、不再出现 0x8000001F。
+
+### C6. `ThemeManager.OnColorValuesChanged` 跨线程取 `MainView.CoreWindow`（同类隐患）
+
+- **现象**：系统主题/配色变化时可能触发与 C5 相同的 0x8000001F（`UISettings.ColorValuesChanged` 不在 UI 线程回调）。
+- **修复**：`ThemeManager.Initialize()`（主线程）先把主视图 dispatcher 缓存到 `_mainDispatcher`，回调里只用缓存 + `try/catch`。
+  `Services/ThemeManager.cs:26-58`
+- **回归验证**：常规启动/切主题无异常（主动路径未单独压测）。
+
 ---
 
 ## D. 布局重入与槽位广播
@@ -131,7 +146,10 @@
 - **修复**：
   - 主窗口 / 原生多视图窗口（均为 CoreWindow）：`CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true` + `Window.Current.SetTitleBar(TitleBarDragArea)` + `ThemeManager.UpdateTitleBarColors()`
   - AppWindow 副窗口：`_appWindow.TitleBar.ExtendsContentIntoTitleBar = true` + `ApplyAppWindowTitleBarColors()`（caption 按钮透明底、悬停/按下浅色）
-  - 顶部标签条行右侧预留 **142px** 给系统 min/max/close（隐藏标题栏后仍悬浮在右上角）
+  - 顶部标签条行右侧预留空间给系统 min/max/close（隐藏标题栏后仍悬浮在右上角）：
+    由 `LayoutManager.UpdateSafeZonePadding` 给 `TabBarBorder` 设 **右 Padding ≥130px**、
+    `UpdateRightPanelMargin` 给 `RightSidePanel` 设 **右 Margin 50px**（合计 ≥180px > 实测 caption 宽 146px），
+    不再在 `NewTabBtn` 上写死 142px
   - `DemoPage.xaml.cs`（`SetupTitleBar`、`ApplyAppWindowTitleBarColors`）
 - **回归验证**：截图确认标签条即窗口顶部、系统按钮浮在右上角且不压 `+` 按钮；日志 `[Demo] 已隐藏系统标题栏 slot=N mode=...`。
 
@@ -139,9 +157,12 @@
 
 - **现象**：`DRAG FAILED`，鼠标在标签条空白处拖动窗口无反应。
 - **根因**：`TabBarBorder` → `ScrollViewer` → `StackPanel` 这条链路上，`ScrollViewer` 自身参与命中测试，挡住了位于其**外层**的 `TitleBarDragArea`，`Window.SetTitleBar` 拿不到命中。
-- **修复**：把 `TitleBarDragArea` 矩形**放进 ScrollViewer 内容层**（`Grid` 内第一子元素），标签 `StackPanel` 放它之上——空白处命中拖拽区，标签命中自己的 `Border`。
-  `DemoPage.xaml:18-40`
-- **回归验证**：`DRAG OK`，窗口位移 300,120 与光标位移完全一致。
+- **修复（两次迭代，最终形态）**：
+  1. `TabBarBorder` 及内层 `TabBarPanel` **一律不设 `Background`**（设了会整行吃掉命中）
+  2. `TitleBarDragArea` 从 ScrollViewer 内容层挪出来，改成 `TabBarBorder` 内 Grid 的**第一个子元素 + `Grid.ColumnSpan="4"`**（垫底、铺满整行）。标签 `StackPanel`、`NewTabBtn`、滚动按钮在其**之上**，能自己命中就照常响应；右侧 `*` 空列与标签间空隙落到底层矩形 → 标题栏拖拽
+  - 中间态（只放进 ScrollViewer 内容层）的缺陷：`Auto` 列宽下 ScrollViewer 只有标签内容那么宽，右侧空列**没有**拖拽区，`MOVED delta=0,0`
+  - `DemoPage.xaml` 标签条 Grid
+- **回归验证**：`MOVED delta=200,80` 与光标位移完全一致；标签点击 / 右键菜单 / 标签拖拽排序同时正常。
 
 ---
 
@@ -162,20 +183,66 @@
 
 ## G. 已知未结案
 
-### G1. row0（标签条整行）鼠标点击失效 —— 未调查
+### G1. row0（标签条整行）鼠标点击失效 —— 本轮**未复现**（疑为测试环境假象）
 
-- **现象**：
-  - UIA `InvokePattern` 调用 `NewTabBtn` → 标签数 `标签 1 → 标签 2` ✅（证明 XAML 处理器与 `OnNewTab` 逻辑正常）
-  - **真实鼠标点击** `NewTabBtn`（`SetCursorPos` 到按钮中心，坐标已核对）→ 标签数不变 ❌
-  - **真实鼠标点击**标签关闭按钮 → 同样无效 ❌
-  - 标签条空白处**拖动窗口正常**（`DRAG OK`，位移 300,120 与光标一致）✅
-  - 底部状态条 `NewWindowBtn` 真实点击正常 ✅
-- **结论**：**row0 整行（top 32px）的鼠标输入被吞掉**，row3 不受影响。
-- **两个候选根因（均未验证）**：
-  1. 系统 caption 拖拽覆盖层在 `ExtendViewIntoTitleBar` 模式下吞掉了整个 top 32px 的非客户区输入
-  2. `TitleBarDragArea` 放进 ScrollViewer 内容层后，命中测试/父级裁剪与 `Window.SetTitleBar` 的预期不符
-- **未做的验证**：`TabBarBorder` / `NewTabBtn` / `TitleBarDragArea` 三处 `PointerPressed` 诊断日志 + 真实鼠标点击 + 读 `crash.log`
-- **影响**：接入 `TabDragManager`（单击切换标签）后大概率同样失效。**本轮按决定不调查**，只记录；若 Tier1 验证时撞上，记录现象后继续。
+- **上一轮现象（2026-10-08 早些时候）**：
+  - UIA `InvokePattern` 调用 `NewTabBtn` → 标签数 +1 ✅
+  - **真实鼠标点击** `NewTabBtn` → 标签数不变 ❌；标签关闭按钮同样无效 ❌
+  - 标签条空白处拖动窗口正常 ✅；底部状态条按钮正常 ✅
+- **本轮（Tier1 验证，2026-10-08 晚）全部通过**：
+  - 真实鼠标左键点 `+` → `标签 1 → 标签 2`（连续两次）✅
+  - 真实鼠标右键点标签 → 7 项右键菜单弹出 ✅
+  - 真实鼠标拖拽标签 → `[拖拽] 排序 0 -> 2` … `释放：完成排序` ✅
+  - 空白条拖动窗口 → `MOVED delta=200,80` ✅
+- **判断**：未找到能稳定复现的条件。测试脚本从"盲点"改为**先 `SetForegroundWindow` + `FromPoint` 校验 pid 再点击**后即通过，怀疑上一轮是**目标窗口未激活**导致点击落在后台窗口，而非应用缺陷。
+- **状态**：**不再阻塞**；若后续复现，从 E2 的命中链（`TabBarBorder` 无背景 / 拖拽矩形垫底）继续查。
+
+### G2. MainPage 在副原生视图内 `MeasureOverride` 抛 `0x8001010E` → 进程崩溃 【已结案 2026-10-09】
+
+- **现象**：从 Demo 标签条拖出标签（`WindowManager.OpenNewWindowAsync` → 开 **MainPage** 副窗口），或连开两个副窗口时，约 1 秒后：
+  `Unhandled Exception (线程 N): COMException (0x8001010E: 应用程序无法为另一线程上的接口启动通信)`，
+  调用栈止于 `IFrameworkElementOverridesMethods.MeasureOverride` → `FrameworkElement.MeasureOverride`，**没有任何应用帧**。
+- **根因**：**WinUI 2（`Microsoft.UI.Xaml`）控件无法在本进程的第二个 UI 线程上被测量**。
+  `Controls/HubPane.xaml` 与 `Controls/SettingsPane.xaml` 里的 `muxc:NavigationView`（内部模板含 WinUI 的
+  `ItemsRepeater` / `ItemsRepeaterScrollHost`）在**进程内第一个实例所在线程**上正常，第二个 MainPage 实例换线程后
+  一 `Measure` 就 `RPC_E_WRONG_THREAD`。WinUI 的静态/全局状态是**按"首个使用线程"绑定**的，不支持多 UI 线程。
+  这也解释了全部现象：
+  - 只有 1 个 MainPage 实例时永远正常（`#1` 拿到首个线程），`#2` 永远崩；
+  - 连开 2 个 **DemoPage** 副窗口没事（Demo 树里没有 muxc 控件）；
+  - `ToolbarControl`（纯 UWP）从线程 4 → 10 → 14 跨线程都正常。
+- **排查过程（关键证据链）**：
+  1. 复现入口：`DemoPage` 状态栏测试按钮 `MainPageWinBtn` → `WindowManager.OpenNewWindowAsync(EdgeHtml, "about:blank")`。
+  2. 临时探针（`MainPage.xaml.cs` 的 `MeasureOverride` try/catch + `ProbeMeasure` 递归复测，**已移除**）逐层下钻：
+     `MainPage → RootGrid → Grid[5]` 下**只有两个 `SplitView` 失败**，其余兄弟（`FindBar`/`ToolbarControl`/`TtsPlayer`…）全 `ok`。
+  3. `ProbeDiag` 显示 `threadAccess=True`、`style=null`、`template=set`、`ApplyTemplate()` 返回 False 且不抛
+     → 排除"元素跨线程""模板应用失败""属性 getter 抛错"。
+  4. 逐项否掉的假设：
+     - `PaneBackground` 的 `AcrylicBrush` → 换纯色照崩（同 Build 验证）；
+     - `SplitView` 显式本地 `<Style TargetType="SplitView"/>` 绕开默认样式 → 照崩；
+     - 把 `XamlControlsResources` 从 `App.xaml` 下沉到 `HubPane/SettingsPane.Resources`（每线程一份）→ 照崩；
+     - `muxc:SplitView` 替代 → `error CS0234 Microsoft.UI.Xaml.Controls 中不存在 SplitView`（该 WinUI 版本无此类型），回退。
+  5. **决定性一步**：直接对 `hubPane`/`SettingsPaneControl` 单独 `Measure` → 均 `0x8001010E`；
+     继续下钻命中终端节点 `NavigationView#HubNavView` → … → `ItemsRepeater#MenuItemsHost` / `#FooterMenuItemsHost`（children=0），
+     而它们的兄弟（`PaneToggleButtonGrid`/`TopNavArea`/`ScrollBar`…）全 `ok` → 真凶就是 WinUI 控件。
+- **修复**：把 WinUI 2 控件整体换成系统自带控件（UWP 自 `10.0.17763` 起就有 `NavigationView`，本项目 `TargetPlatformMinVersion=10.0.17763.0` 正好够）：
+  - `Controls/HubPane.xaml`、`Controls/SettingsPane.xaml`：去掉全部 `muxc:` 前缀（`NavigationView`/`NavigationViewItem` 共 348 处）+ 删除 `xmlns:muxc`；
+  - `Controls/HubPane.xaml.cs`、`Controls/SettingsPane.xaml.cs`：`Microsoft.UI.Xaml.Controls.NavigationView*` → `Windows.UI.Xaml.Controls.NavigationView*`；
+  - `App.xaml`：隐式样式 `TargetType="muxc:NavigationView"` → `TargetType="NavigationView"`；
+    **保留** `<muxc:XamlControlsResources/>`（`MainPage.xaml:349` 等处 `{StaticResource TabViewButtonBackground}` 还要靠它，纯资源字典不产生 WinUI 元素，跨线程无害）。
+  - 全仓 `.xaml` 现在只剩 `App.xaml:10` 一处 `muxc:`。
+- **验证（2026-10-09 11:52）**：
+  | 项 | 结果 |
+  |---|---|
+  | 连开 3 个 MainPage 副窗口（slot=1/2/3，线程 10/14/16） | ✅ 三次 `OnLoaded 完成`，`已注册副窗口=3`，进程存活，日志无 `0x8001010E` |
+  | 副窗口内打开 Hub 面板（`HubBtn` → `HubSplitView.IsPaneOpen`） | ✅ UWP `NavigationView` 模板完整：汉堡按钮 + 收藏夹/历史记录/稍后读/下载/集锦 + 右侧收藏列表 |
+  | 临时探针 `MeasureOverride`/`ProbeMeasure`/`ProbeDiag`/`TryMeasure` | ✅ 已全部移除 |
+- **顺带修掉的次要缺陷**：`MainPage.OnLoaded` 原按 `if (_appWindow != null)` 分支，但**原生视图窗口 `_appWindow` 恒为 null**
+  → 副视图误走"主窗口"分支（`_windowActive=true`、`ReportSlotFocus(0)`、不订阅槽位广播、不接管键盘）。
+  已改为按 `_isNewWindow` 判定，并把 `_sessionSlot = _pendingSessionSlot` 提前到该分支之前，
+  订阅后补一次 `OnSlotActivated(WindowManager.ActiveSlot)` 同步初始激活态；`CleanupStaticEvents` 补
+  `WindowManager.SlotActivated -= OnSlotActivated` 与 `KeyDown/KeyUp` 反注册。
+- **遗留约束（写给以后的自己）**：**不要在 `MainPage`/`HubPane`/`SettingsPane` 及任何会进副窗口的页面里新增 WinUI 2（`muxc:`）元素**，
+  否则多窗口一开第二个就重现本崩溃。要用 WinUI 控件只能：① 换 UWP 等价控件；② 该页面永远只允许一个实例（= 单 UI 线程）。
 
 ---
 
@@ -190,3 +257,54 @@
 - **日志**：`%LOCALAPPDATA%\Packages\AlanPlex.EdgeRebuild_cxt6mtc0m2z7c\LocalState\crash.log`，必须用 UTF-8 读（控制台会把中文显示成乱码）
 - **验证手段**：UIA（`AutomationElement.FromPoint` / `InvokePattern` / `BoundingRectangle`）+ 截图（`CopyFromScreen` 保存 PNG 后查看）+ 日志
 - **截图坐标注意**：UIA `BoundingRectangle` 含窗口阴影，`CopyFromScreen` 按它截会带上周围桌面
+- **真实鼠标测试三件套**（缺一条就会得出"点击无效"的假结论）：
+  1. `ShowWindow(SW_RESTORE)` + `SetWindowPos(HWND_TOP, SWP_NOACTIVATE)` + `SetForegroundWindow` 把目标窗口提到最前
+  2. `AutomationElement.FromPoint` 校验 `ProcessId == 目标进程` 再按下去
+  3. 拖拽必须用 `mouse_event(MOUSEEVENTF_MOVE, dx, dy)` 逐帧发相对位移——`SetCursorPos` **不保证**产生 `WM_MOUSEMOVE`，只用它会得到"按下后没移动"的假拖拽
+
+---
+
+## I. Phase 1（Tier1 标签条）恢复记录
+
+### I1. 接回的三个管理器
+
+| 管理器 | 职责 | `DemoPage.xaml.cs` 接线 |
+|---|---|---|
+| `LayoutManager` | 标签宽度 `100~160` / 固定标签 `36` / 溢出滚动按钮 / 右侧安全区 Padding | 构造于 `_tabManager` 之前；`LayoutUpdated` → 写 `Container.Width`；`XamlRoot.Changed`、`TabBarBorder.SizeChanged` → `UpdateTabLayout()` |
+| `TabDragManager` | 拖拽排序 / 拖出成新窗口 / 右键触发 | `SortRequested` → `ReorderTab`+`SyncTabPanelOrder`；`DetachRequested` → `WindowManager.OpenNewWindowAsync` 成功才 `CloseTabAsync`；`DragStarted/DragCompleted` 维护 `_isDragging`（抑制重算）；`TabCreated` → `AttachEvents` |
+| `TabContextMenuManager` | 7 项右键菜单 | `TabRightTapped` → `ShowTabRightClickMenu`；`onTogglePin` 接 `TogglePinTabAsync`；打印/查看源/捕获/共享四个条目给**占位实现**（Phase 6 再接真） |
+
+`TabBarOrderChanged` → `SyncTabPanelOrder()`（`Children.Clear()` 后按 `Tabs` 顺序重挂 `Container`）。
+
+### I2. `DemoPage.xaml` 标签条行结构
+
+`Row0 = 32`，`TabBarBorder`（**无 Background**，`SizeChanged` → 重算）内 4 列 `Auto / Auto / Auto / *`：
+
+1. 垫底的 `TitleBarDragArea`（`Grid.ColumnSpan="4"`，见 E2）
+2. `ScrollLeftBtn`（`Collapsed`，溢出才显示）
+3. `TabScrollViewer`（`Hidden` 滚动条、`ViewChanged`）→ `TabBarPanel`
+4. `RightSidePanel` → `ScrollRightBtn` + `NewTabBtn`
+5. `*` 空列（吸收余量，也是主要的标题栏拖拽命中区）
+
+外加根 Grid 上 `Canvas x:Name="DragCanvas"`（`Grid.RowSpan="4"`、`IsHitTestVisible="False"`、`Canvas.ZIndex="1000"`）供 `TabDragManager` 画拖拽幽灵。
+
+> 按钮样式：`TabIconButtonStyle`（`Page.Resources`，24×24、MDL2 箭头、无 `RevealButtonStyle` 依赖——后者定义在 `MainPage.xaml` 页面资源里，Demo 页取不到）。
+
+### I3. 验证结果（2026-10-08 晚）
+
+| 项 | 结果 |
+|---|---|
+| 新建标签（真实左键 `+`） | ✅ `标签 1 → 标签 2` |
+| 标签宽度自适应 | ✅ 17 标签时压到 `MinTabWidth=100`，7 标签时约 132 |
+| 溢出滚动 | ✅ 17 标签出现 `ScrollLeftBtn/ScrollRightBtn`，7 标签时隐藏 |
+| 右键菜单 | ✅ 7 项（新建/重载/关闭/固定/关闭其他/关闭右侧/添加到集锦） |
+| 拖拽排序 | ✅ 日志 `[拖拽] 排序 0 -> 2` … `释放：完成排序` |
+| 拖出成新窗口 | ✅ `shown=True`（但会走进 G2 的 MainPage 崩溃路径） |
+| 标题栏拖拽（空白条） | ✅ `delta=200,80` |
+| `crash.log`（Demo 自身） | ✅ 无新增异常 |
+
+### I4. Phase 2（数据源加载）恢复
+
+- `App.xaml.cs` 还原被注释的 5 项加载：收藏夹 / 稍后读 / 历史记录 / 下载记录 / 集锦（每项独立 `try/catch`，失败只记 `[启动] xxx加载失败（已降级）` 不阻断启动）。
+- `ThemeManager.Initialize()` 保持在其后（顺序不变）。
+- **回归验证**：启动日志出现 `[下载目录] ...`（`DownloadManager.LoadDownloadsAsync` 触发）且**无**任何「加载失败」行；页面正常上屏。

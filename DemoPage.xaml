@@ -4,6 +4,60 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:EdgeRebuild.Controls">
 
+    <Page.Resources>
+        <!-- 标签条左右滚动按钮（24×24 亚克力底透明按钮，纯模板无 Reveal 依赖） -->
+        <Style x:Key="TabIconButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#C9C9C9"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Background="{TemplateBinding Background}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#30FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#50FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Content" Storyboard.TargetProperty="Foreground">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#505050"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border x:Name="Bg" Background="Transparent">
+                                <ContentPresenter x:Name="Content"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
+
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="32"/>
@@ -18,35 +72,61 @@
         <!-- 标签条：TabManager 在代码里往 TabBarPanel 塞标签。
              注意 TitleBarDragArea 必须放在 ScrollViewer 内容里——否则空白处命中的是
              ScrollViewer 自身，会盖掉 Window.SetTitleBar，标签条就拖不动窗口了 -->
-        <Border x:Name="TabBarBorder" Grid.Row="0">
+        <Border x:Name="TabBarBorder" Grid.Row="0"
+                Padding="0" SizeChanged="TabBarBorder_SizeChanged">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <ScrollViewer Grid.Column="0"
+
+                <!-- 标签条拖拽区：铺满整行且垫在最底层（先声明 = 后命中）。
+                     空白处命中它 → Window.SetTitleBar 拖动窗口；标签/按钮在其之上，
+                     自己能命中就照常响应。TabBarBorder 绝不能设背景，否则整行命中
+                     都被它吃掉，标题栏拖拽失效。 -->
+                <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
+                           Grid.ColumnSpan="4"
+                           HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+                <!-- 左滚动按钮：标签溢出时由 LayoutManager 显示 -->
+                <Button x:Name="ScrollLeftBtn" Grid.Column="0"
+                        Content="&#xE76B;" Style="{StaticResource TabIconButtonStyle}"
+                        Click="ScrollLeftBtn_Click" Visibility="Collapsed"
+                        Margin="2,0,0,0" ToolTipService.ToolTip="向左滚动标签"/>
+
+                <ScrollViewer x:Name="TabScrollViewer" Grid.Column="1"
                               HorizontalScrollBarVisibility="Hidden"
                               VerticalScrollBarVisibility="Disabled"
                               VerticalAlignment="Stretch"
-                              HorizontalScrollMode="Enabled">
-                    <Grid VerticalAlignment="Stretch">
-                        <Rectangle x:Name="TitleBarDragArea" Fill="Transparent"
-                                   HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-                        <!-- 标签在拖拽区之上，命中优先，点击照常可用 -->
-                        <StackPanel x:Name="TabBarPanel"
-                                    Orientation="Horizontal"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Stretch"/>
-                    </Grid>
+                              HorizontalScrollMode="Enabled"
+                              ViewChanged="TabScrollViewer_ViewChanged">
+                    <!-- TabBarPanel 不设背景：有背景会盖掉下层的拖拽矩形 -->
+                    <StackPanel x:Name="TabBarPanel"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Stretch"/>
                 </ScrollViewer>
-                <!-- 右侧留 142px 给系统标题栏按钮（隐藏标题栏后仍会悬浮在顶部右角） -->
-                <Button x:Name="NewTabBtn" Grid.Column="1"
-                        Content="+"
-                        Width="34" Height="28"
-                        VerticalAlignment="Center"
-                        Margin="2,0,142,0"
-                        Click="OnNewTab"
-                        ToolTipService.ToolTip="新建标签页"/>
+
+                <!-- 右侧按钮组：空间预留由 LayoutManager 计算（TabBarBorder.Padding 右侧
+                     ≥130px 给系统悬浮的标题栏按钮 + 本面板 50px 外边距） -->
+                <StackPanel x:Name="RightSidePanel" Grid.Column="2"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Background="Transparent">
+                    <Button x:Name="ScrollRightBtn"
+                            Content="&#xE76C;" Style="{StaticResource TabIconButtonStyle}"
+                            Click="ScrollRightBtn_Click" Visibility="Collapsed"
+                            ToolTipService.ToolTip="向右滚动标签"/>
+                    <Button x:Name="NewTabBtn"
+                            Content="+"
+                            Width="34" Height="28"
+                            VerticalAlignment="Center"
+                            Margin="2,0,4,0"
+                            Click="OnNewTab"
+                            ToolTipService.ToolTip="新建标签页"/>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -75,6 +155,7 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12">
                     <Button x:Name="NewWindowBtn" Content="打开新窗口" Click="OnNewWindow"/>
+                    <Button x:Name="MainPageWinBtn" Content="开浏览器窗口(MainPage)" Click="OnOpenMainPageWindow"/>
                     <TextBlock x:Name="TitleText" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" MaxWidth="320"/>
                     <TextBlock x:Name="ActiveText" VerticalAlignment="Center" Opacity="0.7"/>
@@ -91,5 +172,9 @@
                 </StackPanel>
             </Grid>
         </Border>
+
+        <!-- 标签拖拽幽灵层：TabDragManager 把拖拽中的标签克隆画在这里 -->
+        <Canvas x:Name="DragCanvas" Grid.RowSpan="4"
+                Background="Transparent" IsHitTestVisible="False" Canvas.ZIndex="1000"/>
     </Grid>
 </Page>

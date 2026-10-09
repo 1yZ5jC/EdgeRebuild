@@ -291,16 +291,13 @@ namespace EdgeRebuild.Services
             return item;
         }
 
-        // 在 UI 线程显示 Toast 的专用方法，避免 IAsyncAction 类型转换问题
-        private static async void ShowToastOnUIThread(string fileName)
+        // Toast 不依赖 UI 线程。原实现 await CoreApplication.MainView.CoreWindow.Dispatcher：
+        // 从副窗口（CreateNewView / AppWindow）线程调用时取 MainView.CoreWindow 会跨 ASTA
+        // 抛 RPC_E_WRONG_THREAD(0x8000001F)，而 async void 的异常会绕过调用方 try/catch
+        // 直接经 ViewSyncContext.Post 重新抛出，打崩整个进程（多窗口下必现）。
+        private static void ShowToastOnUIThread(string fileName)
         {
-            await Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(
-                Windows.UI.Core.CoreDispatcherPriority.Normal,
-                () =>
-                {
-                    try { NotificationService.ShowToast("下载完成", fileName); } catch { }
-                }
-            );
+            try { NotificationService.ShowToast("下载完成", fileName); } catch { }
         }
 
         public static void StartDownloadOperation(DownloadItem item)

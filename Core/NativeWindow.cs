@@ -109,6 +109,7 @@ namespace EdgeRebuild.Core
 
                         win._viewId = ApplicationView.GetForCurrentView().Id;
                         Diagnostics.Log($"[NativeWindow] 视图线程就绪 viewId={win._viewId} slot={slot} " +
+                            $"thread={Environment.CurrentManagedThreadId} " +
                             $"ctx={(SynchronizationContext.Current?.GetType().Name ?? "NULL")}");
                         tcs.SetResult(true);
                     }

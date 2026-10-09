@@ -109,20 +109,21 @@ namespace EdgeRebuild
                         return;
                     }
 
-                    // ---- Demo 阶段：数据源加载全部停用（MainPage 未参与启动）----
-                    // 恢复方法：去掉下面整段注释。
-                    //foreach (var (name, load) in new (string, Func<Task>)[]
-                    //{
-                    //    ("收藏夹", () => FavoritesManager.Instance.LoadAsync()),
-                    //    ("稍后读", () => ReadingListManager.Instance.LoadAsync()),
-                    //    ("历史记录", () => HistoryManager.LoadAsync()),
-                    //    ("下载记录", () => DownloadManager.LoadDownloadsAsync()),
-                    //    ("集锦", () => CollectionManager.Instance.LoadGroupsAsync())
-                    //})
-                    //{
-                    //    try { await load(); }
-                    //    catch (Exception ex) { Services.Diagnostics.Log($"[启动] {name}加载失败（已降级）: {ex.Message}"); }
-                    //}
+                    // ---- Phase 2：恢复数据源加载（收藏/稍后读/历史/下载/集锦）----
+                    // MainPage 未参与启动，但 Demo 页的标签条右键、后续收藏夹栏都要读这些表；
+                    // 每项单独 try/catch，单项失败只降级不阻断启动。
+                    foreach (var (name, load) in new (string, Func<Task>)[]
+                    {
+                        ("收藏夹", () => FavoritesManager.Instance.LoadAsync()),
+                        ("稍后读", () => ReadingListManager.Instance.LoadAsync()),
+                        ("历史记录", () => HistoryManager.LoadAsync()),
+                        ("下载记录", () => DownloadManager.LoadDownloadsAsync()),
+                        ("集锦", () => CollectionManager.Instance.LoadGroupsAsync())
+                    })
+                    {
+                        try { await load(); }
+                        catch (Exception ex) { Services.Diagnostics.Log($"[启动] {name}加载失败（已降级）: {ex.Message}"); }
+                    }
                     ThemeManager.Initialize();
 
                     // Demo：主窗口只挂一个极简 DemoPage，浏览器主窗（MainPage）

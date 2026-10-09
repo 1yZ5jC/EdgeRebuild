@@ -73,3 +73,25 @@
 - [x] MW5 WindowManager 注册表：AppWindow TryCreateAsync + Closed 联动清槽位；
       槽位最小未用分配/回收
 - [x] MW6 MetroPage 窗口关闭不释放 WebView：Unloaded 时 DisposeAll + 停轮询定时器
+
+## 多窗口 Demo 功能恢复（2026-10-08 起，分支 `feature/multi-window-rewrite`）
+
+计划与逐条问题记录见 **`docs/multiview-solved-issues.md`**（E/C/G/I 各节）。
+
+- [x] Phase 0 文档：`docs/multiview-solved-issues.md` 新建 + MW0 改写为「已打通」（Test8）
+- [x] Phase 1 Tier1 标签条：`LayoutManager` + `TabDragManager` + `TabContextMenuManager` 接回；
+      标签条行改 4 列 `Auto/Auto/Auto/*` + 溢出左右滚动按钮 + `DragCanvas` + 垫底 `TitleBarDragArea`；
+      真实鼠标验证通过（新建/右键 7 项/拖拽排序/拖出/标题栏拖拽），详见 I 节
+- [x] Phase 2 数据源加载：还原 `App.xaml.cs:114-125` 注释（5 项各自 try/catch 降级；启动日志无「加载失败」）
+- [ ] Phase 3 悬停缩略图预览 + Pin 固定标签（`MainPage.xaml.cs:1367-1451`、`TogglePinTabAsync`）
+- [ ] Phase 4 收藏夹栏（→5 行布局）+ 快捷键（`ShortcutManager` 按页 KeyDown）
+- [ ] Phase 5 垂直标签侧栏（`VerticalTabSidebar` + `ApplyVerticalTabs`）
+- [ ] Phase 6 Hub 面板 / 网页捕获 / 查找栏
+
+**已知阻塞 G2 — 已解除（2026-10-09）**：MainPage 副原生视图 `MeasureOverride` 抛 `0x8001010E` 崩溃。
+根因是 **WinUI 2（`muxc:`）控件不支持多 UI 线程**（首个使用线程独占），已把 `HubPane`/`SettingsPane` 的
+`muxc:NavigationView` 换成 UWP 自带 `NavigationView` 并验证 3 个副窗口 + Hub 面板均正常。
+详见 `multiview-solved-issues.md` G2 节。
+
+> **硬约束**：`MainPage`/`HubPane`/`SettingsPane`（及任何会进副窗口的页面）**不得新增 `muxc:` 元素**，
+> 否则多开一个 MainPage 窗口即重现 G2 崩溃；`App.xaml` 里的 `muxc:XamlControlsResources` 只作资源字典保留。

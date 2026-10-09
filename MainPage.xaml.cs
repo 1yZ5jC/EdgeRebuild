@@ -201,6 +201,9 @@ namespace EdgeRebuild
             if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
+            WindowManager.SlotActivated -= OnSlotActivated;
+            this.KeyDown -= OnWindowKeyDown;
+            this.KeyUp -= OnWindowKeyUp;
             _pageKeyTimer?.Stop();
             _pageKeyTimer = null;
         }
@@ -208,17 +211,21 @@ namespace EdgeRebuild
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             _isLoaded = true;
-            if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 开始");
+            if (_isNewWindow) Services.Diagnostics.Log($"[窗口] OnLoaded 开始 thread={Environment.CurrentManagedThreadId}");
 
-            // MW1：AppWindow 同线程模式——激活态由 WindowManager 槽位广播维护
-            // （页面 GotFocus 上报 + TryShow/Closed 时的槽位通知）
-            if (_appWindow != null)
+            // 多窗口：激活态由 WindowManager 槽位广播维护（页面 GotFocus 上报 +
+            // TryShow/Closed 时的槽位通知）。原生视图副窗口没有 _appWindow，
+            // 必须按 _isNewWindow 判定，否则会误走主窗口分支（_windowActive=true、
+            // ReportSlotFocus(0)），并且不订阅槽位广播/不接管键盘。
+            _sessionSlot = _pendingSessionSlot;
+            if (_isNewWindow)
             {
                 _windowActive = false;   // 副窗口等首次前台标记
                 WindowManager.SlotActivated += OnSlotActivated;
                 this.GotFocus += (s2, e2) => WindowManager.ReportSlotFocus(_sessionSlot);
                 this.KeyDown += OnWindowKeyDown;
                 this.KeyUp += OnWindowKeyUp;
+                OnSlotActivated(WindowManager.ActiveSlot);   // 订阅前可能已广播过，补同步一次
             }
             else
             {
@@ -239,11 +246,11 @@ namespace EdgeRebuild
                 );
                 _layoutManager.LayoutUpdated += OnLayoutUpdated;
 
-                // ---- 标签管理器 ----
-                // 多窗口会话：每个 MainPage 窗口持独立 Slot（0=主窗），互不覆盖；
-                // InPrivate 不持久化；MetroPage ParticipatesInSession=false
-                _sessionSlot = _pendingSessionSlot;
-                _tabManager = new TabManager
+            // ---- 标签管理器 ----
+            // 多窗口会话：每个 MainPage 窗口持独立 Slot（0=主窗），互不覆盖；
+            // InPrivate 不持久化；MetroPage ParticipatesInSession=false
+            // （_sessionSlot 已在上面的激活态分支里赋值）
+            _tabManager = new TabManager
                 {
                     IsInPrivateWindow = _isInPrivate,
                     ParticipatesInSession = !_isInPrivate,
@@ -2469,7 +2476,7 @@ namespace EdgeRebuild
                 _isInPrivate = args.IsInPrivate;
                 _pendingSessionSlot = Math.Max(0, args.SessionSlot);
                 _restoreSlot = args.RestoreSlot;
-                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window=secondary url={args.Url} slot={_pendingSessionSlot} restore={_restoreSlot}");
+                Services.Diagnostics.Log($"[窗口] OnNavigatedTo window=secondary url={args.Url} slot={_pendingSessionSlot} restore={_restoreSlot} thread={Environment.CurrentManagedThreadId} presentation={args.Presentation}");
             }
             else if (e.Parameter is string url)
             {

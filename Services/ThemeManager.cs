@@ -13,6 +13,7 @@ namespace EdgeRebuild.Services
         private static bool _isDarkTheme = false;
         private static SkinManager.SkinColors _currentColors;
         private static UISettings _uiSettings;
+        private static Windows.UI.Core.CoreDispatcher _mainDispatcher;
 
         public static event Action<SkinManager.SkinColors, bool> ThemeChanged;
 
@@ -31,23 +32,34 @@ namespace EdgeRebuild.Services
 
             SettingsManager.SettingChanged += OnSettingChanged;
 
+            // 主窗口 dispatcher 必须在主线程抓取：ColorValuesChanged 回调线程上再取
+            // MainView.CoreWindow 会跨 ASTA 抛 RPC_E_WRONG_THREAD(0x8000001F)
+            try { _mainDispatcher = Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher; }
+            catch { _mainDispatcher = null; }
+
             _uiSettings = new UISettings();
             _uiSettings.ColorValuesChanged += OnColorValuesChanged;
         }
 
         private static void OnColorValuesChanged(UISettings sender, object args)
         {
-            Windows.ApplicationModel.Core.CoreApplication.MainView.CoreWindow.Dispatcher.RunAsync(
-                Windows.UI.Core.CoreDispatcherPriority.Normal,
-                () =>
-                {
-                    bool newDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
-                    if (_isDarkTheme != newDark)
+            var d = _mainDispatcher;
+            if (d == null) return;
+            try
+            {
+                _ = d.RunAsync(
+                    Windows.UI.Core.CoreDispatcherPriority.Normal,
+                    () =>
                     {
-                        _isDarkTheme = newDark;
-                        ApplyTheme();
-                    }
-                });
+                        bool newDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+                        if (_isDarkTheme != newDark)
+                        {
+                            _isDarkTheme = newDark;
+                            ApplyTheme();
+                        }
+                    });
+            }
+            catch { }
         }
 
         private static async void OnSettingChanged(string key, string value)

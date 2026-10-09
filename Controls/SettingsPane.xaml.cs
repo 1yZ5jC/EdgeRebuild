@@ -340,9 +340,9 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        private void SettingsNavView_SelectionChanged(Microsoft.UI.Xaml.Controls.NavigationView sender, Microsoft.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
+        private void SettingsNavView_SelectionChanged(Windows.UI.Xaml.Controls.NavigationView sender, Windows.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
         {
-            if (args.SelectedItem is Microsoft.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
+            if (args.SelectedItem is Windows.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
             {
                 int index = tag switch
                 {

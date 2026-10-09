@@ -33,6 +33,13 @@ namespace EdgeRebuild
         private bool _isEngineSwitching;
         private bool _setupStarted;
 
+        // ---- 标签条布局 / 拖拽 / 右键菜单（Phase 1 恢复） ----
+        private bool _isLoaded;
+        private bool _isDragging;
+        private LayoutManager _layoutManager;
+        private TabDragManager _dragManager;
+        private TabContextMenuManager _contextMenuManager;
+
         public DemoPage()
         {
             InitializeComponent();
@@ -64,6 +71,8 @@ namespace EdgeRebuild
             {
                 _setupStarted = true;
                 await SetupAsync();
+                _isLoaded = true;
+                UpdateTabLayout();
             }
 
             if (!_bound)
@@ -88,6 +97,18 @@ namespace EdgeRebuild
                 $"hasAccess={uiDispatcher.HasThreadAccess} slot={_slot}");
             _defaultEngine = eng == "WebView2" ? EngineType.WebView2 : EngineType.EdgeHtml;
 
+            // ---- 标签条布局计算（标签宽度 / 溢出滚动 / 右侧安全区留白） ----
+            _layoutManager = new LayoutManager(
+                TabBarBorder,
+                TabScrollViewer,
+                TabBarPanel,
+                RightSidePanel,
+                ScrollLeftBtn,
+                ScrollRightBtn);
+            _layoutManager.LayoutUpdated += OnLayoutUpdated;
+            // 窗口尺寸变化（含副窗口拖拽缩放）→ 重算标签宽度
+            if (XamlRoot != null) XamlRoot.Changed += OnXamlRootChanged;
+
             _tabManager = new TabManager
             {
                 // Demo 不写共享会话快照，避免覆盖真实浏览器窗口的恢复数据
@@ -102,6 +123,34 @@ namespace EdgeRebuild
             _tabManager.TabCanGoBackChanged += OnTabGoBackChanged;
             _tabManager.TabCanGoForwardChanged += OnTabGoForwardChanged;
             _tabManager.TabCountChanged += OnTabCountChanged;
+            _tabManager.TabOrderChanged += OnTabOrderChanged;
+
+            // ---- 拖拽排序 / 拖出成新窗口 / 右键菜单 ----
+            _dragManager = new TabDragManager(_tabManager, TabBarPanel, DragCanvas, _layoutManager);
+            _dragManager.SortRequested += OnDragSortRequested;
+            _dragManager.DetachRequested += OnDragDetachRequested;
+            _dragManager.DragStarted += () => _isDragging = true;
+            _dragManager.DragCompleted += () =>
+            {
+                _isDragging = false;
+                UpdateTabLayout();
+            };
+            _dragManager.TabRightTapped += (border, viewItem) =>
+                _contextMenuManager?.ShowTabRightClickMenu(border, viewItem);
+            // 现有标签 + 后续新建标签都挂上拖拽事件
+            foreach (var tab in _tabManager.Tabs)
+                _dragManager.AttachEvents(tab);
+            _tabManager.TabCreated += viewItem => _dragManager.AttachEvents(viewItem);
+
+            _contextMenuManager = new TabContextMenuManager(
+                _tabManager,
+                _defaultEngine,
+                () => _tabManager.CurrentTab?.Engine ?? _defaultEngine,
+                PrintCurrentPageAsync,
+                ViewSourceAsync,
+                viewItem => _ = _tabManager.TogglePinTabAsync(viewItem),
+                WebCaptureCurrentAsync,
+                ShareCurrentPageAsync);
 
             var colors = ThemeManager.Colors;
             toolbar.ApplySkin(colors, ThemeManager.IsDarkTheme);
@@ -131,6 +180,14 @@ namespace EdgeRebuild
             }
             ThemeManager.ThemeChanged -= OnThemeChanged;
 
+            if (XamlRoot != null) XamlRoot.Changed -= OnXamlRootChanged;
+            if (_layoutManager != null)
+            {
+                _layoutManager.LayoutUpdated -= OnLayoutUpdated;
+                _layoutManager.Dispose();
+                _layoutManager = null;
+            }
+
             if (_tabManager != null)
             {
                 _tabManager.TabCreated -= OnTabCreated;
@@ -139,6 +196,7 @@ namespace EdgeRebuild
                 _tabManager.TabCanGoBackChanged -= OnTabGoBackChanged;
                 _tabManager.TabCanGoForwardChanged -= OnTabGoForwardChanged;
                 _tabManager.TabCountChanged -= OnTabCountChanged;
+                _tabManager.TabOrderChanged -= OnTabOrderChanged;
                 _tabManager.DisposeAll();
                 _tabManager = null;
             }
@@ -154,7 +212,10 @@ namespace EdgeRebuild
         // ================================================================
 
         private async void OnTabCreated(TabViewItem viewItem)
-            => await _tabManager.SwitchToTabAsync(viewItem);
+        {
+            await _tabManager.SwitchToTabAsync(viewItem);
+            UpdateTabLayout();
+        }
 
         private void OnTabChanged(TabViewItem viewItem)
         {
@@ -196,6 +257,7 @@ namespace EdgeRebuild
         private void OnTabCountChanged(int count)
         {
             UpdateModeText();
+            UpdateTabLayout();
             // 关掉最后一个标签 → 重建一个空标签（引擎切换时由 _isEngineSwitching 屏蔽）
             if (count == 0 && !_isEngineSwitching)
                 _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
@@ -396,6 +458,108 @@ namespace EdgeRebuild
         }
 
         // ================================================================
+        //  标签条：布局计算 / 拖拽排序 / 右键菜单
+        // ================================================================
+
+        private void OnTabOrderChanged()
+        {
+            SyncTabPanelOrder();
+            UpdateTabLayout();
+        }
+
+        private void OnDragSortRequested(int fromIndex, int toIndex)
+        {
+            _tabManager.ReorderTab(fromIndex, toIndex);
+            SyncTabPanelOrder();
+        }
+
+        private async void OnDragDetachRequested(TabViewItem item)
+        {
+            string url = item.Tab.CurrentUrl;
+            EngineType engine = item.Tab.Engine;
+            Diagnostics.Log($"[Demo] 拖拽分离 url={url} engine={engine}");
+            bool shown = await WindowManager.OpenNewWindowAsync(engine, url);
+            Diagnostics.Log($"[Demo] 分离→新窗口 shown={shown}");
+            if (shown)
+            {
+                await _tabManager.CloseTabAsync(item, false);
+            }
+            else
+            {
+                NotificationService.ShowToast("无法分离标签", "新窗口未能打开，标签保留在原窗口");
+            }
+        }
+
+        private void OnLayoutUpdated()
+        {
+            if (_tabManager == null || _layoutManager == null) return;
+            double tabWidth = _layoutManager.TabWidth;
+            foreach (var item in _tabManager.Tabs)
+            {
+                if (item.Container != null)
+                    item.Container.Width = tabWidth;
+            }
+        }
+
+        private void UpdateTabLayout()
+        {
+            if (!_isLoaded || _tabManager == null || _layoutManager == null) return;
+            if (_tabManager.TabCount == 0 || _isDragging) return;
+            int pinnedCount = _tabManager.GetPinnedTabCount();
+            _layoutManager.Recalculate(TabBarBorder.ActualWidth, _tabManager.TabCount, pinnedCount);
+        }
+
+        private void SyncTabPanelOrder()
+        {
+            if (_tabManager == null || TabBarPanel == null) return;
+            TabBarPanel.Children.Clear();
+            foreach (var item in _tabManager.Tabs)
+            {
+                if (item.Container != null)
+                    TabBarPanel.Children.Add(item.Container);
+            }
+        }
+
+        private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+        {
+            if (!_isDragging) UpdateTabLayout();
+        }
+
+        private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (!_isDragging) UpdateTabLayout();
+        }
+
+        private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) => _layoutManager?.ScrollToLeft();
+        private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) => _layoutManager?.ScrollToRight();
+        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
+
+        // ---- 右键菜单里尚未恢复的条目：点占位，Phase 6 再接真实实现 ----
+        private Task PrintCurrentPageAsync()
+        {
+            Diagnostics.Log("[Demo] 打印：本阶段未恢复");
+            return Task.CompletedTask;
+        }
+
+        private Task ViewSourceAsync()
+        {
+            Diagnostics.Log("[Demo] 查看源文件：本阶段未恢复");
+            return Task.CompletedTask;
+        }
+
+        private Task WebCaptureCurrentAsync()
+        {
+            Diagnostics.Log("[Demo] 网页捕获：本阶段未恢复（Phase 6）");
+            return Task.CompletedTask;
+        }
+
+        private Task ShareCurrentPageAsync()
+        {
+            Diagnostics.Log("[Demo] 共享：本阶段未恢复");
+            return Task.CompletedTask;
+        }
+
+        // ================================================================
         //  多窗口
         // ================================================================
 
@@ -419,6 +583,27 @@ namespace EdgeRebuild
             finally
             {
                 NewWindowBtn.IsEnabled = true;
+            }
+        }
+
+        private async void OnOpenMainPageWindow(object sender, RoutedEventArgs e)
+        {
+            // 诊断入口：MainPage 副窗口是 G2 崩溃路径，用它稳定复现
+            MainPageWinBtn.IsEnabled = false;
+            try
+            {
+                bool ok = await WindowManager.OpenNewWindowAsync(EngineType.EdgeHtml, "about:blank");
+                Diagnostics.Log($"[Demo] 开 MainPage 窗口结果={ok} 已注册副窗口={WindowManager.WindowCount}");
+                LogText.Text = ok ? "MainPage 窗口已开" : "开窗失败，见 crash.log";
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[Demo] 开 MainPage 窗口异常: {ex}");
+                LogText.Text = $"异常: {ex.Message}";
+            }
+            finally
+            {
+                MainPageWinBtn.IsEnabled = true;
             }
         }
 

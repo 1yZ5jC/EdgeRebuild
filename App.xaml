@@ -11,7 +11,7 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- 全局圆角重置 -->
-            <Style TargetType="muxc:NavigationView">
+            <Style TargetType="NavigationView">
                 <Setter Property="CornerRadius" Value="0" />
             </Style>
             <Style TargetType="Button">

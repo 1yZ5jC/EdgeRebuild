@@ -2,7 +2,6 @@
     x:Class="EdgeRebuild.Controls.HubPane"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
     xmlns:local="using:EdgeRebuild.Controls"
     Background="Transparent"
     IsHitTestVisible="True"
@@ -155,7 +154,7 @@
     </UserControl.Resources>
 
     <Grid Background="Transparent" IsHitTestVisible="True">
-        <muxc:NavigationView
+        <NavigationView
             x:Name="HubNavView"
             PaneDisplayMode="Left"
             OpenPaneLength="160"
@@ -168,33 +167,33 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
 
-            <muxc:NavigationView.MenuItems>
-                <muxc:NavigationViewItem Content="收藏夹" Tag="Favorites">
-                    <muxc:NavigationViewItem.Icon>
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="收藏夹" Tag="Favorites">
+                    <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE734;" FontFamily="Segoe MDL2 Assets"/>
-                    </muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="历史记录" Tag="History">
-                    <muxc:NavigationViewItem.Icon>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="历史记录" Tag="History">
+                    <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE81C;" FontFamily="Segoe MDL2 Assets"/>
-                    </muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="稍后读" Tag="ReadingList">
-                    <muxc:NavigationViewItem.Icon>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="稍后读" Tag="ReadingList">
+                    <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8A5;" FontFamily="Segoe MDL2 Assets"/>
-                    </muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="下载" Tag="Downloads">
-                    <muxc:NavigationViewItem.Icon>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="下载" Tag="Downloads">
+                    <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE896;" FontFamily="Segoe MDL2 Assets"/>
-                    </muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="集锦" Tag="Collections">
-                    <muxc:NavigationViewItem.Icon>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem Content="集锦" Tag="Collections">
+                    <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8B9;" FontFamily="Segoe MDL2 Assets"/>
-                    </muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-            </muxc:NavigationView.MenuItems>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
 
             <ScrollViewer>
                 <Grid>
@@ -423,6 +422,6 @@
                     </StackPanel>
                 </Grid>
             </ScrollViewer>
-        </muxc:NavigationView>
+        </NavigationView>
     </Grid>
 </UserControl>
