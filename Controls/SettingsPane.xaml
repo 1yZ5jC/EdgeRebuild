@@ -69,6 +69,11 @@
                     <FontIcon Glyph="&#xE946;" FontFamily="Segoe MDL2 Assets"/>
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem Content="调试" Tag="Debug">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE7E8;" FontFamily="Segoe MDL2 Assets"/>
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
 
         <ContentControl x:Name="ContentArea" 

@@ -26,14 +26,29 @@ namespace EdgeRebuild.Services
     public static class PlatformCompat
     {
         /// <summary>
-        /// 调试开关：设置环境变量 EDGEREBUILD_FORCE_LEGACY_WINDOW=1 后，
-        /// 即使系统支持也强制走 17763 兼容路径（用于在 Win10/11 上验证原生视图回退）。
+        /// 调试开关：即使系统支持 18362+，也强制走 17763 兼容路径
+        /// （用于在 Win10/11 上验证原生视图回退）。
+        ///
+        /// 优先级：
+        ///   1. 环境变量 EDGEREBUILD_FORCE_LEGACY_WINDOW=1（便于自动化/无 UI 调试）
+        ///   2. 设置 → 调试 → “强制 17763 兼容窗口”
+        ///
+        /// 该值在类型首次使用时读取一次；切换后需重启应用。
         /// </summary>
-        public static bool ForceLegacyWindowMode { get; } =
-            string.Equals(
-                Environment.GetEnvironmentVariable("EDGEREBUILD_FORCE_LEGACY_WINDOW"),
-                "1",
-                StringComparison.OrdinalIgnoreCase);
+        public static bool ForceLegacyWindowMode { get; } = ReadForceLegacyWindowMode();
+
+        private static bool ReadForceLegacyWindowMode()
+        {
+            if (string.Equals(
+                    Environment.GetEnvironmentVariable("EDGEREBUILD_FORCE_LEGACY_WINDOW"),
+                    "1",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return DebugOptions.ForceLegacyWindowMode;
+        }
 
         [SupportedOSPlatformGuard("windows10.0.18362.0")]
         public static bool HasXamlRoot { get; } =

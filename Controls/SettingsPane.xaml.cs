@@ -13,6 +13,8 @@ namespace EdgeRebuild.Controls
         private UIElement[] _panels;
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
         private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle, _systemTitleBarToggle;
+        private ToggleSwitch _forceLegacyToggle;
+        private TextBlock _forceLegacyStatus;
         private ComboBox _ntpTypeCombo;
         private ComboBox _readerFontSizeCombo;
         private ComboBox _tilesSourceCombo;
@@ -44,7 +46,7 @@ namespace EdgeRebuild.Controls
 
         private void BuildContentPanels()
         {
-            _panels = new UIElement[7];
+            _panels = new UIElement[8];
 
             // 常规 (0)
             var generalPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
@@ -203,6 +205,29 @@ namespace EdgeRebuild.Controls
             aboutPanel.Children.Add(new TextBlock { Text = "版本 0.2 Alpha", Margin = new Thickness(0, 4, 0, 0) });
             aboutPanel.Children.Add(new TextBlock { Text = "基于 UWP 的双内核浏览器外壳。", Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap });
             _panels[6] = aboutPanel;
+
+            // 调试 (7)
+            var debugPanel = new StackPanel { Margin = new Thickness(12, 8, 12, 8) };
+            debugPanel.Children.Add(new TextBlock { Text = "窗口兼容性", FontWeight = Windows.UI.Text.FontWeights.SemiBold });
+            _forceLegacyToggle = new ToggleSwitch { Header = "强制 17763 兼容窗口", Margin = new Thickness(0, 8, 0, 0) };
+            debugPanel.Children.Add(_forceLegacyToggle);
+            debugPanel.Children.Add(new TextBlock
+            {
+                Text = "关闭 AppWindow / XamlRoot 等 18362+ API，改用 CoreApplication.CreateNewView + ApplicationViewTitleBar 的 1809 路径。切换后需重启应用生效。",
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.75,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            _forceLegacyStatus = new TextBlock { Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
+            debugPanel.Children.Add(_forceLegacyStatus);
+            debugPanel.Children.Add(new TextBlock
+            {
+                Text = "环境变量 EDGEREBUILD_FORCE_LEGACY_WINDOW=1 优先级更高。",
+                TextWrapping = TextWrapping.Wrap,
+                Opacity = 0.75,
+                Margin = new Thickness(0, 4, 0, 0)
+            });
+            _panels[7] = debugPanel;
         }
 
         private async System.Threading.Tasks.Task LoadSettingsAsync()
@@ -248,6 +273,9 @@ namespace EdgeRebuild.Controls
 
                 string restoreSession = await SettingsManager.GetAsync("RestoreSession") ?? "True";
                 _restoreToggle.IsOn = (restoreSession == "True" || restoreSession == "true");
+
+                _forceLegacyToggle.IsOn = DebugOptions.ForceLegacyWindowMode;
+                UpdateForceLegacyStatus();
 
                 string ntpType = await SettingsManager.GetAsync("NewTabPageType") ?? "Classic";
                 string ntpShow = await SettingsManager.GetAsync("NewTabShowNtp") ?? "True";
@@ -303,6 +331,11 @@ namespace EdgeRebuild.Controls
                 _restoreToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("RestoreSession", _restoreToggle.IsOn.ToString());
                 _favoritesBarToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("ShowFavoritesBar", _favoritesBarToggle.IsOn.ToString());
                 _systemTitleBarToggle.Toggled += async (s, e) => await SettingsManager.SetAsync("ShowSystemTitleBar", _systemTitleBarToggle.IsOn.ToString());
+                _forceLegacyToggle.Toggled += (s, e) =>
+                {
+                    DebugOptions.ForceLegacyWindowMode = _forceLegacyToggle.IsOn;
+                    UpdateForceLegacyStatus();
+                };
                 _readerFontSizeCombo.SelectionChanged += async (s, e) =>
                 {
                     string size = _readerFontSizeCombo.SelectedIndex switch
@@ -341,6 +374,14 @@ namespace EdgeRebuild.Controls
             }
         }
 
+        private void UpdateForceLegacyStatus()
+        {
+            string mode = PlatformCompat.ForceLegacyWindowMode
+                ? "17763 兼容模式"
+                : "标准模式（18362+）";
+            _forceLegacyStatus.Text = $"当前进程：{mode}。开关修改将在重启应用后生效。";
+        }
+
         private void SettingsNavView_SelectionChanged(Windows.UI.Xaml.Controls.NavigationView sender, Windows.UI.Xaml.Controls.NavigationViewSelectionChangedEventArgs args)
         {
             if (args.SelectedItem is Windows.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
@@ -354,6 +395,7 @@ namespace EdgeRebuild.Controls
                     "Privacy" => 4,
                     "Performance" => 5,
                     "About" => 6,
+                    "Debug" => 7,
                     _ => 0
                 };
                 if (index < _panels.Length) ContentArea.Content = _panels[index];
