@@ -52,7 +52,7 @@ namespace EdgeRebuild.Services
                 try { defaultFolder = await DownloadManager.GetDownloadFolderAsync(); } catch { }
 
                 var dialog = new DownloadDialog(defaultFileName, url, defaultFolder, null);
-                dialog.XamlRoot = _rootPanel?.XamlRoot;
+                PlatformCompat.SetDialogRoot(dialog, _rootPanel);
                 var result = await dialog.ShowAsync();
 
                 if (result != ContentDialogResult.Primary)
@@ -60,7 +60,14 @@ namespace EdgeRebuild.Services
 
                 if (!DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
                 {
-                    await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定", XamlRoot = _rootPanel?.XamlRoot }.ShowAsync();
+                    var invalidNameDialog = new ContentDialog
+                    {
+                        Title = "文件名无效",
+                        Content = error,
+                        CloseButtonText = "确定"
+                    };
+                    PlatformCompat.SetDialogRoot(invalidNameDialog, _rootPanel);
+                    await invalidNameDialog.ShowAsync();
                     return;
                 }
 

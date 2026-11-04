@@ -4,9 +4,6 @@ using EdgeRebuild.Services;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Windows.ApplicationModel.Core;
-using Windows.UI;
-using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -24,7 +21,8 @@ namespace EdgeRebuild
     {
         private int _slot;
         private bool _bound;
-        private AppWindow _appWindow;
+        private object _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
+        private IDisposable _sizeChangedSubscription;
         private TabManager _tabManager;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
         private string _pendingUrl;
@@ -106,7 +104,7 @@ namespace EdgeRebuild
                 ScrollRightBtn);
             _layoutManager.LayoutUpdated += OnLayoutUpdated;
             // 窗口尺寸变化（含副窗口拖拽缩放）→ 重算标签宽度
-            if (XamlRoot != null) XamlRoot.Changed += OnXamlRootChanged;
+            SubscribeWindowSizeChanged();
 
             _tabManager = new TabManager
             {
@@ -179,7 +177,7 @@ namespace EdgeRebuild
             }
             ThemeManager.ThemeChanged -= OnThemeChanged;
 
-            if (XamlRoot != null) XamlRoot.Changed -= OnXamlRootChanged;
+            UnsubscribeWindowSizeChanged();
             if (_layoutManager != null)
             {
                 _layoutManager.LayoutUpdated -= OnLayoutUpdated;
@@ -223,9 +221,9 @@ namespace EdgeRebuild
             ApplyNavState(tab);
 
             TitleText.Text = string.IsNullOrEmpty(tab.Title) ? "新标签页" : tab.Title;
-            if (_appWindow != null)
+            if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
-                try { _appWindow.Title = TitleText.Text; } catch { }
+                AppWindowCompat.SetTitle(_appWindow, TitleText.Text);
             }
             SetFocusToContent();
         }
@@ -235,9 +233,9 @@ namespace EdgeRebuild
             if (_tabManager?.CurrentTab != tab) return;
             ApplyNavState(tab);
             TitleText.Text = string.IsNullOrEmpty(tab.Title) ? "新标签页" : tab.Title;
-            if (_appWindow != null)
+            if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
-                try { _appWindow.Title = TitleText.Text; } catch { }
+                AppWindowCompat.SetTitle(_appWindow, TitleText.Text);
             }
         }
 
@@ -290,16 +288,14 @@ namespace EdgeRebuild
             {
                 if (_appWindow != null)
                 {
-                    // AppWindow 副窗口
-                    _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
-                    ApplyAppWindowTitleBarColors();
+                    // AppWindow 副窗口（18362+）
+                    if (PlatformCompat.HasAppWindow)
+                        AppWindowCompat.ApplyChrome(_appWindow, ThemeManager.IsDarkTheme);
                 }
                 else
                 {
-                    // 主窗口 + 原生多视图窗口：各自是独立视图，按当前线程取视图
-                    CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
-                    Window.Current.SetTitleBar(TitleBarDragArea);
-                    ThemeManager.UpdateTitleBarColors();
+                    // 主窗口 + 原生多视图窗口：各自是独立视图，按当前线程取视图（17763 可用）
+                    WindowChrome.ApplyLegacy(TitleBarDragArea, ThemeManager.IsDarkTheme);
                 }
                 Diagnostics.Log($"[Demo] 已隐藏系统标题栏 slot={_slot} mode={PresentationLabel()}");
             }
@@ -311,24 +307,8 @@ namespace EdgeRebuild
 
         private void ApplyAppWindowTitleBarColors()
         {
-            if (_appWindow == null) return;
-            bool isDark = ThemeManager.IsDarkTheme;
-            var transparent = Color.FromArgb(0, 0, 0, 0);
-            var fg = isDark ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(255, 0, 0, 0);
-
-            var tb = _appWindow.TitleBar;
-            tb.ForegroundColor = fg;
-            tb.BackgroundColor = transparent;
-            tb.InactiveBackgroundColor = transparent;
-            tb.ButtonForegroundColor = fg;
-            tb.ButtonBackgroundColor = transparent;
-            tb.ButtonInactiveBackgroundColor = transparent;
-            tb.ButtonHoverBackgroundColor = isDark
-                ? Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)
-                : Color.FromArgb(0x30, 0x00, 0x00, 0x00);
-            tb.ButtonPressedBackgroundColor = isDark
-                ? Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)
-                : Color.FromArgb(0x40, 0x00, 0x00, 0x00);
+            if (_appWindow == null || !PlatformCompat.HasAppWindow) return;
+            AppWindowCompat.ApplyChrome(_appWindow, ThemeManager.IsDarkTheme);
         }
 
         private async void OnNewTab(object sender, RoutedEventArgs e)
@@ -378,7 +358,7 @@ namespace EdgeRebuild
             toolbar.ApplySkin(colors, isDark);
             TitleBarHost.Background = colors.ToolbarBackground;
             if (_appWindow != null) ApplyAppWindowTitleBarColors();
-            else ThemeManager.UpdateTitleBarColors();
+            else WindowChrome.ApplyApplicationViewTitleBarColors(isDark);
             _tabManager?.UpdateTheme(colors);
         }
 
@@ -519,9 +499,19 @@ namespace EdgeRebuild
             }
         }
 
-        private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+        private void SubscribeWindowSizeChanged()
         {
-            if (!_isDragging) UpdateTabLayout();
+            if (_sizeChangedSubscription != null) return;
+            // 18362+ XamlRoot.Changed；17763 回退到本视图 Window.Current.SizeChanged
+            _sizeChangedSubscription = PlatformCompat.SubscribeSizeChanged(
+                this,
+                () => { if (!_isDragging) UpdateTabLayout(); });
+        }
+
+        private void UnsubscribeWindowSizeChanged()
+        {
+            _sizeChangedSubscription?.Dispose();
+            _sizeChangedSubscription = null;
         }
 
         private void TabBarBorder_SizeChanged(object sender, SizeChangedEventArgs e)

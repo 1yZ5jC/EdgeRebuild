@@ -151,28 +151,30 @@ namespace EdgeRebuild.Controls
             {
                 try
                 {
-                    var mainPage = (this.XamlRoot?.Content as Frame)?.Content as MainPage;
+                    var mainPage = PlatformCompat.GetPageFrame(this)?.Content as MainPage;
                     if (mainPage != null)
                     {
                         await mainPage.ClearAllCookiesInternalAsync();
-                        await new ContentDialog
+                        var cookiesClearedDialog = new ContentDialog
                         {
                             Title = "已清除",
                             Content = "已清除所有 WebView2 标签页的 Cookie。",
-                            CloseButtonText = "确定",
-                            XamlRoot = this.XamlRoot
-                        }.ShowAsync();
+                            CloseButtonText = "确定"
+                        };
+                        PlatformCompat.SetDialogRoot(cookiesClearedDialog, this);
+                        await cookiesClearedDialog.ShowAsync();
                     }
                 }
                 catch (Exception ex)
                 {
-                    await new ContentDialog
+                    var cookieErrorDialog = new ContentDialog
                     {
                         Title = "错误",
                         Content = $"清除 Cookie 失败: {ex.Message}",
-                        CloseButtonText = "确定",
-                        XamlRoot = this.XamlRoot
-                    }.ShowAsync();
+                        CloseButtonText = "确定"
+                    };
+                    PlatformCompat.SetDialogRoot(cookieErrorDialog, this);
+                    await cookieErrorDialog.ShowAsync();
                 }
             };
             privacyPanel.Children.Add(clearCookiesBtn);

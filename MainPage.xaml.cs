@@ -20,7 +20,6 @@ using Windows.Storage.Streams;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
-using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -60,7 +59,9 @@ namespace EdgeRebuild
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
 
         // ---- 辅助窗口引用（AppWindow 同线程模型；主窗口为 null）----
-        private AppWindow _appWindow;
+        // 类型为 object：17763 没有 AppWindow，避免字段类型解析失败；操作统一走 AppWindowCompat。
+        private object _appWindow;
+        private IDisposable _sizeChangedSubscription;
 
         // ---- 多窗口焦点守卫 ----
         // AppWindow 同线程模式：Window.Current 恒指主窗口，失活窗口的 XamlRoot 内
@@ -139,7 +140,11 @@ namespace EdgeRebuild
                 _previewCloseTimer?.Stop();
                 if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
             });
-            Safe("XamlRoot", () => { if (this.XamlRoot != null) this.XamlRoot.Changed -= OnXamlRootChanged; });
+            Safe("窗口尺寸事件", () =>
+            {
+                _sizeChangedSubscription?.Dispose();
+                _sizeChangedSubscription = null;
+            });
             Safe("快捷键Disable", () => ShortcutManager.Disable());
             Safe("槽位广播解绑", () => WindowManager.SlotActivated -= OnSlotActivated);
             Safe("主题事件", () => ThemeManager.ThemeChanged -= OnThemeChanged);
@@ -350,15 +355,16 @@ namespace EdgeRebuild
                 // ---- 窗口设置 ----
                 if (_appWindow != null)
                 {
-                    // 副窗口（AppWindow）：默认扩展标题栏（系统拖拽区）；
+                    // 副窗口（AppWindow，18362+）：默认扩展标题栏（系统拖拽区）；
                     // 用户可在设置→外观中开启「新窗口显示系统标题栏」，此时不扩展内容进标题栏
-                    try { _appWindow.Title = "EdgeRebuild"; } catch { }
+                    if (PlatformCompat.HasAppWindow)
+                        AppWindowCompat.SetTitle(_appWindow, "EdgeRebuild");
                     string titleBarSetting = await SettingsManager.GetAsync("ShowSystemTitleBar") ?? "False";
                     bool showSystemTitleBar = (titleBarSetting == "True" || titleBarSetting == "true");
                     if (!showSystemTitleBar)
                     {
-                        _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
-                        ApplyAppWindowTitleBarColors();
+                        if (PlatformCompat.HasAppWindow)
+                            AppWindowCompat.ApplyChrome(_appWindow, ThemeManager.IsDarkTheme);
                         NewTabButton.Visibility = Visibility.Collapsed;
                         // 垂直侧边栏按钮下移到系统拖拽区下方（32px），保持可用
                         VerticalButtonsHost.Margin = new Thickness(0, 32, 0, 0);
@@ -368,13 +374,12 @@ namespace EdgeRebuild
                 }
                 else
                 {
-                    // 主窗口：扩展标题栏 + 自定义拖拽区域
-                    CoreApplication.GetCurrentView().TitleBar.ExtendViewIntoTitleBar = true;
-                    Window.Current.SetTitleBar(TitleBarDragArea);
-                    ThemeManager.UpdateTitleBarColors();
+                    // 主窗口 / 原生副窗口：17763 可用的标题栏方案
+                    // （ExtendViewIntoTitleBar + Window.SetTitleBar + ApplicationViewTitleBar）
+                    WindowChrome.ApplyLegacy(TitleBarDragArea, ThemeManager.IsDarkTheme);
                 }
 
-                this.XamlRoot.Changed += OnXamlRootChanged;
+                SubscribeWindowSizeChanged();
 
                 ThemeManager.ThemeChanged += OnThemeChanged;
                 ApplyTheme();
@@ -625,13 +630,14 @@ namespace EdgeRebuild
             {
                 Debug.WriteLine($"[OnLoaded] 异常: {ex}");
                 if (_isNewWindow) Services.Diagnostics.Log($"[窗口] OnLoaded 异常: {ex}");
-                await new ContentDialog
+                var errorDialog = new ContentDialog
                 {
                     Title = "界面初始化失败",
                     Content = ex.ToString(),
-                    CloseButtonText = "确定",
-                    XamlRoot = this.XamlRoot
-                }.ShowAsync();
+                    CloseButtonText = "确定"
+                };
+                PlatformCompat.SetDialogRoot(errorDialog, this);
+                await errorDialog.ShowAsync();
             }
             if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 完成");
         }
@@ -1213,9 +1219,9 @@ namespace EdgeRebuild
             toolbarControl.UpdateSiteInfo(isSecure, host, ToolbarControl.IsNtpUrl(currentUrl));
 
             // 副窗口（AppWindow）用 AppWindow.Title 同步标题；主窗口标题随系统
-            if (_appWindow != null)
+            if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
-                try { _appWindow.Title = tab.Title ?? "新标签页"; } catch { }
+                AppWindowCompat.SetTitle(_appWindow, tab.Title ?? "新标签页");
             }
 
             SetFocusToCurrentTabContent();
@@ -1420,9 +1426,9 @@ namespace EdgeRebuild
             _tabPreviewPopup = new Windows.UI.Xaml.Controls.Primitives.Popup
             {
                 IsLightDismissEnabled = false,
-                Child = _tabPreviewCard,
-                XamlRoot = this.XamlRoot
+                Child = _tabPreviewCard
             };
+            PlatformCompat.SetPopupRoot(_tabPreviewPopup, this);
             _hoverTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
             _hoverTimer.Tick += async (s, e) => { _hoverTimer.Stop(); await ShowTabPreviewAsync(); };
             _previewCloseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(PreviewCloseDelayMs) };
@@ -1470,14 +1476,15 @@ namespace EdgeRebuild
         {
             var target = _tabPreviewTarget;
             if (target == null || target.Container == null || !_tabManager.Tabs.Contains(target)) return;
-            if (_tabPreviewPopup.XamlRoot == null) _tabPreviewPopup.XamlRoot = this.XamlRoot;
+            PlatformCompat.SetPopupRoot(_tabPreviewPopup, this);
 
             // 定位：水平模式→标签上方居中；垂直模式→侧边栏右侧、与标签顶部对齐
             try
             {
                 var topLeft = target.Container.TransformToVisual(null).TransformPoint(new Point(0, 0));
-                double maxW = XamlRoot?.Size.Width ?? Window.Current.Bounds.Width;
-                double maxH = XamlRoot?.Size.Height ?? Window.Current.Bounds.Height;
+                var windowSize = PlatformCompat.GetWindowSize(this);
+                double maxW = windowSize.Width;
+                double maxH = windowSize.Height;
                 if (_isVerticalTabs)
                 {
                     // 垂直模式：显示在侧边栏右侧，与标签顶部对齐
@@ -1697,41 +1704,23 @@ namespace EdgeRebuild
             }
         }
 
-        private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args)
+        private void SubscribeWindowSizeChanged()
         {
-            if (!_isDragging)
-                UpdateTabLayout();
+            if (_sizeChangedSubscription != null) return;
+            // 18362+：XamlRoot.Changed（含 AppWindow 同线程副窗）；
+            // 17763：每个原生视图有自己的 Window.Current，用 SizeChanged 等价替代。
+            _sizeChangedSubscription = PlatformCompat.SubscribeSizeChanged(
+                this,
+                () => { if (!_isDragging) UpdateTabLayout(); });
         }
 
         // 真·多视图：每个窗口拥有独立 CoreWindow/XamlRoot。
-        // 守卫 = 本窗口处于激活态（本视图 CoreWindow.Activated 维护） && 本 XamlRoot 有焦点元素。
+        // 守卫 = 本窗口处于激活态（本视图 CoreWindow.Activated 维护） && 本窗口有焦点元素。
         private bool IsFocusedWindow()
         {
             if (!_windowActive) return false;
-            try { return FocusManager.GetFocusedElement(this.XamlRoot) != null; }
+            try { return PlatformCompat.GetFocusedElement(this) != null; }
             catch { return false; }
-        }
-
-        // ---- 副窗口（AppWindow）标题栏配色 ----
-        private void ApplyAppWindowTitleBarColors()
-        {
-            if (_appWindow == null) return;
-            bool isDark = ThemeManager.IsDarkTheme;
-            var transparent = Color.FromArgb(0, 0, 0, 0);
-            var fg = isDark ? Color.FromArgb(255, 255, 255, 255) : Color.FromArgb(255, 0, 0, 0);
-
-            _appWindow.TitleBar.ForegroundColor = fg;
-            _appWindow.TitleBar.BackgroundColor = transparent;
-            _appWindow.TitleBar.InactiveBackgroundColor = transparent;
-            _appWindow.TitleBar.ButtonForegroundColor = fg;
-            _appWindow.TitleBar.ButtonBackgroundColor = transparent;
-            _appWindow.TitleBar.ButtonInactiveBackgroundColor = transparent;
-            _appWindow.TitleBar.ButtonHoverBackgroundColor = isDark
-                ? Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)
-                : Color.FromArgb(0x30, 0x00, 0x00, 0x00);
-            _appWindow.TitleBar.ButtonPressedBackgroundColor = isDark
-                ? Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)
-                : Color.FromArgb(0x40, 0x00, 0x00, 0x00);
         }
 
         // ---- 副视图键盘快捷键（XAML 路由；副视图不挂 CoreWindow 全局钩子） ----
@@ -1827,6 +1816,8 @@ namespace EdgeRebuild
             _tabManager?.UpdateTheme(colors);
 
             ThemeManager.UpdateTitleBarColors();
+            if (_appWindow != null && PlatformCompat.HasAppWindow)
+                AppWindowCompat.ApplyChrome(_appWindow, isDark, extendContentIntoTitleBar: false);
             UpdateTabLayout();
         }
 
@@ -2003,13 +1994,14 @@ namespace EdgeRebuild
             catch (Exception ex)
             {
                 Debug.WriteLine($"引擎切换失败: {ex}");
-                await new ContentDialog
+                var switchErrorDialog = new ContentDialog
                 {
                     Title = "引擎切换失败",
                     Content = ex.Message,
-                    CloseButtonText = "确定",
-                    XamlRoot = this.XamlRoot
-                }.ShowAsync();
+                    CloseButtonText = "确定"
+                };
+                PlatformCompat.SetDialogRoot(switchErrorDialog, this);
+                await switchErrorDialog.ShowAsync();
             }
             finally
             {
@@ -2290,7 +2282,7 @@ namespace EdgeRebuild
                 {
                     var html = await wv2.CoreWebView2.ExecuteScriptAsync("document.documentElement.outerHTML;");
                     html = html?.Trim('"').Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t");
-                    await new ContentDialog
+                    var sourceDialog = new ContentDialog
                     {
                         Title = "页面源代码",
                         Content = new ScrollViewer
@@ -2302,19 +2294,21 @@ namespace EdgeRebuild
                                 IsTextSelectionEnabled = true
                             }
                         },
-                        PrimaryButtonText = "关闭",
-                        XamlRoot = this.XamlRoot
-                    }.ShowAsync();
+                        PrimaryButtonText = "关闭"
+                    };
+                    PlatformCompat.SetDialogRoot(sourceDialog, this);
+                    await sourceDialog.ShowAsync();
                 }
                 catch (Exception ex)
                 {
-                    await new ContentDialog
+                    var sourceErrorDialog = new ContentDialog
                     {
                         Title = "错误",
                         Content = $"获取源代码失败：{ex.Message}",
-                        CloseButtonText = "确定",
-                        XamlRoot = this.XamlRoot
-                    }.ShowAsync();
+                        CloseButtonText = "确定"
+                    };
+                    PlatformCompat.SetDialogRoot(sourceErrorDialog, this);
+                    await sourceErrorDialog.ShowAsync();
                 }
             }
             else if (_tabManager.CurrentTab is EdgeHtmlTab edge)
@@ -2323,7 +2317,7 @@ namespace EdgeRebuild
                 {
                     var html = await edge.ExecuteScriptAsync("document.documentElement.outerHTML;");
                     html = html?.Trim('"').Replace("\\\"", "\"").Replace("\\n", "\n").Replace("\\t", "\t");
-                    await new ContentDialog
+                    var sourceDialog = new ContentDialog
                     {
                         Title = "页面源代码",
                         Content = new ScrollViewer
@@ -2335,19 +2329,21 @@ namespace EdgeRebuild
                                 IsTextSelectionEnabled = true
                             }
                         },
-                        PrimaryButtonText = "关闭",
-                        XamlRoot = this.XamlRoot
-                    }.ShowAsync();
+                        PrimaryButtonText = "关闭"
+                    };
+                    PlatformCompat.SetDialogRoot(sourceDialog, this);
+                    await sourceDialog.ShowAsync();
                 }
                 catch (Exception ex)
                 {
-                    await new ContentDialog
+                    var sourceErrorDialog = new ContentDialog
                     {
                         Title = "错误",
                         Content = $"获取源代码失败：{ex.Message}",
-                        CloseButtonText = "确定",
-                        XamlRoot = this.XamlRoot
-                    }.ShowAsync();
+                        CloseButtonText = "确定"
+                    };
+                    PlatformCompat.SetDialogRoot(sourceErrorDialog, this);
+                    await sourceErrorDialog.ShowAsync();
                 }
             }
             else
@@ -2399,13 +2395,14 @@ namespace EdgeRebuild
             UpdateStarButton();
             if (HubSplitView.IsPaneOpen)
                 hubPane.RefreshFavorites();
-            await new ContentDialog
+            var bookmarkAllDialog = new ContentDialog
             {
                 Title = "完成",
                 Content = $"已将 {count} 个标签页加入收藏。",
-                CloseButtonText = "确定",
-                XamlRoot = this.XamlRoot
-            }.ShowAsync();
+                CloseButtonText = "确定"
+            };
+            PlatformCompat.SetDialogRoot(bookmarkAllDialog, this);
+            await bookmarkAllDialog.ShowAsync();
         }
 
         private async Task ClearBrowsingDataAsync()
@@ -2416,13 +2413,14 @@ namespace EdgeRebuild
             if (HubSplitView.IsPaneOpen)
                 hubPane.RefreshAll();
             await ClearAllCookiesInternalAsync();
-            await new ContentDialog
+            var clearedDialog = new ContentDialog
             {
                 Title = "已清除",
                 Content = "浏览数据已清除。",
-                CloseButtonText = "确定",
-                XamlRoot = this.XamlRoot
-            }.ShowAsync();
+                CloseButtonText = "确定"
+            };
+            PlatformCompat.SetDialogRoot(clearedDialog, this);
+            await clearedDialog.ShowAsync();
         }
 
         public async Task ClearAllCookiesInternalAsync()
@@ -2438,24 +2436,26 @@ namespace EdgeRebuild
 
         private void ShowAboutDialog()
         {
-            _ = new ContentDialog
+            var dialog = new ContentDialog
             {
                 Title = "Edge Rebuild",
                 Content = "版本 0.2 Alpha\n基于 UWP 的双内核浏览器外壳。",
-                CloseButtonText = "确定",
-                XamlRoot = this.XamlRoot
-            }.ShowAsync();
+                CloseButtonText = "确定"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            _ = dialog.ShowAsync();
         }
 
         private async void ShowNotImplementedDialog(string feature)
         {
-            await new ContentDialog
+            var dialog = new ContentDialog
             {
                 Title = "即将推出",
                 Content = $"功能“{feature}”尚未实现。",
-                CloseButtonText = "确定",
-                XamlRoot = this.XamlRoot
-            }.ShowAsync();
+                CloseButtonText = "确定"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            await dialog.ShowAsync();
         }
 
         private void HubPane_NavigateRequested(string url)

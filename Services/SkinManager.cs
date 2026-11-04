@@ -16,21 +16,8 @@ namespace EdgeRebuild.Services
 
         private static SkinColors CreateSpartanColors(bool isDark)
         {
-            Brush toolbarBackground = isDark
-                ? new AcrylicBrush
-                {
-                    BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
-                    TintColor = Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B),
-                    TintOpacity = 0.8,
-                    FallbackColor = Color.FromArgb(0xFF, 0x2B, 0x2B, 0x2B)
-                }
-                : new AcrylicBrush
-                {
-                    BackgroundSource = AcrylicBackgroundSource.HostBackdrop,
-                    TintColor = Color.FromArgb(0xFF, 0xF0, 0xF0, 0xF0),
-                    TintOpacity = 0.8,
-                    FallbackColor = Color.FromArgb(0xFF, 0xF0, 0xF0, 0xF0)
-                };
+            // 17763 可用：AcrylicBrush(HostBackdrop)，高对比度/关闭透明效果时自动退化为实色
+            Brush toolbarBackground = WindowBackdrop.Create(isDark);
 
             Color tabActive = isDark ? Color.FromArgb(0xFF, 0x5E, 0x5E, 0x62) : Colors.White;
             Color tabHover = isDark ? Color.FromArgb(0xFF, 0x5A, 0x5A, 0x5A) : Colors.Silver;

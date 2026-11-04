@@ -455,7 +455,7 @@ namespace EdgeRebuild.Core
                         op.Uri,
                         defaultFolder,
                         op.TotalBytesToReceive > 0 ? (long?)op.TotalBytesToReceive : null);
-                    dialog.XamlRoot = ViewElement?.XamlRoot;
+                    PlatformCompat.SetDialogRoot(dialog, ViewElement);
 
                     var result = await dialog.ShowAsync();
                     if (result != ContentDialogResult.Primary)
@@ -467,7 +467,14 @@ namespace EdgeRebuild.Core
                     if (!Controls.DownloadDialog.TryValidateFileName(dialog.FileName, out string safeName, out string error))
                     {
                         e.Cancel = true;
-                        await new ContentDialog { Title = "文件名无效", Content = error, CloseButtonText = "确定", XamlRoot = ViewElement?.XamlRoot }.ShowAsync();
+                        var invalidNameDialog = new ContentDialog
+                        {
+                            Title = "文件名无效",
+                            Content = error,
+                            CloseButtonText = "确定"
+                        };
+                        PlatformCompat.SetDialogRoot(invalidNameDialog, ViewElement);
+                        await invalidNameDialog.ShowAsync();
                         return;
                     }
 

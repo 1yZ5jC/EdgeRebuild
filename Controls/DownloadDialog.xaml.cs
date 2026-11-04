@@ -1,4 +1,5 @@
-﻿using System;
+﻿using EdgeRebuild.Services;
+using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -107,13 +108,14 @@ namespace EdgeRebuild.Controls
             if (!TryValidateFileName(FileNameBox.Text, out _, out string error))
             {
                 args.Cancel = true;
-                _ = new ContentDialog
+                var invalidDialog = new ContentDialog
                 {
                     Title = "文件名无效",
                     Content = error,
-                    CloseButtonText = "确定",
-                    XamlRoot = this.XamlRoot
-                }.ShowAsync();
+                    CloseButtonText = "确定"
+                };
+                PlatformCompat.SetDialogRoot(invalidDialog, this);
+                _ = invalidDialog.ShowAsync();
             }
         }
 

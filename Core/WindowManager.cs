@@ -7,7 +7,13 @@ namespace EdgeRebuild.Core
     {
         public EngineType Engine { get; set; }
         public string Url { get; set; }
-        public Windows.UI.WindowManagement.AppWindow AppWindow { get; set; }
+
+        /// <summary>
+        /// AppWindow 回退模式的句柄（18362+）。类型刻意声明为 object，
+        /// 避免 17763 加载本类型时因 AppWindow 不存在而失败；
+        /// 调用方必须先检查 PlatformCompat.HasAppWindow。
+        /// </summary>
+        public object AppWindow { get; set; }
         public bool IsMetro { get; set; }
         public bool IsInPrivate { get; set; }
 

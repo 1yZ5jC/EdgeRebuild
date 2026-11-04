@@ -34,7 +34,7 @@ namespace EdgeRebuild.Services
                 {
                     var rtb = new Windows.UI.Xaml.Media.Imaging.RenderTargetBitmap();
                     double scale = 1.0;
-                    try { scale = edge.ViewElement.XamlRoot?.RasterizationScale ?? 1.0; } catch { }
+                    try { scale = PlatformCompat.GetRasterizationScale(edge.ViewElement); } catch { }
                     await rtb.RenderAsync(edge.ViewElement,
                         (int)(edge.ViewElement.ActualWidth * scale),
                         (int)(edge.ViewElement.ActualHeight * scale));

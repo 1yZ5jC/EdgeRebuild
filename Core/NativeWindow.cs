@@ -1,5 +1,6 @@
 using EdgeRebuild.Services;
 using System;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
@@ -35,8 +36,11 @@ namespace EdgeRebuild.Core
         /// <summary>独立视图模式：CoreApplicationView 句柄。</summary>
         public CoreApplicationView CoreView { get; private set; }
 
-        /// <summary>AppWindow 回退模式：AppWindow 句柄。</summary>
-        public Windows.UI.WindowManagement.AppWindow AppWindowRef { get; private set; }
+        /// <summary>
+        /// AppWindow 回退模式：AppWindow 句柄。类型为 object 以便 17763 加载本类时
+        /// 不解析不存在的 AppWindow 类型；实际操作统一走 AppWindowCompat。
+        /// </summary>
+        public object AppWindowRef { get; private set; }
 
         // ---- 事件 ----
         public event Action<NativeWindow> Activated;
@@ -135,8 +139,16 @@ namespace EdgeRebuild.Core
         //  创建：AppWindow 回退
         // ================================================================
 
+        [SupportedOSPlatform("windows10.0.18362.0")]
         public static async Task<NativeWindow> CreateAppWindowAsync(Type pageType, object navigationArg, int slot)
         {
+            // 双保险：调用方应已检查，这里再挡一次，17763 绝不进入 AppWindow 类型。
+            if (!PlatformCompat.HasAppWindow)
+            {
+                Diagnostics.Log("[NativeWindow] 当前系统没有 AppWindow（<18362），拒绝创建");
+                return null;
+            }
+
             var win = new NativeWindow(WindowMode.AppWindow) { Slot = slot };
             try
             {
@@ -190,7 +202,8 @@ namespace EdgeRebuild.Core
                 case WindowMode.NativeView:
                     return await ShowNativeViewAsync(timeoutMs);
                 case WindowMode.AppWindow:
-                    try { return await AppWindowRef.TryShowAsync(); }
+                    if (!PlatformCompat.HasAppWindow) return false;
+                    try { return await AppWindowCompat.TryShowAsync(AppWindowRef); }
                     catch (Exception ex)
                     {
                         Diagnostics.Log($"[NativeWindow] AppWindow.TryShowAsync 失败: {ex.Message}");
@@ -286,9 +299,19 @@ namespace EdgeRebuild.Core
             try
             {
                 if (Mode == WindowMode.AppWindow)
-                    AppWindowRef.Title = title;
-                else if (_viewId >= 0)
-                    ApplicationView.GetForCurrentView().Title = title;
+                {
+                    if (PlatformCompat.HasAppWindow)
+                        AppWindowCompat.SetTitle(AppWindowRef, title);
+                }
+                else if (Mode == WindowMode.NativeView && CoreView != null)
+                {
+                    // 每个原生视图有独立的 ApplicationView；必须在该视图线程上设置，
+                    // 否则 GetForCurrentView() 取到的是调用方窗口。
+                    _ = CoreView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+                    {
+                        try { ApplicationView.GetForCurrentView().Title = title; } catch { }
+                    });
+                }
             }
             catch { }
         }

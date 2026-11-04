@@ -258,13 +258,14 @@ namespace EdgeRebuild.Controls
             if (file != null)
             {
                 int imported = await FavoritesManager.ImportFromHtmlAsync(file);
-                await new ContentDialog
+                var importDialog = new ContentDialog
                 {
                     Title = "导入完成",
                     Content = $"成功导入 {imported} 个书签。",
-                    CloseButtonText = "确定",
-                    XamlRoot = this.XamlRoot
-                }.ShowAsync();
+                    CloseButtonText = "确定"
+                };
+                PlatformCompat.SetDialogRoot(importDialog, this);
+                await importDialog.ShowAsync();
                 RefreshFavorites();
             }
         }
@@ -283,9 +284,9 @@ namespace EdgeRebuild.Controls
                 Title = "导出成功",
                 Content = $"收藏夹已导出为 HTML 书签文件。\n保存位置：{file.Path}",
                 PrimaryButtonText = "打开文件夹",
-                CloseButtonText = "确定",
-                XamlRoot = this.XamlRoot
+                CloseButtonText = "确定"
             };
+            PlatformCompat.SetDialogRoot(dialog, this);
             var result = await dialog.ShowAsync();
             if (result == ContentDialogResult.Primary)
             {
@@ -317,9 +318,9 @@ namespace EdgeRebuild.Controls
                     Title = "重命名书签",
                     Content = box,
                     PrimaryButtonText = "确定",
-                    CloseButtonText = "取消",
-                    XamlRoot = this.XamlRoot
+                    CloseButtonText = "取消"
                 };
+                PlatformCompat.SetDialogRoot(dialog, this);
                 var result = await dialog.ShowAsync();
                 if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(box.Text))
                 {
@@ -649,9 +650,9 @@ namespace EdgeRebuild.Controls
                     Title = "删除下载",
                     Content = item.IsActive ? "下载正在进行，确定取消并删除吗？" : "确定删除这条下载记录吗？",
                     PrimaryButtonText = "确定",
-                    SecondaryButtonText = "取消",
-                    XamlRoot = this.XamlRoot
+                    SecondaryButtonText = "取消"
                 };
+                PlatformCompat.SetDialogRoot(dlg, this);
                 var result = await dlg.ShowAsync();
                 if (result == ContentDialogResult.Primary)
                 {
@@ -1029,6 +1030,7 @@ namespace EdgeRebuild.Controls
                         PrimaryButtonText = "确定",
                         SecondaryButtonText = "取消"
                     };
+                    PlatformCompat.SetDialogRoot(dialog, this);
                     var tb = new TextBox { Text = group.Name, Margin = new Thickness(0, 8, 0, 0) };
                     dialog.Content = tb;
                     if (await dialog.ShowAsync() == ContentDialogResult.Primary)
@@ -1058,6 +1060,7 @@ namespace EdgeRebuild.Controls
                 PrimaryButtonText = "创建",
                 SecondaryButtonText = "取消"
             };
+            PlatformCompat.SetDialogRoot(dialog, this);
             var tb = new TextBox { PlaceholderText = "分组名称", Margin = new Thickness(0, 8, 0, 0) };
             dialog.Content = tb;
             if (await dialog.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(tb.Text))

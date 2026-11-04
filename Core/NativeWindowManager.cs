@@ -127,7 +127,13 @@ namespace EdgeRebuild.Core
                     }
                 }
 
-                // ---- 策略 2：AppWindow（Demo 当前唯一通路）----
+                // ---- 策略 2：AppWindow（18362+ 才存在）----
+                if (!PlatformCompat.HasAppWindow)
+                {
+                    Diagnostics.Log("[NativeWM] 当前系统没有 AppWindow（<18362），不进入回退");
+                    return false;
+                }
+
                 Diagnostics.Log($"[NativeWM] 进入 AppWindow 路径 slot={slot}");
                 var fallback = await NativeWindow.CreateAppWindowAsync(pageType, args, slot);
                 if (fallback == null)

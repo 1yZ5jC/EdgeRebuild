@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Foundation;
 using Windows.System;
-using Windows.UI.WindowManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
@@ -26,7 +25,7 @@ namespace EdgeRebuild.Metro
     public sealed partial class MetroPage : Page
     {
         private EngineType _defaultEngine;
-        private AppWindow _appWindow;
+        private object _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
         private TabManager _tabManager;
         private bool _gridOpen;
         private bool _commandBarOpen;
@@ -148,20 +147,22 @@ namespace EdgeRebuild.Metro
             _tabManager.TabScrolled += OnTabScrolled;                 // 滚动感知底栏自动隐藏（IE11 Modern 行为）
             SyncCtxPolling();   // R2-2：初始状态同步（首个标签可能就是 EdgeHTML）
 
-            // AppWindow 模式：标题/标题栏经 AppWindow 定制（OnNavigatedTo 阶段即可用）
+            // AppWindow 模式（18362+）：标题/标题栏经 AppWindow 定制
             try
             {
-                if (_appWindow != null)
+                if (_appWindow != null && PlatformCompat.HasAppWindow)
                 {
-                    _appWindow.Title = "Metro IE";
-                    _appWindow.TitleBar.ExtendsContentIntoTitleBar = true;
-                    _appWindow.TitleBar.BackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
-                    _appWindow.TitleBar.InactiveBackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
-                    _appWindow.TitleBar.ForegroundColor = Windows.UI.Colors.White;
-                    _appWindow.TitleBar.ButtonBackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
-                    _appWindow.TitleBar.ButtonInactiveBackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
-                    _appWindow.TitleBar.ButtonForegroundColor = Windows.UI.Colors.White;
-                    _appWindow.TitleBar.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
+                    var metroBg = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
+                    AppWindowCompat.SetTitle(_appWindow, "Metro IE");
+                    AppWindowCompat.ApplyTitleBarColors(
+                        _appWindow,
+                        extendContentIntoTitleBar: true,
+                        background: metroBg,
+                        inactiveBackground: metroBg,
+                        foreground: Windows.UI.Colors.White,
+                        buttonBackground: metroBg,
+                        buttonHoverBackground: Windows.UI.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF),
+                        buttonPressedBackground: Windows.UI.Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
                 }
             }
             catch { }
@@ -186,26 +187,39 @@ namespace EdgeRebuild.Metro
             AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
             TopBarTitle.Text = tab.Title ?? "Metro IE";
             ShowBottomBar();   // 切标签恢复底栏，避免新标签在无 chrome 状态下迷失
-            if (_appWindow != null)
+            if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
-                try { _appWindow.Title = tab.Title ?? "Metro IE"; } catch { }
+                AppWindowCompat.SetTitle(_appWindow, tab.Title ?? "Metro IE");
             }
             TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             RefreshGridIfOpen();
             FadeContentIn();
         }
 
-        // ---- 全屏（AppWindowPresenter.RequestPresentation(FullScreen)；进入时隐藏标题栏） ----
+        // ---- 全屏（18362+ AppWindowPresenter；17763 回退 ApplicationView 全屏） ----
         private void ToggleFullscreen()
         {
-            if (_appWindow == null) return;
             try
             {
                 bool ok;
-                if (_isFullscreen)
-                    ok = _appWindow.Presenter.RequestPresentation(AppWindowPresentationKind.Default);
+                if (_appWindow != null && PlatformCompat.HasAppWindow)
+                {
+                    ok = AppWindowCompat.TrySetFullScreen(_appWindow, !_isFullscreen);
+                }
                 else
-                    ok = _appWindow.Presenter.RequestPresentation(AppWindowPresentationKind.FullScreen);
+                {
+                    // 17763：原生视图有自己的 ApplicationView，按当前 UI 线程取即可
+                    var view = Windows.UI.ViewManagement.ApplicationView.GetForCurrentView();
+                    if (_isFullscreen)
+                    {
+                        view.ExitFullScreenMode();
+                        ok = true;
+                    }
+                    else
+                    {
+                        ok = view.TryEnterFullScreenMode();
+                    }
+                }
 
                 if (!ok)
                 {
@@ -663,6 +677,7 @@ namespace EdgeRebuild.Metro
                     PrimaryButtonText = "创建",
                     SecondaryButtonText = "取消"
                 };
+                PlatformCompat.SetDialogRoot(dialog, this);
                 var tb = new TextBox { PlaceholderText = "分组名称", Margin = new Thickness(0, 8, 0, 0) };
                 dialog.Content = tb;
                 if (await dialog.ShowAsync() == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(tb.Text))
