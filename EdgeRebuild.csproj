@@ -86,4 +86,17 @@
   <ItemGroup>
     <PRIResource Remove="docs\**" />
   </ItemGroup>
+  <!--
+    GetSDKReferenceFiles 默认把 UWP 扩展 SDK（VCLibs / UniversalCRT 等）的扫描缓存写到
+    %TEMP%\MSBuildTemp<guid>。该目录一旦被系统或清理工具删除，任务里的
+    Directory.EnumerateFiles 就会抛 DirectoryNotFoundException，报
+    MSB3795: Could not find a part of the path '...\MSBuildTemp...'。
+    把缓存固定到 obj 下，并在 ResolveSDKReferences 前确保目录存在，避免依赖 MSBuild 临时目录。
+  -->
+  <Target Name="_EnsureSDKReferenceFilesCacheFolder" BeforeTargets="ResolveSDKReferences">
+    <PropertyGroup>
+      <GetSDKReferenceFilesCacheFolder Condition="'$(GetSDKReferenceFilesCacheFolder)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'SDKReferenceCache'))</GetSDKReferenceFilesCacheFolder>
+    </PropertyGroup>
+    <MakeDir Directories="$(GetSDKReferenceFilesCacheFolder)" />
+  </Target>
 </Project>

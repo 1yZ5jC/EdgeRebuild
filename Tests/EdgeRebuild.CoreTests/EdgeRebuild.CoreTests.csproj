@@ -19,4 +19,12 @@
     <Compile Include="..\..\Services\UrlInputResolver.cs" Link="Services\UrlInputResolver.cs" />
   </ItemGroup>
 
+  <!-- 历史构建可能把中间目录设为 tempobj；其中的生成文件（AssemblyInfo 等）
+       会被 SDK 默认的 **/*.cs 通配符再次编入，导致 CS0579 重复特性。显式排除。 -->
+  <ItemGroup>
+    <Compile Remove="tempobj\**" />
+    <EmbeddedResource Remove="tempobj\**" />
+    <None Remove="tempobj\**" />
+  </ItemGroup>
+
 </Project>
