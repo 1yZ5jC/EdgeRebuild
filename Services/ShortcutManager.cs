@@ -37,6 +37,9 @@ namespace EdgeRebuild.Services
             Register(VirtualKeyModifiers.Control, VirtualKey.P, () => OnPrint?.Invoke());
             Register(VirtualKeyModifiers.ControlShift, VirtualKey.M, () => OnHighlightMark?.Invoke());
             Register(VirtualKeyModifiers.ControlShift, VirtualKey.S, () => OnWebCapture?.Invoke());
+            // 注意：Ctrl+Tab 目前依赖 CoreWindow.KeyDown；焦点在 UrlBox 或 WebView 内容时
+            // Tab 会被控件/页面吞掉，只有工具栏按钮焦点下可靠。后续改用
+            // CoreWindow.Dispatcher.AcceleratorKeyActivated（见 docs J5）。
             Register(VirtualKeyModifiers.Control, VirtualKey.Tab, () => OnNextTab?.Invoke());
             Register(VirtualKeyModifiers.ControlShift, VirtualKey.Tab, () => OnPreviousTab?.Invoke());
             Register(VirtualKeyModifiers.Control, VirtualKey.Number1, () => OnSwitchToTab?.Invoke(0));

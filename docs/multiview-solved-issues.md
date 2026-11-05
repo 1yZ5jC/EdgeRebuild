@@ -363,3 +363,27 @@
 
 - `Debug|x86`：0 errors，`CA1416=0`（486 个既有可空/AOT/SQLite 警告不变）。
 - 单元测试：`dotnet test Tests\EdgeRebuild.CoreTests` → 25/25 通过。
+
+### J5. 快捷键矩阵补充（标准模式复测）
+
+| 快捷键 | 验证方式 | 结果 |
+|---|---|---|
+| Ctrl+L | UIA 焦点检查 | ✅ 焦点进入 `UrlBox`，内容清空 |
+| Ctrl+F / Esc | FindBox 可见性 | ✅ 显示 220×32 并聚焦；Esc 后从 UIA 树消失 |
+| Ctrl+G / F3 | FindBox 可见性 | ✅ 均打开查找栏；Esc 关闭 |
+| Ctrl+H | Hub 导航项选中态 | ✅ “历史记录” `selected=True` |
+| Ctrl+J | Hub 导航项选中态 | ✅ 修复后“下载” `selected=True` |
+| Ctrl+D | 收藏星标字形 | ✅ `E734 → E735`，再按一次还原 |
+| Ctrl+Tab / Ctrl+Shift+Tab | 标签 URL 往返 | ✅ 按钮焦点下 example.com ↔ about:blank 正常往返 |
+| Ctrl+1 / Ctrl+2 | 标签 URL 切换 | ✅ 分别切到第 1/2 个标签 |
+| Ctrl+T / Ctrl+W / Ctrl+Shift+T | 标签数 | ✅ 1→2→1→2，重开标签恢复 URL |
+| Ctrl+R / F5 | 进程存活 + 日志 | ✅ 触发后进程存活，无新增异常 |
+
+- **Ctrl+J 索引缺陷（已修复）**：`HubPane.ShowDownloads()` 原选中 `MenuItems[2]`（稍后读），
+  导航项实际顺序为 0=收藏夹、1=历史记录、2=稍后读、3=下载、4=集锦。
+  已改为 `MenuItems[3]` 并补充顺序注释，重新部署后 UIA 确认“下载” `selected=True`。
+- **Ctrl+Tab 已知限制（非 17763 专属）**：焦点在 `UrlBox` 时 Tab 被 TextBox 当制表符插入（URL 出现 `\t`）；
+  焦点在 WebView 内容时 Tab 被页面吞掉，`ShortcutManager` 的 `CoreWindow.KeyDown` 收不到。
+  焦点在工具栏按钮时正常。后续可在 `CoreWindow.Dispatcher.AcceleratorKeyActivated` 中处理 Ctrl+Tab，
+  并让副视图各自订阅所属 CoreWindow 的 accelerator 事件；本轮不改动全局快捷键架构。
+- 未覆盖：Ctrl+P（系统打印 UI）、Ctrl+Shift+M/S（批注/截图 UI），留待真实 1809 手动确认。

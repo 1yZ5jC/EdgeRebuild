@@ -242,8 +242,9 @@ namespace EdgeRebuild.Controls
 
         public void ShowDownloads()
         {
-            if (HubNavView.MenuItems.Count > 2)
-                HubNavView.SelectedItem = HubNavView.MenuItems[2];
+            // 导航项顺序：0=收藏夹 1=历史记录 2=稍后读 3=下载 4=集锦
+            if (HubNavView.MenuItems.Count > 3)
+                HubNavView.SelectedItem = HubNavView.MenuItems[3];
             LoadDownloads();
         }
 
