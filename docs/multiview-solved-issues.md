@@ -387,3 +387,17 @@
   焦点在工具栏按钮时正常。后续可在 `CoreWindow.Dispatcher.AcceleratorKeyActivated` 中处理 Ctrl+Tab，
   并让副视图各自订阅所属 CoreWindow 的 accelerator 事件；本轮不改动全局快捷键架构。
 - 未覆盖：Ctrl+P（系统打印 UI）、Ctrl+Shift+M/S（批注/截图 UI），留待真实 1809 手动确认。
+
+### J6. InPrivate 当前窗口模式开关（2026-11-05）
+
+| 项 | 结果 |
+|---|---|
+| 进入 InPrivate | ✅ 菜单项“进入 InPrivate 模式”，徽标出现，日志 `[InPrivate] 已进入 InPrivate 模式` |
+| 退出 InPrivate | ✅ 菜单项“退出 InPrivate 模式”，徽标隐藏，日志 `[InPrivate] 已退出 InPrivate 模式，清除会话标签` |
+| 退出后标签数 | ✅ 修复后 1 个（修复前为 2 个） |
+| 关闭唯一标签 | ✅ Ctrl+W 后自动补建 1 个 about:blank，进程存活 |
+
+- **退出 InPrivate 残留两个标签（已修复）**：`ClearInPrivateTabsAsync` 关闭最后一个标签时，
+  `OnTabManagerTabCountChanged(0)` 已自动补建一个 about:blank；方法末尾又显式 `CreateTabAsync` 一次，
+  于是留下两个标签。已移除显式补建，改为只依赖自动补建，并在方法内注释说明。
+- 重新部署后 UIA 确认退出 InPrivate 标签数 = 1；`Ctrl+W` 关闭唯一标签仍会自动补建，行为未回归。

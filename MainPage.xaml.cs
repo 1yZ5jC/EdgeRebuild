@@ -2529,7 +2529,8 @@ namespace EdgeRebuild
         {
             foreach (var viewItem in _tabManager.Tabs.ToList())
                 await _tabManager.CloseTabAsync(viewItem, false);
-            await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
+            // 关闭最后一个标签时 OnTabManagerTabCountChanged(0) 会自动补建一个 about:blank，
+            // 这里不要再建，否则退出 InPrivate 后会留下两个标签。
         }
     }
 
