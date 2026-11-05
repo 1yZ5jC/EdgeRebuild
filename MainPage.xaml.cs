@@ -67,6 +67,7 @@ namespace EdgeRebuild
         // AppWindow 同线程模式：Window.Current 恒指主窗口，失活窗口的 XamlRoot 内
         // 焦点元素残留 → 守卫 = WindowManager 槽位前台标记 && 本 XamlRoot 有焦点元素。
         private bool _windowActive;
+        private readonly int _uiThreadId = Environment.CurrentManagedThreadId;   // 本页所属视图的 UI 线程
         private int _pendingSessionSlot;   // OnNavigatedTo 暂存，OnLoaded 使用
         private int _sessionSlot;    // 本窗口会话槽位（0=主窗口；副窗由 WindowManager 分配）
         private int _restoreSlot = -1;   // >=1：本窗口是启动恢复重建的槽位窗口
@@ -1718,6 +1719,11 @@ namespace EdgeRebuild
         // 守卫 = 本窗口处于激活态（本视图 CoreWindow.Activated 维护） && 本窗口有焦点元素。
         private bool IsFocusedWindow()
         {
+            // ShortcutManager 的事件是进程级静态事件：副窗口按键会在副窗口 UI 线程
+            // 同步调用所有窗口注册的处理器。17763 下 GetFocusedElement 是线程级 API，
+            // 无法按元素区分视图，因此必须先确认当前线程就是本页的 UI 线程；
+            // 否则会跨线程操作本窗口 UI，抛 RPC_E_WRONG_THREAD (0x8001010E)。
+            if (Environment.CurrentManagedThreadId != _uiThreadId) return false;
             if (!_windowActive) return false;
             try { return PlatformCompat.GetFocusedElement(this) != null; }
             catch { return false; }

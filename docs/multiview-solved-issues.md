@@ -315,3 +315,51 @@
 - `App.xaml.cs` 还原被注释的 5 项加载：收藏夹 / 稍后读 / 历史记录 / 下载记录 / 集锦（每项独立 `try/catch`，失败只记 `[启动] xxx加载失败（已降级）` 不阻断启动）。
 - `ThemeManager.Initialize()` 保持在其后（顺序不变）。
 - **回归验证**：启动日志出现 `[下载目录] ...`（`DownloadManager.LoadDownloadsAsync` 触发）且**无**任何「加载失败」行；页面正常上屏。
+
+---
+
+## J. 17763 兼容模式运行时验证（2026-11-05）
+
+验证环境：Windows 10 19045 + `设置 → 调试 → 强制 17763 兼容窗口` 开启（模拟 1809 API 缺失）。
+真实 1809 机器仍作为最终验证条件。
+
+### J1. 启动与开关往返
+
+| 项 | 结果 |
+|---|---|
+| 强制模式启动 | ✅ `[启动] 窗口模式=17763兼容 HasXamlRoot=False HasAppWindow=False 调试开关=True` |
+| 关闭开关并重启 | ✅ `窗口模式=标准 HasXamlRoot=True HasAppWindow=True 调试开关=False` |
+| 重新打开开关并重启 | ✅ 持久化生效，恢复 `HasXamlRoot=False HasAppWindow=False` |
+| 设置页状态显示 | ✅ 分别显示“当前进程：17763 兼容模式 / 标准模式（18362+）”，并提示重启生效 |
+
+### J2. 窗口与交互
+
+| 项 | 结果 |
+|---|---|
+| 主窗口 | ✅ 标题栏/按钮/亚克力回退正常 |
+| 副窗口（slot=1） | ✅ `CreateNewView`、`TryShowAsStandaloneAsync 成功`、`OnLoaded 完成`；关闭链 `窗口关闭 slot=1 mode=NativeView` + `[窗口关闭] 清理完成` |
+| 槽位恢复 | ✅ 强杀后重启：`恢复窗口槽 slot=1` → `restoreSlot=1` → `OnNavigatedTo ... restore=1` → 窗口正常显示 |
+| InPrivate 窗口 | ✅ `slot=-1` 原生视图成功，日志 `[InPrivate] InPrivate 模式已启用，不写历史、不存会话`；关闭链正常 |
+| Metro 窗口 | ✅ 创建/关闭正常；`ApplicationView.TryEnterFullScreenMode` 全屏进入（1920×1200）与 Esc 退出（1216×941）正常 |
+| 窗口尺寸变化 | ✅ 主/副窗口 SetWindowPos 调整后布局正常、进程存活；17763 走 `Window.Current.SizeChanged` |
+| ContentDialog（无 XamlRoot） | ✅ 设置 → 隐私 → 清除所有 Cookie，“已清除”对话框正常显示与关闭 |
+| MenuFlyout（无 XamlRoot） | ✅ 应用菜单、InPrivate/Metro 菜单项可正常打开并执行 |
+| 标签悬停预览 Popup | ⚠ 未能用合成鼠标稳定触发（前台窗口抢占）；代码路径与 ContentDialog 同属 17763 无 XamlRoot 回退，待真实 1809 手动确认 |
+
+### J3. 副窗口快捷键跨线程崩溃（已修复）
+
+- 现象：副窗口按 Ctrl+T / Ctrl+W 后 `crash.log` 出现 `UnobservedTask` + `COMException 0x8001010E`：
+  `TabManager.BuildTabUI` 的 `Children.Add` 与 `EdgeHtmlTab.CurrentUrl` 在错误线程执行。
+- 根因：`ShortcutManager` 是进程级静态事件，副窗口按键会在副窗口 UI 线程同步调用**所有** MainPage 注册的处理器；
+  主窗口 `_windowActive` 恒为 true（`OnLoaded` 主窗口分支不订阅 `SlotActivated`），
+  而 17763 下 `PlatformCompat.GetFocusedElement` 回退为线程级 `FocusManager.GetFocusedElement()`，
+  无法按 `XamlRoot` 区分视图，于是主窗口处理器在副窗口线程操作主窗口 UI。
+- 修复：`MainPage` 增加 `_uiThreadId`（构造时捕获），`IsFocusedWindow()` 先检查
+  `Environment.CurrentManagedThreadId == _uiThreadId`，不匹配直接返回 false。
+- 验证：副窗口 Ctrl+T 只在该窗口新增标签（1→2），Ctrl+W 关闭（2→1）；主窗口/恢复窗口标签数不变；
+  `crash.log` 无新增异常。
+
+### J4. 构建与测试
+
+- `Debug|x86`：0 errors，`CA1416=0`（486 个既有可空/AOT/SQLite 警告不变）。
+- 单元测试：`dotnet test Tests\EdgeRebuild.CoreTests` → 25/25 通过。

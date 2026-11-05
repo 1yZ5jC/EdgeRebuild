@@ -6,6 +6,8 @@
 ## 下一阶段开发计划（2026-08-24 制定）
 ### R1 稳定化收尾（当前批次）
 - [ ] R1-1 多窗口回归清单执行：主/副/Metro/InPrivate 开关、槽位恢复、快捷键路由、关闭链日志全绿
+      （2026-11-05 已完成 17763 兼容模式下的主/副/Metro/InPrivate/槽位恢复/Ctrl+T/W 路由验证，
+       修复副窗口快捷键跨线程 0x8001010E；待真实 1809 机器与其余快捷键矩阵）
 - [ ] R1-2 关闭链观察期：收集 `[窗口关闭]` 异例行一周，确认 WebView2 销毁竞态已绝迹
 - [x] R1-3 存量警告清零：FindViewItem 返回类型改 `TabViewItem?`（连带 4 处调用点判空）、
       HistoryTemplateSelector 加 partial、ReaderService.ParseResult/DownloadDocToCacheAsync 返回类型可空化；

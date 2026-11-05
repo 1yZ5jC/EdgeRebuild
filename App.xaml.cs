@@ -46,6 +46,12 @@ namespace EdgeRebuild
 
         protected override async void OnLaunched(LaunchActivatedEventArgs e)
         {
+            // 窗口兼容模式诊断：强制 17763 时需要从日志确认实际走了哪条路径
+            Services.Diagnostics.Log(
+                $"[启动] 窗口模式={(PlatformCompat.ForceLegacyWindowMode ? "17763兼容" : "标准")} " +
+                $"HasXamlRoot={PlatformCompat.HasXamlRoot} HasAppWindow={PlatformCompat.HasAppWindow} " +
+                $"调试开关={DebugOptions.ForceLegacyWindowMode} OS={Environment.OSVersion.VersionString}");
+
             // 真·多视图前提：禁用系统视图激活策略。打包应用默认由系统接管视图激活，
             // 此时 TryShowAsStandaloneAsync 的展示请求不会真正上屏（实测：调用挂起、
             // 副视图永不显示）。必须在任何窗口创建之前调用。
