@@ -38,6 +38,16 @@
 - [x] R3-4 EdgeHTML 能力对齐再评估：结论——EdgeHTML 引用 21 文件（EdgeHtmlTab 412 行 vs WebView2Tab 895 行），
       维护面可控；Metro IE 强依赖 EdgeHTML（ms-appx-web 协议），不裁剪
 
+### R4 旧版 Edge 设计对标（2026-11-07 记录，详见 `docs/edge-legacy-design-analysis.md`）
+- [ ] R4-1 快速收益：Hub 五区空状态、菜单快捷键标注 + 缩放标题、PDF 适合页面/适合宽度两态、
+      历史条目域名色块
+- [ ] R4-2 标志性功能：标签页中心 + Tab Sweep MVP（搁置/整组还原/删除/空状态/时间桶/持久化/无障碍）
+- [ ] R4-3 打磨：标签预览带、PDF 单双页/连续滚动 + 工具栏锁定、捕获/批注紫色强调、Hub 窄窗溢出
+- [-] R4-4 暂缓：PDF 朗读、Sweep 重命名/共享整组/首次引导动画、经典皮肤、扩展体系/独立 PDF 进程
+      （原因：成本/收益不匹配，或与现有 WebView2/pdf.js 架构冲突）
+- [ ] R4-5 待决策：Tab Sweep 高保真复刻 vs 产品化“标签页中心”；先 quick wins vs 先 Tab Sweep；
+      固定标签是否排除；InPrivate/多窗口的搁置策略
+
 ## P0 — 高价值低成本
 - [x] P0-4 多主窗口会话覆盖隐患：`SessionTabs` 单快照表，两个主窗口互踩（D1 同款）。方案：副窗口 `ParticipatesInSession=false`
 - [x] P0-1 阅读列表（旧版 Edge Reading List）：Hub 第四区 + `ReadingListManager`（复刻 FavoritesManager 模式）+ Metro「更多→稍后读」
