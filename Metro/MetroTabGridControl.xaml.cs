@@ -29,6 +29,7 @@ namespace EdgeRebuild.Metro
 
         private readonly Dictionary<TabViewItem, Border> _cards = new Dictionary<TabViewItem, Border>();
         private readonly Dictionary<TabViewItem, bool> _thumbReady = new Dictionary<TabViewItem, bool>();
+        private TabViewItem _current;
         private const int CaptureTimeoutMs = 3500;
         private int _generation;   // Refresh 递增：旧一轮捕获作废，防止切标签重入导致重复捕获/回写旧卡片
 
@@ -51,6 +52,7 @@ namespace EdgeRebuild.Metro
             GridHost.Items.Clear();
             _cards.Clear();
             _thumbReady.Clear();
+            _current = current;
             int built = 0;
             for (int i = 0; tabs != null && i < tabs.Count; i++)
             {
@@ -194,7 +196,7 @@ namespace EdgeRebuild.Metro
             {
                 var tasks = new List<Task>();
                 foreach (var item in tabs)
-                    tasks.Add(CaptureOneWithTimeoutAsync(item, item == current, gen));
+                    tasks.Add(CaptureOneWithTimeoutAsync(item, gen));
                 await Task.WhenAll(tasks);
             }
             catch (Exception ex)
@@ -203,11 +205,11 @@ namespace EdgeRebuild.Metro
             }
         }
 
-        private async Task CaptureOneWithTimeoutAsync(TabViewItem item, bool isCurrent, int gen)
+        private async Task CaptureOneWithTimeoutAsync(TabViewItem item, int gen)
         {
             try
             {
-                var capture = CaptureOneAsync(item, isCurrent, gen);
+                var capture = CaptureOneAsync(item, gen);
                 var done = await Task.WhenAny(capture, Task.Delay(CaptureTimeoutMs));
                 // 超时 → 放弃，保留 favicon 卡片；字典可能已被 Refresh 重建（标签已关闭），须 ContainsKey
                 if (done != capture)
@@ -223,13 +225,12 @@ namespace EdgeRebuild.Metro
             }
         }
 
-        private async Task CaptureOneAsync(TabViewItem item, bool isCurrent, int gen)
+        private async Task CaptureOneAsync(TabViewItem item, int gen)
         {
             GridDebug($"开始捕获: {item.Tab.Title ?? item.Tab.CurrentUrl} 引擎={item.Tab.Engine} 挂起={item.Tab.IsSuspended}");
             try
             {
                 if (item.Tab.IsSuspended) return;   // 已挂起标签无法捕获，保留 favicon 卡片
-                if (item.Tab is EdgeHtmlTab) return;   // UWP RenderTargetBitmap 无法捕获 WebView 内容,只会空转阻塞 UI,跳过
                 string url = item.Tab.CurrentUrl;
                 if (string.IsNullOrEmpty(url) || url == "about:blank") return;
 
@@ -239,23 +240,38 @@ namespace EdgeRebuild.Metro
                 var ring = FindThumbRing(card);
                 if (ring != null) { ring.IsActive = true; ring.Visibility = Visibility.Visible; }
 
-                // 非活动标签容器 Collapsed → 捕获必失败；临时置可见（覆盖层不透明，用户无感知）
                 var container = item.ContentContainer;
                 bool restoreVisibility = false;
-                if (container != null && container.Visibility != Visibility.Visible)
-                {
-                    container.Visibility = Visibility.Visible;
-                    restoreVisibility = true;
-                }
-
                 byte[] png = null;
-                try { png = await WebCaptureService.CapturePagePngAsync(item.Tab); }
+                try
+                {
+                    // EdgeHTML WebView 会保留上次渲染帧：先原样捕获，成功就不必把网页
+                    // 气泡区临时显示到网格上（避免打开网格时页面闪一下）。
+                    if (item.Tab is EdgeHtmlTab)
+                        png = await WebCaptureService.CapturePagePngAsync(item.Tab);
+
+                    // 捕获失败/WebView2 → 临时置可见再捕获；Collapsed 期间
+                    // ActualWidth/Height 为 0，等一次布局后再截。
+                    if (png == null || png.Length == 0)
+                    {
+                        if (container != null && container.Visibility != Visibility.Visible)
+                        {
+                            container.Visibility = Visibility.Visible;
+                            restoreVisibility = true;
+                            await Task.Delay(60);
+                        }
+                        png = await WebCaptureService.CapturePagePngAsync(item.Tab);
+                    }
+                }
                 catch (Exception ex) { GridDebug($"页面捕获失败: {ex}"); }
                 finally
                 {
                     try
                     {
-                        if (restoreVisibility && container != null && !isCurrent)
+                        // 网格打开期间所有网页容器都应保持收起（当前标签也由 CloseGrid 恢复），
+                        // 否则 EdgeHTML WebView 的气泡区会盖住覆盖层。网格已关闭时当前标签
+                        // 已由 CloseGrid 恢复，不能再收起。
+                        if (restoreVisibility && container != null && (item != _current || IsHitTestVisible))
                             container.Visibility = Visibility.Collapsed;
                     }
                     catch { }
@@ -282,6 +298,8 @@ namespace EdgeRebuild.Metro
                         writer.WriteBytes(png);
                         await writer.StoreAsync();
                         await writer.FlushAsync();
+                        // DataWriter.Dispose 会关闭底层流，必须先分离再交给 BitmapImage 解码
+                        writer.DetachStream();
                     }
                     ras.Seek(0);
                     await bmp.SetSourceAsync(ras);

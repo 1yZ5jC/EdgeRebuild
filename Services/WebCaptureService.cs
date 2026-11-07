@@ -32,6 +32,28 @@ namespace EdgeRebuild.Services
 
                 if (tab is EdgeHtmlTab edge && edge.ViewElement != null)
                 {
+                    // EdgeHTML WebView 优先用控件自带的预览捕获；RenderTargetBitmap 对
+                    // WebView 气泡区内容并不可靠，仅作回退。
+                    if (edge.ViewElement is Windows.UI.Xaml.Controls.WebView webView)
+                    {
+                        try
+                        {
+                            var preview = new InMemoryRandomAccessStream();
+                            await webView.CapturePreviewToStreamAsync(preview);
+                            if (preview.Size > 0)
+                            {
+                                preview.Seek(0);
+                                using var previewMs = new MemoryStream();
+                                await preview.AsStreamForRead().CopyToAsync(previewMs);
+                                return previewMs.ToArray();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Diagnostics.Log($"[网页捕获] WebView 预览捕获失败，回退 RenderTargetBitmap: {ex.Message}");
+                        }
+                    }
+
                     var rtb = new Windows.UI.Xaml.Media.Imaging.RenderTargetBitmap();
                     double scale = 1.0;
                     try { scale = PlatformCompat.GetRasterizationScale(edge.ViewElement); } catch { }

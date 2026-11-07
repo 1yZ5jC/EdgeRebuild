@@ -1512,9 +1512,9 @@ namespace EdgeRebuild
             _tabPreviewPopup.IsOpen = true;
 
             string url = target.Tab.CurrentUrl;
-            if (string.IsNullOrEmpty(url) || url == "about:blank" || ToolbarControl.IsNtpUrl(url))
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
             {
-                _tabPreviewRing.Visibility = Visibility.Collapsed;   // 空白/主页无内容可截
+                _tabPreviewRing.Visibility = Visibility.Collapsed;   // 真空白页无内容可截
                 return;
             }
 
@@ -1538,15 +1538,10 @@ namespace EdgeRebuild
                 if (_tabPreviewTarget != target || png == null || png.Length == 0) return;
 
                 var bmp = new BitmapImage();
-                var ras = new Windows.Storage.Streams.InMemoryRandomAccessStream();
-                using (var writer = new Windows.Storage.Streams.DataWriter(ras))
+                using (var ms = new MemoryStream(png))
                 {
-                    writer.WriteBytes(png);
-                    await writer.StoreAsync();
-                    await writer.FlushAsync();
+                    await bmp.SetSourceAsync(ms.AsRandomAccessStream());
                 }
-                ras.Seek(0);
-                await bmp.SetSourceAsync(ras);
                 if (_tabPreviewTarget != target) return;
                 _tabPreviewImage.Source = bmp;
                 _tabPreviewRing.Visibility = Visibility.Collapsed;
