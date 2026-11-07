@@ -364,3 +364,4 @@ FodyWeavers.xsd
 /tempobj
 /Tests/EdgeRebuild.CoreTests/tempobj
 /.workbuddy/memory
+/t1.png
