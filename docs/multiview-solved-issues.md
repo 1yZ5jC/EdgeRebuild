@@ -401,3 +401,25 @@
   `OnTabManagerTabCountChanged(0)` 已自动补建一个 about:blank；方法末尾又显式 `CreateTabAsync` 一次，
   于是留下两个标签。已移除显式补建，改为只依赖自动补建，并在方法内注释说明。
 - 重新部署后 UIA 确认退出 InPrivate 标签数 = 1；`Ctrl+W` 关闭唯一标签仍会自动补建，行为未回归。
+
+### J7. 标签悬停预览与 Metro 网格缩略图（2026-11-06）
+
+| 项 | 结果 |
+|---|---|
+| 普通网页悬停预览 | ✅ 网页截图正常显示（用户实测） |
+| 新标签页（Classic / Metro NTP） | ✅ 不再跳过 NTP，主页缩略图正常显示（用户实测） |
+| Metro 标签网格（EdgeHTML 标签） | ✅ 不再跳过 EdgeHTML，网格缩略图正常显示（用户实测） |
+
+- **缩略图空白根因（已修复）**：`MainPage.ShowTabPreviewAsync` 与 `MetroTabGridControl.CaptureOneAsync`
+  都在 `using (DataWriter)` 释放后才调用 `BitmapImage.SetSourceAsync`，此时底层流已关闭，
+  日志报 `Cannot access a disposed object.`。MainPage 改为 `MemoryStream + AsRandomAccessStream`
+  在流有效期内解码；Metro 改为 `writer.DetachStream()` 后再解码。
+- **新标签页无预览（已修复）**：`ShowTabPreviewAsync` 原先用 `ToolbarControl.IsNtpUrl(url)` 一并跳过，
+  导致 NTP 永远只有标题没有截图。现仅跳过真正的 `about:blank`，Classic/Metro 磁贴主页均参与捕获。
+- **Metro 网格无缩略图（已修复）**：`CaptureOneAsync` 原对 `EdgeHtmlTab` 直接 `return`（旧注释认为
+  RenderTargetBitmap 无法捕获 WebView）。现已移除该跳过，并让 `WebCaptureService` 对 EdgeHTML 优先调用
+  `WebView.CapturePreviewToStreamAsync`，失败再回退 RenderTargetBitmap。
+- **捕获期间容器可见性**：网格打开时所有网页容器保持 Collapsed。EdgeHTML 先尝试原样捕获（保留上次渲染帧），
+  失败才临时置可见并等待 60ms 布局后重试；捕获完成后按网格开关状态恢复，避免 WebView 气泡区盖住覆盖层，
+  也避免关闭网格后当前标签被误收起。
+- 验证：`Debug|x86` 构建成功；用户实测普通网页、新标签页与 Metro 网格缩略图均正常显示。
