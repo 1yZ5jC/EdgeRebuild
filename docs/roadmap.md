@@ -24,6 +24,10 @@
 - [x] R2-2 轮询定时器治理：pageKeyTimer / ctxPollTimer 仅在活动标签为 EdgeHTML 时运行，
       随 TabChanged / 清空启停（SyncPageKeyPolling / SyncCtxPolling）
 - [x] R2-3 [-] WinUI 3 迁移：**因项目设计原因永久排除**（不评估、不规划）
+- [x] R2-4 NativeAOT 版本策略根治：移除显式 `Microsoft.DotNet.ILCompiler` 固定与 `RuntimeFrameworkVersion`，
+      运行时包与 ILCompiler 全部交给 SDK bundled 版本成套解析（SDK 10.0.403 → 均为 9.0.22）；
+      修复 `Overriding System.Private.CoreLib.dll with a newer version is not supported`，
+      以后升级 .NET 9 补丁只需升级 SDK，不再需要手工同步两个版本号
 
 ### R3 功能演进（原 P2 遗留 + 新增）
 - [x] R3-1 集锦 Collections：CollectionGroup/CollectionItem 双表 + CollectionManager 单例 + Hub 第五区
