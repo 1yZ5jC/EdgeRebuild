@@ -98,7 +98,7 @@
 
   function makeTocItem(item, depth) {
     var li = document.createElement("li");
-    li.style.paddingLeft = (6 + depth * 14) + "px";
+    li.style.paddingLeft = (4 + depth * 16) + "px";
     li.textContent = item.label;
     li.addEventListener("click", function () {
       rendition.display(item.href);
@@ -520,6 +520,14 @@
 
   // 键盘
   document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      if (searchPanel.classList.contains("hidden")) togglePanel(searchPanel);
+      var input = document.getElementById("searchInput");
+      input.focus();
+      input.select();
+      return;
+    }
     if (e.key === "Escape") { closePanels(); return; }
     if (e.key === "ArrowLeft") { rendition.prev(); e.preventDefault(); }
     else if (e.key === "ArrowRight") { rendition.next(); e.preventDefault(); }

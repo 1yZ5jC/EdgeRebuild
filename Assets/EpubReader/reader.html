@@ -8,32 +8,39 @@
 </head>
 <body>
   <div id="topbar">
-    <button id="tocBtn" class="tool-btn" title="目录">&#xE8FD;</button>
-    <span id="bookTitle">EPUB 阅读器</span>
-    <button id="ttsBtn" class="tool-btn" title="大声朗读本章">&#xE8BD;</button>
-    <button id="bookmarkBtn" class="tool-btn" title="书签">&#xE8A4;</button>
-    <button id="searchBtn" class="tool-btn" title="搜索">&#xE721;</button>
-    <button id="settingsBtn" class="tool-btn" title="设置">&#xE713;</button>
-    <div id="navGroup">
-      <button id="prevBtn" class="tool-btn" title="上一页">&#xE76B;</button>
-      <button id="nextBtn" class="tool-btn" title="下一页">&#xE76C;</button>
+    <div class="tb-left">
+      <button id="tocBtn" class="tool-btn" title="目录">&#xE8FD;</button>
+      <span id="bookTitle">EPUB 阅读器</span>
+    </div>
+    <div class="tb-right">
+      <button id="searchBtn" class="tool-btn" title="搜索 (Ctrl+F)">&#xE721;</button>
+      <button id="bookmarkBtn" class="tool-btn" title="书签">&#xE8A4;</button>
+      <button id="ttsBtn" class="tool-btn" title="大声朗读本章">&#xE8BD;</button>
+      <button id="settingsBtn" class="tool-btn" title="设置">&#xE713;</button>
+      <span class="tb-sep"></span>
+      <button id="prevBtn" class="tool-btn" title="上一页 (←)">&#xE76B;</button>
+      <button id="nextBtn" class="tool-btn" title="下一页 (→)">&#xE76C;</button>
     </div>
   </div>
 
   <div id="tocPanel" class="panel hidden">
+    <div class="panel-title">目录</div>
     <div id="tocList"></div>
   </div>
 
   <div id="searchPanel" class="panel hidden">
+    <div class="panel-title">搜索</div>
     <input id="searchInput" placeholder="搜索全书…" autocomplete="off">
     <div id="searchResults"></div>
   </div>
 
   <div id="bookmarksPanel" class="panel hidden">
+    <div class="panel-title">书签</div>
     <div id="bookmarksList"></div>
   </div>
 
   <div id="settingsPanel" class="panel hidden">
+    <div class="panel-title">阅读设置</div>
     <div class="set-row">
       <span class="set-label">字号</span>
       <div class="set-opts" id="sizeOpts">
@@ -76,10 +83,10 @@
   <div id="progressBar" title="拖动跳转">
     <div id="progressFill"></div>
   </div>
-  <div id="dotsRow"></div>
 
   <div id="statusBar">
     <span id="statusText">正在打开电子书…</span>
+    <div id="dotsRow"></div>
     <span id="percentText">0%</span>
   </div>
 

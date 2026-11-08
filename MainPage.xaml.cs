@@ -1770,6 +1770,7 @@ namespace EdgeRebuild
             this.Resources["TabHoverBackgroundBrush"] = colors.TabHoverBackground;
 
             TabBarBorder.Background = colors.ToolbarBackground;
+            ActiveTabSeam.Background = colors.TabActiveBackground;
             VerticalTabSidebar.Background = _isVerticalTabs
                 ? new SolidColorBrush(Colors.Transparent)
                 : colors.ToolbarBackground;
@@ -1924,7 +1925,7 @@ namespace EdgeRebuild
             }
         }
 
-        /// <summary>将标签 Border 从水平样式调整为垂直样式：宽填满、高固定 36px、底部分隔线</summary>
+        /// <summary>将标签 Border 从水平样式调整为垂直样式：宽填满、高固定 36px、底部分隔线、左侧 3px 活动强调条</summary>
         private static void ApplyVerticalTabStyle(Border border)
         {
             border.Width = Double.NaN;          // 清除固定宽度，允许拉伸
@@ -1935,9 +1936,18 @@ namespace EdgeRebuild
             border.VerticalAlignment = VerticalAlignment.Top;
             border.BorderThickness = new Thickness(0, 0, 0, 1);  // 底部分隔线替代右侧
             border.Margin = new Thickness(0);
+
+            var accent = GetTabAccentBar(border);
+            if (accent != null)
+            {
+                accent.Width = 3;
+                accent.Height = Double.NaN;
+                accent.HorizontalAlignment = HorizontalAlignment.Left;
+                accent.VerticalAlignment = VerticalAlignment.Stretch;
+            }
         }
 
-        /// <summary>将标签 Border 恢复为水平样式：固定宽度 160px（由 LayoutManager 重算）、高 32px、右侧分隔线</summary>
+        /// <summary>将标签 Border 恢复为水平样式：固定宽度 160px（由 LayoutManager 重算）、高 32px、右侧分隔线、顶部 2px 强调条</summary>
         private static void ApplyHorizontalTabStyle(Border border)
         {
             border.Width = LayoutManager.MaxTabWidth;
@@ -1948,6 +1958,23 @@ namespace EdgeRebuild
             border.VerticalAlignment = VerticalAlignment.Stretch;
             border.BorderThickness = new Thickness(0, 0, 1, 0);  // 右侧分隔线
             border.Margin = new Thickness(0);
+
+            var accent = GetTabAccentBar(border);
+            if (accent != null)
+            {
+                accent.Width = Double.NaN;
+                accent.Height = 2;
+                accent.HorizontalAlignment = HorizontalAlignment.Stretch;
+                accent.VerticalAlignment = VerticalAlignment.Top;
+            }
+        }
+
+        /// <summary>标签根 Grid 的最后一个子元素是活动强调条（见 TabManager.BuildTabUI）</summary>
+        private static Border GetTabAccentBar(Border border)
+        {
+            var root = border.Child as Grid;
+            if (root == null || root.Children.Count == 0) return null;
+            return root.Children[root.Children.Count - 1] as Border;
         }
 
         private void VerticalTabToggleBtn_Click(object sender, RoutedEventArgs e)

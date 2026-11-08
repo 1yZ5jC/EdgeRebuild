@@ -1,4 +1,15 @@
-/* EPUB 阅读器：epubjs 渲染 + 目录/书签/搜索/设置/进度条/章节圆点 */
+/* EPUB 阅读器：与 PDF 阅读栏一致的 40px 顶栏 + 200px 侧栏 + 24px 状态栏 */
+:root {
+  --toolbar-h: 40px;
+  --status-h: 24px;
+  --toolbar-fg: #333;
+  --toolbar-muted: #666;
+  --toolbar-line: rgba(160, 160, 160, .55);
+  --hover-bg: #e8e8e8;
+  --pressed-bg: #d8d8d8;
+  --accent: #0078d7;
+}
+
 html, body {
   margin: 0;
   height: 100%;
@@ -8,101 +19,168 @@ html, body {
   color: #333;
 }
 
+/* ---- 40px 阅读栏：左目录/书名，右搜索/书签/朗读/设置/翻页 ---- */
 #topbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
-  background: linear-gradient(rgba(255, 255, 255, .66), rgba(242, 242, 242, .5));
-  backdrop-filter: blur(28px) saturate(1.8);
-  -webkit-backdrop-filter: blur(28px) saturate(1.8);
-  border-bottom: 1px solid rgba(180, 180, 180, .6);
+  height: var(--toolbar-h);
+  background: linear-gradient(rgba(255, 255, 255, .72), rgba(242, 242, 242, .62));
+  backdrop-filter: blur(28px) saturate(1.6);
+  -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  border-bottom: 1px solid var(--toolbar-line);
   display: flex;
   align-items: center;
-  padding: 0 6px;
+  padding: 0;
   z-index: 20;
   user-select: none;
+  -ms-user-select: none;
 }
 
-/* Acrylic 噪点纹理层 */
+/* Acrylic 噪点纹理层（EdgeHTML 不支持 inset 简写，逐边声明） */
 #topbar::before {
   content: "";
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   pointer-events: none;
   background-image: radial-gradient(rgba(255, 255, 255, .22) 0.5px, transparent 0.5px);
   background-size: 3px 3px;
   opacity: .5;
 }
 
+.tb-left,
+.tb-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.tb-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-left: 2px;
+}
+
+.tb-right {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+#bookTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0 8px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--toolbar-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- 通用图标按钮（与 PDF 阅读栏同尺寸） ---- */
 .tool-btn {
-  width: 28px;
-  height: 28px;
-  margin: 0 4px;
+  width: 36px;
+  height: 32px;
+  margin: 0 1px;
+  padding: 0;
   border: 1px solid transparent;
   background: transparent;
   font-family: "Segoe MDL2 Assets", "Segoe UI Symbol";
   font-size: 15px;
-  color: #333;
+  color: var(--toolbar-fg);
   cursor: pointer;
-  border-radius: 3px;
-  line-height: 26px;
+  border-radius: 2px;
+  line-height: 30px;
+  text-align: center;
+  flex: none;
 }
 
-.tool-btn:hover { background: #e5f1fb; border-color: #b8d6fb; }
-.tool-btn:active { background: #cce4f7; }
-.tool-btn.active { background: #cce4f7; border-color: #0078d7; }
+.tool-btn:hover {
+  background: var(--hover-bg);
+  border-color: #c4c4c4;
+}
 
-#bookTitle {
+.tool-btn:active,
+.tool-btn.active {
+  background: var(--pressed-bg);
+  border-color: #a8a8a8;
+  color: #1a1a1a;
+}
+
+#bookmarkBtn.active { color: var(--accent); }
+
+.tb-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--toolbar-line);
+  margin: 0 6px;
+  flex: none;
+}
+
+/* ---- 左侧面板（目录/搜索/书签/设置共用，与 PDF 侧栏一致） ---- */
+.panel {
+  position: fixed;
+  top: var(--toolbar-h);
+  left: 0;
+  bottom: calc(var(--status-h) + 2px);
+  width: 200px;
+  background: #f7f7f7;
+  border-right: 1px solid #d6d6d6;
+  overflow-y: auto;
+  z-index: 15;
+}
+
+.panel-title {
+  padding: 8px 12px 4px;
+  font-size: 13px;
   font-weight: 600;
-  margin-left: 8px;
+  color: #333;
+}
+
+#tocList, #bookmarksList, #searchResults { padding: 0 4px 8px; }
+
+#tocList ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 14px;
+}
+
+#tocList li {
+  padding: 3px 8px;
+  cursor: pointer;
+  color: #333;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
 }
 
-#navGroup { display: flex; align-items: center; }
-
-/* ---- 左侧面板（目录/搜索/书签/设置共用） ---- */
-.panel {
-  position: fixed;
-  top: 40px;
-  left: 0;
-  bottom: 50px;
-  width: 260px;
-  background: linear-gradient(rgba(255, 255, 255, .88), rgba(247, 247, 247, .72));
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border-right: 1px solid rgba(180, 180, 180, .6);
-  overflow-y: auto;
-  z-index: 15;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, .08);
-}
-
-#tocList, #bookmarksList, #searchResults { padding: 6px; }
-#tocList ul { list-style: none; margin: 0; padding-left: 0; }
-#tocList li { padding: 5px 6px; cursor: pointer; color: #333; border-radius: 3px; }
 #tocList li:hover { background: #e5f1fb; }
-#tocList li.active { color: #0078d7; }
+#tocList li.active { color: var(--accent); }
 
 /* ---- 搜索面板 ---- */
 #searchInput {
   width: calc(100% - 16px);
-  margin: 8px;
+  margin: 0 8px 8px;
   padding: 6px 8px;
   border: 1px solid #c8c8c8;
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 13px;
   outline: none;
   box-sizing: border-box;
 }
-#searchInput:focus { border-color: #0078d7; }
+#searchInput:focus { border-color: var(--accent); }
 
-.search-result { padding: 6px 8px; cursor: pointer; border-radius: 3px; }
+.search-result { padding: 6px 8px; cursor: pointer; }
 .search-result:hover { background: #e5f1fb; }
-.search-label { font-weight: 600; font-size: 12px; color: #0078d7; }
+.search-label { font-weight: 600; font-size: 12px; color: var(--accent); }
 .search-snippet { font-size: 12px; color: #555; margin-top: 2px; line-height: 1.4; }
 
 .empty-tip { padding: 12px 8px; color: #888; font-size: 12px; text-align: center; }
@@ -114,19 +192,26 @@ html, body {
   justify-content: space-between;
   padding: 6px 8px;
   cursor: pointer;
-  border-radius: 3px;
 }
 .bookmark-row:hover { background: #e5f1fb; }
-.bookmark-label { font-size: 13px; color: #333; }
+.bookmark-info { min-width: 0; margin-right: 8px; }
+.bookmark-label {
+  font-size: 13px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .bookmark-sub { font-size: 11px; color: #888; margin-top: 2px; }
 .bookmark-del {
   border: 1px solid #c8c8c8;
   background: #fff;
   color: #666;
   font-size: 11px;
-  border-radius: 3px;
+  border-radius: 2px;
   padding: 2px 8px;
   cursor: pointer;
+  flex: none;
 }
 .bookmark-del:hover { border-color: #e81123; color: #e81123; }
 
@@ -134,34 +219,36 @@ html, body {
 .set-row {
   display: flex;
   align-items: center;
-  padding: 8px 10px;
-  border-bottom: 1px solid #eee;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e6e6e6;
 }
-.set-label { width: 40px; color: #555; font-size: 13px; }
-.set-opts { display: flex; gap: 6px; flex-wrap: wrap; }
+.set-label { width: 40px; color: #555; font-size: 13px; flex: none; }
+.set-opts { display: flex; flex: 1 1 auto; min-width: 0; flex-wrap: wrap; }
 .set-opts button {
   padding: 4px 10px;
+  margin: 3px 6px 3px 0;
   border: 1px solid #c8c8c8;
   background: #fff;
   color: #333;
   font-size: 12px;
-  border-radius: 3px;
+  border-radius: 2px;
   cursor: pointer;
 }
-.set-opts button:hover { border-color: #0078d7; color: #0078d7; }
-.set-opts button.sel { background: #0078d7; border-color: #0078d7; color: #fff; }
+.set-opts button:hover { border-color: var(--accent); color: var(--accent); }
+.set-opts button.sel { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .theme-swatch {
   width: 26px !important;
   height: 26px !important;
   padding: 0 !important;
+  margin: 0 6px 0 0 !important;
   border-radius: 50% !important;
   border: 1px solid rgba(0, 0, 0, .25) !important;
   background-image: none !important;
 }
 /* 选中：蓝色外圈 + 内部保持主题色（不被 .set-opts button.sel 的蓝底覆盖） */
 .theme-swatch.sel {
-  box-shadow: 0 0 0 2px #0078d7, 0 0 0 1px #fff;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 1px #fff;
   transform: scale(1.2);
 }
 .swatch-light, .swatch-light.sel { background: #ffffff !important; }
@@ -171,79 +258,87 @@ html, body {
 /* ---- 阅读区 ---- */
 #viewer {
   position: fixed;
-  top: 40px;
+  top: var(--toolbar-h);
   left: 0;
   right: 0;
-  bottom: 50px;
+  bottom: calc(var(--status-h) + 2px);
   background: #e6e6e6;
   overflow: hidden;
   z-index: 0;
 }
 
-.panel:not(.hidden) ~ #viewer { left: 260px; }
+.panel:not(.hidden) ~ #viewer { left: 200px; }
 
 #viewer .epub-view iframe { box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
 
-/* ---- 底部进度条（UWP 风格：细轨道 + 圆形滑块头，独立于圆点行） ---- */
+/* ---- 底部进度：压成状态栏顶部的 2px 线，扩大拖动命中区 ---- */
 #progressBar {
   position: fixed;
-  left: 8px;
-  right: 8px;
-  bottom: 60px;
-  height: 8px;
-  background: rgba(208, 208, 208, .8);
+  left: 0;
+  right: 0;
+  bottom: var(--status-h);
+  height: 2px;
+  background: rgba(180, 180, 180, .45);
   cursor: pointer;
-  z-index: 20;
+  z-index: 26;
 }
-/* 扩大拖动命中区（轨道只有 8px 高） */
 #progressBar::before {
   content: "";
   position: absolute;
-  top: -8px;
-  bottom: -8px;
+  top: -6px;
+  bottom: -2px;
   left: 0;
   right: 0;
 }
 #progressFill {
   height: 100%;
   width: 0;
-  background: #0078d7;
-  position: relative;
-}
-#progressFill::after {
-  content: "";
-  position: absolute;
-  right: -8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid #0078d7;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  background: var(--accent);
 }
 
-/* ---- 章节圆点 ---- */
-#dotsRow {
+/* ---- 状态栏：左侧状态、中部章节圆点、右侧百分比 ---- */
+#statusBar {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 28px;
-  height: 22px;
+  bottom: 0;
+  height: var(--status-h);
   background: linear-gradient(rgba(255, 255, 255, .82), rgba(242, 242, 242, .68));
   backdrop-filter: blur(24px) saturate(1.6);
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border-top: 1px solid rgba(180, 180, 180, .6);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 12px;
+  color: #333;
+  z-index: 25;
+  user-select: none;
+  -ms-user-select: none;
+}
+
+#statusText {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#dotsRow {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  z-index: 20;
+  overflow: hidden;
 }
+
 .chapter-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
+  margin: 0 2px;
   border-radius: 50%;
   border: 1px solid #999;
   background: #ddd;
@@ -252,38 +347,25 @@ html, body {
   flex: 0 0 auto;
 }
 .chapter-dot:hover { background: #b8d6fb; }
-.chapter-dot.active { background: #0078d7; border-color: #0078d7; }
-
-/* ---- 状态栏 ---- */
-#statusBar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 24px;
-  background: linear-gradient(rgba(255, 255, 255, .82), rgba(242, 242, 242, .68));
-  backdrop-filter: blur(24px) saturate(1.6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  border-top: 1px solid rgba(180, 180, 180, .6);
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
-  font-size: 12px;
-  color: #666;
-  z-index: 25;
-}
+.chapter-dot.active { background: var(--accent); border-color: var(--accent); }
 
 #percentText {
   margin-left: auto;
-  color: #0078d7;
+  color: var(--accent);
   font-weight: 600;
+  flex: none;
+}
+
+/* 窄窗口隐藏圆点，避免挤压状态文字 */
+@media (max-width: 640px) {
+  #dotsRow { display: none; }
 }
 
 /* ---- 点击页边翻页（旧版 Edge gutter 交互） ---- */
 .gutter {
   position: fixed;
-  top: 40px;
-  bottom: 50px;
+  top: var(--toolbar-h);
+  bottom: calc(var(--status-h) + 2px);
   width: 8%;
   min-width: 40px;
   z-index: 12;

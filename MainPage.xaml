@@ -283,6 +283,8 @@
                               VerticalAlignment="Stretch"
                               HorizontalScrollMode="Enabled"
                               Background="Transparent"
+                              IsTabStop="False"
+                              UseSystemFocusVisuals="False"
                               ViewChanged="TabScrollViewer_ViewChanged">
                     <StackPanel x:Name="TabBarPanel" Orientation="Horizontal"
                                 VerticalAlignment="Stretch" Background="Transparent" />
@@ -318,6 +320,11 @@
                                  HubClicked="ToolbarControl_HubClicked"
                                  MenuClicked="ToolbarControl_MenuClicked"
                                  EngineSwitched="ToolbarControl_EngineSwitched"/>
+
+        <!-- 活动标签接缝：盖住活动标签正下方 1px 的工具栏顶边线，保持无缝 -->
+        <Border x:Name="ActiveTabSeam" Grid.Row="1" Grid.Column="1"
+                Height="1" VerticalAlignment="Top" HorizontalAlignment="Left"
+                Background="White" Visibility="Collapsed" IsHitTestVisible="False"/>
 
         <!-- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行) -->
         <Border x:Name="FavoritesBar" Grid.Row="2" Grid.Column="1" Visibility="Collapsed"

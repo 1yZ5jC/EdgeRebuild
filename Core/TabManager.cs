@@ -170,12 +170,16 @@ namespace EdgeRebuild.Core
                     Background = colors.TabInactiveBackground,
                     BorderBrush = ThemeManager.GetSeparatorBrush(),
                     BorderThickness = new Thickness(0, 0, 1, 0),
-                    Padding = new Thickness(4, 0, 4, 0),
+                    Padding = new Thickness(0, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Stretch,
                     Width = LayoutManager.MaxTabWidth
                 };
 
-                var tabPanel = new Grid { VerticalAlignment = VerticalAlignment.Center };
+                var tabPanel = new Grid
+                {
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(4, 0, 4, 0)
+                };
                 tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 tabPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
