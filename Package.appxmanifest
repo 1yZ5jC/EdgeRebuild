@@ -11,7 +11,7 @@
   <Identity
     Name="AlanPlex.EdgeRebuild"
     Publisher="CN=Alan"
-    Version="1.0.2.0" />
+    Version="1.0.3.0" />
 
   <mp:PhoneIdentity PhoneProductId="f5c8e8c8-f6ee-4ee0-ac14-82a4aed722e4" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
