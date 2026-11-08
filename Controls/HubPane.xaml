@@ -138,13 +138,27 @@
         <DataTemplate x:Key="HistoryItemTemplate">
             <Grid x:Name="RootGrid" Padding="12,8,12,8" Background="Transparent"
                   RightTapped="HistoryItem_RightTapped">
-                <StackPanel Spacing="3" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 域名色块：首字母 + 同域名稳定配色，替代尚不可用的真实 favicon -->
+                <Border x:Name="DomainBadge" Width="28" Height="28" CornerRadius="2"
+                        VerticalAlignment="Center" Margin="0,0,10,0">
+                    <TextBlock x:Name="DomainInitialText" FontSize="14" FontWeight="SemiBold"
+                               Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                     <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
                                TextTrimming="CharacterEllipsis"/>
                     <TextBlock x:Name="UrlText" FontSize="11"
                                TextTrimming="CharacterEllipsis" MaxWidth="300"/>
-                    <TextBlock x:Name="TimeText" FontSize="10"/>
                 </StackPanel>
+                <TextBlock x:Name="TimeText" Grid.Column="2" FontSize="10"
+                           VerticalAlignment="Center" Margin="8,0,0,0"/>
             </Grid>
         </DataTemplate>
 
@@ -273,6 +287,14 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+
+                        <local:HubEmptyState x:Name="FavoritesEmptyState"
+                                             Glyph="&#xE734;"
+                                             Title="还没有收藏"
+                                             Description="浏览网页时点击 ☆，或从另一个浏览器导入书签。"
+                                             ActionText="导入收藏夹"
+                                             Visibility="Collapsed"
+                                             ActionInvoked="FavoritesEmptyState_ActionInvoked"/>
                     </StackPanel>
 
                     <!-- 历史记录面板 -->
@@ -314,6 +336,14 @@
                                   MinHeight="300"
                                   HorizontalAlignment="Stretch"
                                   Visibility="Collapsed"/>
+
+                        <local:HubEmptyState x:Name="HistoryEmptyState"
+                                             Glyph="&#xE81C;"
+                                             Title="还没有历史记录"
+                                             Description="开始浏览网页后，访问过的页面会显示在这里。"
+                                             ActionText="开始浏览"
+                                             Visibility="Collapsed"
+                                             ActionInvoked="HistoryEmptyState_ActionInvoked"/>
                     </StackPanel>
 
                     <!-- 稍后读面板（旧版 Edge 阅读列表：一次性阅读队列） -->
@@ -350,16 +380,32 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+
+                        <local:HubEmptyState x:Name="ReadingEmptyState"
+                                             Glyph="&#xE8A5;"
+                                             Title="稍后读是空的"
+                                             Description="在网页上点击阅读列表按钮，把想稍后阅读的页面放到这里。"
+                                             ActionText="开始浏览"
+                                             Visibility="Collapsed"
+                                             ActionInvoked="ReadingEmptyState_ActionInvoked"/>
                     </StackPanel>
 
                     <!-- 下载面板 -->
-                    <ScrollViewer x:Name="DownloadsContainer" 
-                                  Visibility="Collapsed"
-                                  MinHeight="200"
-                                  HorizontalAlignment="Stretch" 
-                                  VerticalAlignment="Stretch">
-                        <StackPanel x:Name="DownloadsStackPanel" Orientation="Vertical" HorizontalAlignment="Stretch"/>
-                    </ScrollViewer>
+                    <Grid x:Name="DownloadsPanel" Visibility="Collapsed">
+                        <ScrollViewer x:Name="DownloadsContainer"
+                                      MinHeight="200"
+                                      HorizontalAlignment="Stretch"
+                                      VerticalAlignment="Stretch">
+                            <StackPanel x:Name="DownloadsStackPanel" Orientation="Vertical" HorizontalAlignment="Stretch"/>
+                        </ScrollViewer>
+                        <local:HubEmptyState x:Name="DownloadsEmptyState"
+                                             Glyph="&#xE896;"
+                                             Title="还没有下载"
+                                             Description="下载的文件会显示在这里，可随时暂停、重试或打开文件夹。"
+                                             ActionText="打开下载文件夹"
+                                             Visibility="Collapsed"
+                                             ActionInvoked="DownloadsEmptyState_ActionInvoked"/>
+                    </Grid>
 
                     <!-- 集锦面板 -->
                     <StackPanel x:Name="CollectionsPanel" Visibility="Collapsed">
@@ -379,6 +425,14 @@
 
                         <!-- 分组列表（顶层） -->
                         <StackPanel x:Name="CollectionGroupList" Visibility="Visible"/>
+
+                        <local:HubEmptyState x:Name="CollectionsEmptyState"
+                                             Glyph="&#xE8B9;"
+                                             Title="用集锦收集灵感"
+                                             Description="把网页、图片和文字收进集锦，按主题整理你的研究。"
+                                             ActionText="新建集锦"
+                                             Visibility="Collapsed"
+                                             ActionInvoked="CollectionsEmptyState_ActionInvoked"/>
 
                         <!-- 条目列表（进入分组后显示） -->
                         <StackPanel x:Name="CollectionItemListContainer" Visibility="Collapsed">

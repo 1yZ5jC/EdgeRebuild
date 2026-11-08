@@ -1,0 +1,38 @@
+<UserControl
+    x:Class="EdgeRebuild.Controls.HubEmptyState"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="False"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch">
+
+    <!-- Hub 五区空状态：线框图标 + 一句说明 + 一个主行动（参考旧版 Edge 5.2 / 音乐应用 4.9） -->
+    <Grid Padding="24,40,24,24" HorizontalAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top"
+                    MaxWidth="340" Spacing="0">
+            <FontIcon x:Name="EmptyIcon"
+                      FontFamily="Segoe MDL2 Assets"
+                      FontSize="40"
+                      HorizontalAlignment="Center"
+                      Margin="0,0,0,14"/>
+            <TextBlock x:Name="EmptyTitle"
+                       FontSize="20"
+                       FontWeight="SemiBold"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8"/>
+            <TextBlock x:Name="EmptyDescription"
+                       FontSize="13"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,16"/>
+            <HyperlinkButton x:Name="EmptyAction"
+                             HorizontalAlignment="Center"
+                             Padding="6,2"
+                             Click="EmptyAction_Click"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

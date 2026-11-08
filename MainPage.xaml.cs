@@ -329,6 +329,7 @@ namespace EdgeRebuild
                     async () => { if (!await WindowManager.OpenMetroWindowAsync(_defaultEngine, "about:blank")) NotificationService.ShowToast("无法打开 Metro IE 窗口", "创建窗口失败"); },
                     AdjustZoom,
                     ResetZoom,
+                    () => (int)Math.Round(_zoomFactor * 100),
                     FindOnPage,
                     OpenDevTools,
                     ToolbarControl_EngineSwitched,
@@ -2464,6 +2465,12 @@ namespace EdgeRebuild
             if (_tabManager.CurrentTab != null)
                 _ = _tabManager.CurrentTab.NavigateAsync(url);
             HubSplitView.IsPaneOpen = false;
+        }
+
+        private void HubPane_CloseRequested()
+        {
+            HubSplitView.IsPaneOpen = false;
+            toolbarControl.FocusAddressBarAndClear();
         }
 
         private void NewTabBtn_Click(object sender, RoutedEventArgs e) => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");

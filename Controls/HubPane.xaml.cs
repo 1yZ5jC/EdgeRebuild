@@ -41,6 +41,9 @@ namespace EdgeRebuild.Controls
     {
         public event Action<string> NavigateRequested;
 
+        /// <summary>空状态里的“开始浏览”：由宿主关闭 Hub 并把焦点交回地址栏。</summary>
+        public event Action CloseRequested;
+
         /// InPrivate 模式：历史面板内显示“不记录历史”提示，不加载列表
         public bool SuppressHistory { get; set; }
 
@@ -94,6 +97,12 @@ namespace EdgeRebuild.Controls
 
             if (FavListView != null) FavListView.ItemContainerStyle = itemStyle;
             if (HistoryListView != null) HistoryListView.ItemContainerStyle = itemStyle;
+
+            FavoritesEmptyState?.ApplyTheme(foreground, muted);
+            HistoryEmptyState?.ApplyTheme(foreground, muted);
+            ReadingEmptyState?.ApplyTheme(foreground, muted);
+            DownloadsEmptyState?.ApplyTheme(foreground, muted);
+            CollectionsEmptyState?.ApplyTheme(foreground, muted);
         }
 
         public void RefreshAll()
@@ -122,6 +131,30 @@ namespace EdgeRebuild.Controls
                     f.Url?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true);
             foreach (var fav in items)
                 FavListView.Items.Add(fav);
+
+            bool empty = FavListView.Items.Count == 0;
+            FavListView.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            FavoritesEmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+            if (empty)
+            {
+                bool filtered = !string.IsNullOrEmpty(_favoritesSearchFilter);
+                FavoritesEmptyState.Glyph = "\uE734";
+                FavoritesEmptyState.Title = filtered ? "没有找到匹配的收藏" : "还没有收藏";
+                FavoritesEmptyState.Description = filtered
+                    ? $"没有与“{_favoritesSearchFilter}”匹配的收藏，试试其他关键词。"
+                    : "浏览网页时点击 ☆，或从另一个浏览器导入书签。";
+                FavoritesEmptyState.ActionText = filtered ? "清除搜索" : "导入收藏夹";
+            }
+        }
+
+        private void FavoritesEmptyState_ActionInvoked(object sender, EventArgs e)
+        {
+            if (!string.IsNullOrEmpty(_favoritesSearchFilter))
+            {
+                FavoritesSearchBox.Text = "";
+                return;
+            }
+            ImportFavBtn_Click(ImportFavBtn, new RoutedEventArgs());
         }
 
         // ---- 历史记录搜索 ----
@@ -133,7 +166,12 @@ namespace EdgeRebuild.Controls
 
         public void RefreshHistory()
         {
-            if (SuppressHistory) return;   // InPrivate：面板显示提示，不加载列表
+            if (SuppressHistory)
+            {
+                // InPrivate：面板显示提示，不加载列表
+                if (HistoryEmptyState != null) HistoryEmptyState.Visibility = Visibility.Collapsed;
+                return;
+            }
             if (HistoryListView == null) return;
             HistoryListView.Items.Clear();
             _historyGroupByItem.Clear();
@@ -149,6 +187,7 @@ namespace EdgeRebuild.Controls
             {
                 foreach (var item in filtered)
                     HistoryListView.Items.Add(item);
+                UpdateHistoryEmptyState();
                 return;
             }
 
@@ -162,6 +201,33 @@ namespace EdgeRebuild.Controls
                     _historyGroupByItem[item] = group;
                 }
             }
+            UpdateHistoryEmptyState();
+        }
+
+        private void UpdateHistoryEmptyState()
+        {
+            bool empty = HistoryListView.Items.Count == 0;
+            HistoryListView.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            HistoryEmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+            if (!empty) return;
+
+            bool filtered = !string.IsNullOrEmpty(_historySearchFilter);
+            HistoryEmptyState.Glyph = "\uE81C";
+            HistoryEmptyState.Title = filtered ? "没有找到匹配的历史记录" : "还没有历史记录";
+            HistoryEmptyState.Description = filtered
+                ? $"没有与“{_historySearchFilter}”匹配的记录，试试其他关键词。"
+                : "开始浏览网页后，访问过的页面会显示在这里。";
+            HistoryEmptyState.ActionText = filtered ? "清除搜索" : "开始浏览";
+        }
+
+        private void HistoryEmptyState_ActionInvoked(object sender, EventArgs e)
+        {
+            if (!string.IsNullOrEmpty(_historySearchFilter))
+            {
+                HistorySearchBox.Text = "";
+                return;
+            }
+            CloseRequested?.Invoke();
         }
 
         private static readonly string[] WeekdayNames = { "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六" };
@@ -480,18 +546,75 @@ namespace EdgeRebuild.Controls
                 var titleText = root.FindName("TitleText") as TextBlock;
                 var urlText = root.FindName("UrlText") as TextBlock;
                 var timeText = root.FindName("TimeText") as TextBlock;
+                var badge = root.FindName("DomainBadge") as Border;
+                var initialText = root.FindName("DomainInitialText") as TextBlock;
 
+                string domain = GetDomain(hist.Url);
                 if (titleText != null) { titleText.Text = hist.Title ?? ""; titleText.Foreground = ForegroundBrush; }
-                if (urlText != null) { urlText.Text = hist.Url ?? ""; urlText.Foreground = MutedForegroundBrush; }
+                if (urlText != null) { urlText.Text = domain; urlText.Foreground = MutedForegroundBrush; }
                 if (timeText != null)
                 {
                     timeText.Text = hist.VisitTime != DateTime.MinValue ? hist.VisitTime.ToString("yyyy-MM-dd HH:mm") : "";
                     timeText.Foreground = MutedForegroundBrush;
                 }
+                if (badge != null) badge.Background = new SolidColorBrush(GetDomainColor(domain));
+                if (initialText != null) initialText.Text = GetDomainInitial(domain);
+                ToolTipService.SetToolTip(root, hist.Url ?? "");
                 if (_historyGroupByItem.TryGetValue(hist, out var itemGroup) && !itemGroup.IsExpanded)
                     args.ItemContainer.Visibility = Visibility.Collapsed;
             }
             args.Handled = true;
+        }
+
+        /// <summary>取域名用于历史条目第二行；去掉 www. 前缀，非绝对 URL 回退到原文。</summary>
+        private static string GetDomain(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return "";
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            {
+                string host = uri.Host;
+                if (string.IsNullOrEmpty(host)) return uri.Scheme ?? url;
+                if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+                    host = host.Substring(4);
+                return host;
+            }
+            return url;
+        }
+
+        /// <summary>同一域名稳定配色（FNV-1a 哈希），色板取 Windows/Edge 常用强调色。</summary>
+        private static Color GetDomainColor(string domain)
+        {
+            if (string.IsNullOrEmpty(domain))
+                return Color.FromArgb(0xFF, 0x76, 0x76, 0x76);
+
+            uint hash = 2166136261;
+            foreach (char c in domain.ToLowerInvariant())
+            {
+                hash ^= c;
+                hash *= 16777619;
+            }
+
+            Color[] palette =
+            {
+                Color.FromArgb(0xFF, 0x00, 0x78, 0xD7), // 蓝
+                Color.FromArgb(0xFF, 0x10, 0x7C, 0x10), // 绿
+                Color.FromArgb(0xFF, 0xC2, 0x39, 0xB3), // 品红
+                Color.FromArgb(0xFF, 0xCA, 0x50, 0x10), // 橙
+                Color.FromArgb(0xFF, 0x87, 0x64, 0xB8), // 紫
+                Color.FromArgb(0xFF, 0x03, 0x83, 0x87), // 青
+                Color.FromArgb(0xFF, 0x49, 0x82, 0x05), // 橄榄
+                Color.FromArgb(0xFF, 0xC5, 0x0F, 0x1F), // 红
+                Color.FromArgb(0xFF, 0x5C, 0x2E, 0x91), // 深紫
+                Color.FromArgb(0xFF, 0x00, 0x5B, 0x70)  // 深青
+            };
+            return palette[hash % (uint)palette.Length];
+        }
+
+        private static string GetDomainInitial(string domain)
+        {
+            if (string.IsNullOrEmpty(domain)) return "?";
+            char c = domain[0];
+            return char.IsLetter(c) ? char.ToUpperInvariant(c).ToString() : "•";
         }
 
         private void FavListView_ItemClick(object sender, ItemClickEventArgs e)
@@ -743,6 +866,26 @@ namespace EdgeRebuild.Controls
                 DownloadsStackPanel.Children.Add(container);
                 _downloadContainers[item] = container;
             }
+
+            bool empty = DownloadManager.Downloads.Count == 0;
+            DownloadsContainer.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            DownloadsEmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+            if (empty)
+            {
+                DownloadsEmptyState.Description = DownloadManager.CanUseSystemDownloadFolder
+                    ? "下载的文件会显示在这里，可随时暂停、重试或打开文件夹。"
+                    : "下载的文件会显示在这里。当前无系统下载权限，文件将保存到应用本地文件夹。";
+            }
+        }
+
+        private async void DownloadsEmptyState_ActionInvoked(object sender, EventArgs e)
+        {
+            try
+            {
+                var folder = await DownloadManager.GetDownloadFolderAsync();
+                if (folder != null) await Launcher.LaunchFolderAsync(folder);
+            }
+            catch { }
         }
 
         private void DownloadItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
@@ -813,16 +956,17 @@ namespace EdgeRebuild.Controls
                     // InPrivate 模式：不加载历史列表，面板内显示提示
                     FavPanel.Visibility = Visibility.Collapsed;
                     HistoryPanel.Visibility = Visibility.Visible;
-                    DownloadsContainer.Visibility = Visibility.Collapsed;
+                    DownloadsPanel.Visibility = Visibility.Collapsed;
                     HistoryToolbar.Visibility = Visibility.Collapsed;
                     HistoryListView.Visibility = Visibility.Collapsed;
+                    HistoryEmptyState.Visibility = Visibility.Collapsed;
                     InPrivateNotice.Visibility = Visibility.Visible;
                     return;
                 }
                 FavPanel.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
                 HistoryPanel.Visibility = tag == "History" ? Visibility.Visible : Visibility.Collapsed;
                 ReadingPanel.Visibility = tag == "ReadingList" ? Visibility.Visible : Visibility.Collapsed;
-                DownloadsContainer.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
+                DownloadsPanel.Visibility = tag == "Downloads" ? Visibility.Visible : Visibility.Collapsed;
                 CollectionsPanel.Visibility = tag == "Collections" ? Visibility.Visible : Visibility.Collapsed;
                 if (tag == "Favorites") RefreshFavorites();
                 if (tag == "History") RefreshHistory();
@@ -839,8 +983,15 @@ namespace EdgeRebuild.Controls
             ReadingListView.Items.Clear();
             foreach (var item in ReadingListManager.Instance.Items)
                 ReadingListView.Items.Add(item);
+
+            bool empty = ReadingListView.Items.Count == 0;
+            ReadingListView.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            ReadingEmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
             ApplyThemeToReadingList();
         }
+
+        private void ReadingEmptyState_ActionInvoked(object sender, EventArgs e)
+            => CloseRequested?.Invoke();
 
         private void ApplyThemeToReadingList()
         {
@@ -945,18 +1096,13 @@ namespace EdgeRebuild.Controls
                 btn.RightTapped += CollectionGroup_RightTapped;
                 CollectionGroupList.Children.Add(btn);
             }
-            // 空分组提示
-            if (CollectionManager.Instance.Groups.Count == 0)
-            {
-                CollectionGroupList.Children.Add(new TextBlock
-                {
-                    Text = "暂无分组，点击「新建分组」开始收集",
-                    Margin = new Thickness(12, 16, 12, 0),
-                    FontSize = 12,
-                    Opacity = 0.5
-                });
-            }
+            bool empty = CollectionManager.Instance.Groups.Count == 0;
+            CollectionGroupList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            CollectionsEmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
         }
+
+        private void CollectionsEmptyState_ActionInvoked(object sender, EventArgs e)
+            => NewCollectionGroupBtn_Click(NewCollectionGroupBtn, new RoutedEventArgs());
 
         private async void CollectionGroupBtn_Click(object sender, RoutedEventArgs e)
         {
@@ -971,6 +1117,7 @@ namespace EdgeRebuild.Controls
         private void ShowCollectionItems(int groupId)
         {
             CollectionGroupList.Visibility = Visibility.Collapsed;
+            CollectionsEmptyState.Visibility = Visibility.Collapsed;
             CollectionItemListContainer.Visibility = Visibility.Visible;
             var group = CollectionManager.Instance.Groups.FirstOrDefault(g => g.Id == groupId);
             CollectionGroupNameText.Text = group?.Name ?? "";

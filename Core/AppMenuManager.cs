@@ -28,6 +28,7 @@ namespace EdgeRebuild.Core
         private readonly Action _onOpenMetroWindow;
         private readonly Action<double> _onZoomAdjust;
         private readonly Action _onZoomReset;
+        private readonly Func<int> _getZoomPercent;
         private readonly Action _onFind;
         private readonly Action _onDevTools;
         private readonly Action<EngineType> _onEngineSwitch;
@@ -61,6 +62,7 @@ namespace EdgeRebuild.Core
             Action onOpenMetroWindow,
             Action<double> onZoomAdjust,
             Action onZoomReset,
+            Func<int> getZoomPercent,
             Action onFind,
             Action onDevTools,
             Action<EngineType> onEngineSwitch,
@@ -93,6 +95,7 @@ namespace EdgeRebuild.Core
             _onOpenMetroWindow = onOpenMetroWindow;
             _onZoomAdjust = onZoomAdjust;
             _onZoomReset = onZoomReset;
+            _getZoomPercent = getZoomPercent;
             _onFind = onFind;
             _onDevTools = onDevTools;
             _onEngineSwitch = onEngineSwitch;
@@ -153,8 +156,9 @@ namespace EdgeRebuild.Core
             menu.Items.Add(demoWindowItem);
             menu.Items.Add(new MenuFlyoutSeparator());
 
-            // 缩放子菜单
-            var zoomSub = new MenuFlyoutSubItem { Text = "缩放" };
+            // 缩放子菜单：标题直接显示当前比例（旧版 Edge 的做法，避免在菜单里塞滑杆）
+            int zoomPercent = _getZoomPercent?.Invoke() ?? 100;
+            var zoomSub = new MenuFlyoutSubItem { Text = $"缩放 {zoomPercent}%" };
             var zoomInItem = new MenuFlyoutItem { Text = "放大" };
             zoomInItem.Click += (_, _) => _onZoomAdjust?.Invoke(0.1);
             var zoomOutItem = new MenuFlyoutItem { Text = "缩小" };
@@ -175,11 +179,12 @@ namespace EdgeRebuild.Core
             readAloudItem.Click += (_, _) => _onToggleReadAloud?.Invoke();
             menu.Items.Add(readAloudItem);
 
-            var printItem = new MenuFlyoutItem { Text = "打印" };
+            // 只标注 ShortcutManager 中真实注册的快捷键，避免“看起来能用”的假标注。
+            var printItem = new MenuFlyoutItem { Text = "打印", KeyboardAcceleratorTextOverride = "Ctrl+P" };
             printItem.Click += async (_, _) => await _onPrint?.Invoke();
             menu.Items.Add(printItem);
 
-            var findItem = new MenuFlyoutItem { Text = "查找" };
+            var findItem = new MenuFlyoutItem { Text = "查找", KeyboardAcceleratorTextOverride = "Ctrl+F" };
             findItem.Click += (_, _) => _onFind?.Invoke();
             menu.Items.Add(findItem);
 
@@ -187,7 +192,7 @@ namespace EdgeRebuild.Core
             sourceItem.Click += async (_, _) => await _onViewSource?.Invoke();
             menu.Items.Add(sourceItem);
 
-            var captureItem = new MenuFlyoutItem { Text = "网页捕获（截图批注）" };
+            var captureItem = new MenuFlyoutItem { Text = "网页捕获（截图批注）", KeyboardAcceleratorTextOverride = "Ctrl+Shift+S" };
             captureItem.Click += async (_, _) => { if (_onWebCapture != null) await _onWebCapture(); };
             menu.Items.Add(captureItem);
 
@@ -218,7 +223,7 @@ namespace EdgeRebuild.Core
             }
             else
             {
-                var reopenItem = new MenuFlyoutItem { Text = "恢复最近关闭的标签" };
+                var reopenItem = new MenuFlyoutItem { Text = "恢复最近关闭的标签", KeyboardAcceleratorTextOverride = "Ctrl+Shift+T" };
                 reopenItem.Click += async (_, _) => await _onReopenTab?.Invoke();
                 reopenSub.Items.Add(reopenItem);
 
@@ -234,7 +239,7 @@ namespace EdgeRebuild.Core
             menu.Items.Add(bookmarkAllItem);
 
             // 历史记录
-            var historyItem = new MenuFlyoutItem { Text = "历史记录" };
+            var historyItem = new MenuFlyoutItem { Text = "历史记录", KeyboardAcceleratorTextOverride = "Ctrl+H" };
             historyItem.Click += (_, _) => _onShowHistory?.Invoke();
             menu.Items.Add(historyItem);
 

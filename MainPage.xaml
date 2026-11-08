@@ -344,6 +344,7 @@
                 <SplitView.Pane>
                     <controls:HubPane x:Name="hubPane"
                                       NavigateRequested="HubPane_NavigateRequested"
+                                      CloseRequested="HubPane_CloseRequested"
                                       Width="520"
                                       HorizontalAlignment="Stretch"
                                       VerticalAlignment="Stretch"/>

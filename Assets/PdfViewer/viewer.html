@@ -8,57 +8,135 @@
   <link rel="stylesheet" href="viewer.css">
 </head>
 <body>
-  <div id="toolbar">
-    <button id="sidebarToggle" class="tool-btn" title="缩略图">&#xE700;</button>
-    <div class="tgroup left">
-      <button id="saveBtn" class="tool-btn" title="保存">&#xE74E;</button>
-    </div>
-    <div class="tgroup center">
-      <button id="prevBtn" class="tool-btn nav-btn" title="上一页">&#xE76B;</button>
-      <input id="pageNum" type="text" value="1" title="页码">
-      <span id="numPages">/ 1</span>
-      <button id="nextBtn" class="tool-btn nav-btn" title="下一页">&#xE76C;</button>
-    </div>
-    <div class="tgroup right">
-      <div class="tgroup annotate">
-        <button id="cursorBtn" class="tool-btn" title="选择">&#xE7C9;</button>
-        <button id="highlightBtn" class="tool-btn" title="高亮（批注）">&#xE7E6;</button>
-        <button id="freetextBtn" class="tool-btn" title="添加文本">&#xE97C;</button>
-        <button id="inkBtn" class="tool-btn" title="画笔">&#xE76D;</button>
-        <button id="eraserBtn" class="tool-btn" title="橡皮擦（点击批注删除）" disabled>&#xE75C;</button>
-      </div>
-      <div id="searchBox" class="hidden">
-        <input id="searchInput" type="text" placeholder="在页面中查找" title="查找">
-        <span id="searchCount"></span>
-        <button id="searchPrev" class="tool-btn mini" title="上一个">&#xE892;</button>
-        <button id="searchNext" class="tool-btn mini" title="下一个">&#xE893;</button>
-      </div>
-      <button id="searchBtn" class="tool-btn" title="搜索">&#xE721;</button>
-      <button id="fitPageBtn" class="tool-btn" title="适合页面">&#xE799;</button>
-      <button id="rotateBtn" class="tool-btn" title="旋转">&#xE7AD;</button>
-      <button id="zoomOutBtn" class="tool-btn" title="缩小">&#xE71F;</button>
-      <span id="zoomLabel">100%</span>
-      <button id="zoomInBtn" class="tool-btn" title="放大">&#xE8A3;</button>
-      <button id="fullscreenBtn" class="tool-btn" title="全屏">&#xE740;</button>
-    </div>
+  <!-- 查找栏：旧版 Edge 把浏览器级查找栏放在阅读栏上方 -->
+  <div id="findBar" class="hidden">
+    <span class="find-label">在页面上查找</span>
+    <input id="searchInput" type="text" placeholder="输入要搜索的文本" title="查找">
+    <span id="searchCount"></span>
+    <button id="searchPrev" class="tool-btn mini" title="上一个结果 (Shift+Enter)">&#xE76B;</button>
+    <button id="searchNext" class="tool-btn mini" title="下一个结果 (Enter)">&#xE76C;</button>
+    <button id="searchClose" class="tool-btn mini" title="关闭 (Esc)">&#xE711;</button>
   </div>
 
-  <div id="colorBar" class="hidden">
-    <div id="colorBarRow">
-      <span class="colorBar-label">颜色</span>
-      <button class="color-dot" data-color="#E11D48" title="红"></button>
-      <button class="color-dot" data-color="#F97316" title="橙"></button>
-      <button class="color-dot" data-color="#FACC15" title="黄"></button>
-      <button class="color-dot" data-color="#22C55E" title="绿"></button>
-      <button class="color-dot" data-color="#2563EB" title="蓝"></button>
-      <button class="color-dot" data-color="#A855F7" title="紫"></button>
-      <button class="color-dot" data-color="#171717" title="黑"></button>
-      <button class="color-dot" data-color="#FFFFFF" title="白"></button>
+  <!-- 40px 阅读栏：位置类（翻页、查找）靠左，呈现类（缩放、布局、批注、输出）靠右 -->
+  <div id="toolbar">
+    <div class="tb-left">
+      <div class="page-field" title="转到页 (Ctrl+G)">
+        <input id="pageNum" type="text" value="1" aria-label="页码">
+        <span id="numPages">(共 1 页)</span>
+      </div>
+      <button id="searchBtn" class="tool-btn" title="搜索 (Ctrl+F)">&#xE721;</button>
+      <button id="sidebarToggle" class="tool-btn" title="目录与缩略图">&#xE700;</button>
     </div>
-    <div id="thickRow">
-      <span class="colorBar-label">粗细</span>
-      <input type="range" id="thickSlider" min="1" max="10" step="1" value="2">
-      <span id="thickPreview" title="当前粗细"></span>
+
+    <div class="tb-right">
+      <!-- 阅读模式工具组 -->
+      <div id="normalTools" class="tb-group">
+        <button id="zoomOutBtn" class="tool-btn" title="缩小 (Ctrl+减号键)">&#xE71F;</button>
+        <button id="zoomInBtn" class="tool-btn" title="放大 (Ctrl+加号键)">&#xE8A3;</button>
+        <button id="rotateBtn" class="tool-btn" title="向右旋转">&#xE7AD;</button>
+        <button id="fullscreenBtn" class="tool-btn" title="全屏">&#xE740;</button>
+
+        <button id="fitToggleBtn" class="text-btn" title="适应宽度 (Ctrl+Shift+A)">
+          <span id="fitIconPage" class="btn-icon">
+            <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+              <rect x="2.2" y="1.2" width="13.6" height="15.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/>
+              <rect x="5.2" y="4.2" width="7.6" height="9.6" rx=".6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            </svg>
+          </span>
+          <span id="fitIconWidth" class="btn-icon hidden">
+            <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+              <rect x="2.2" y="1.2" width="13.6" height="15.6" rx="1" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1.5"/>
+              <path d="M5 9h8M5 9l2-2M5 9l2 2M13 9l-2-2M13 9l-2 2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span id="fitLabel" class="btn-text">适应页面大小</span>
+        </button>
+
+        <div class="flyout-wrap">
+          <button id="layoutBtn" class="text-btn" title="页面视图" aria-haspopup="true" aria-expanded="false">
+            <span class="btn-icon">
+              <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true">
+                <rect x="3" y="1.5" width="12" height="15" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              </svg>
+            </span>
+            <span class="btn-text">页面视图</span>
+            <span class="caret">&#xE70D;</span>
+          </button>
+          <div id="layoutFlyout" class="flyout hidden" role="dialog" aria-label="页面视图">
+            <div class="flyout-title">页面视图</div>
+            <div class="layout-choices">
+              <button id="layoutSingle" class="layout-choice active" title="单页" aria-pressed="true">
+                <svg width="38" height="34" viewBox="0 0 38 34" aria-hidden="true">
+                  <rect x="10" y="1" width="18" height="32" rx="1" fill="#fff" stroke="#666" stroke-width="1.2"/>
+                </svg>
+                <span class="layout-choice-label">单页</span>
+              </button>
+              <button id="layoutDouble" class="layout-choice" title="双页" aria-pressed="false">
+                <svg width="44" height="34" viewBox="0 0 44 34" aria-hidden="true">
+                  <rect x="1" y="1" width="18" height="32" rx="1" fill="#fff" stroke="#666" stroke-width="1.2"/>
+                  <rect x="23" y="1" width="18" height="32" rx="1" fill="#fff" stroke="#666" stroke-width="1.2"/>
+                </svg>
+                <span class="layout-choice-label">双页</span>
+              </button>
+            </div>
+            <div class="flyout-row">
+              <span>连续滚动</span>
+              <button id="continuousToggle" class="toggle-switch on" role="switch" aria-checked="true" title="连续滚动">
+                <span class="toggle-knob"></span>
+              </button>
+              <span id="continuousState">开</span>
+            </div>
+          </div>
+        </div>
+
+        <span class="tb-sep"></span>
+
+        <button id="addNotesBtn" class="text-btn" title="增加备注（进入批注模式）">
+          <span class="btn-icon">&#xE70F;</span>
+          <span class="btn-text">增加备注</span>
+        </button>
+
+        <button id="saveBtn" class="tool-btn" title="保存批注（原位保存）">&#xE74E;</button>
+        <button id="saveAsBtn" class="tool-btn" title="另存为副本">&#xE792;</button>
+
+        <span class="tb-sep"></span>
+        <button id="pinBtn" class="tool-btn" title="解锁工具栏（自动隐藏）">&#xE77A;</button>
+      </div>
+
+      <!-- 批注模式工具组：整条阅读栏变紫，只保留墨迹工具 -->
+      <div id="inkTools" class="tb-group hidden">
+        <div class="flyout-wrap">
+          <button id="penBtn" class="tool-btn pen-btn" title="圆珠笔">
+            <span class="pen-glyph">&#xE70F;</span>
+            <span class="pen-caret">&#xE70D;</span>
+          </button>
+          <div id="penPalette" class="flyout pen-palette hidden" role="dialog" aria-label="笔迹设置">
+            <div class="flyout-title">笔迹</div>
+            <div id="colorBarRow">
+              <button class="color-dot" data-color="#E11D48" title="红"></button>
+              <button class="color-dot" data-color="#F97316" title="橙"></button>
+              <button class="color-dot" data-color="#FACC15" title="黄"></button>
+              <button class="color-dot" data-color="#22C55E" title="绿"></button>
+              <button class="color-dot" data-color="#2563EB" title="蓝"></button>
+              <button class="color-dot" data-color="#A855F7" title="紫"></button>
+              <button class="color-dot" data-color="#171717" title="黑"></button>
+              <button class="color-dot" data-color="#FFFFFF" title="白"></button>
+            </div>
+            <div id="thickRow">
+              <span class="colorBar-label">粗细</span>
+              <input type="range" id="thickSlider" min="1" max="10" step="1" value="2">
+              <span id="thickPreview" title="当前粗细"></span>
+            </div>
+          </div>
+        </div>
+        <button id="highlightBtn" class="tool-btn" title="荧光笔">&#xE7E6;</button>
+        <button id="freetextBtn" class="tool-btn" title="添加文本">&#xE97C;</button>
+        <button id="eraserBtn" class="tool-btn" title="橡皮擦（点击批注删除）" disabled>&#xE75C;</button>
+        <span class="tb-sep"></span>
+        <button id="annotSaveBtn" class="tool-btn" title="保存批注">&#xE74E;</button>
+        <button id="exitInkBtn" class="tool-btn" title="退出批注模式 (Esc)">&#xE711;</button>
+      </div>
     </div>
   </div>
 
