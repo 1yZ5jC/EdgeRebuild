@@ -213,7 +213,8 @@ namespace EdgeRebuild.Controls
                 var host = u.Host ?? "";
                 bool isReaderUrl = host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase)
                     || host.EndsWith("epubreader.local", StringComparison.OrdinalIgnoreCase)
-                    || (u.Scheme == "ms-appx-web" && (url.Contains("viewer.html") || url.Contains("reader.html")));
+                    || (u.Scheme == "ms-appx-web" && (url.Contains("viewer.html") || url.Contains("reader.html")))
+                    || (u.Scheme == "ms-local-stream" && url.Contains("reader.html", StringComparison.OrdinalIgnoreCase));
                 if (isReaderUrl)
                 {
                     Services.Diagnostics.Log($"[阅读器] 内部地址: {url}");

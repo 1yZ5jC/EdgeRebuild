@@ -7,11 +7,7 @@
     return;
   }
 
-  var fileParam = new URLSearchParams(location.search).get("file");
-  if (!fileParam) {
-    document.getElementById("statusText").textContent = "缺少 file 参数";
-    return;
-  }
+  var fileParam = new URLSearchParams(location.search).get("file") || "book.epub";
 
   var fileName = fileParam.split("/").pop() || "book.epub";
   var book, rendition;
@@ -224,6 +220,30 @@
     document.getElementById("bookmarkBtn").classList.toggle("active", active);
   }
 
+  function addCurrentBookmark() {
+    if (!currentCfi) return;
+    for (var i = 0; i < bookmarks.length; i++) {
+      if (bookmarks[i].cfi === currentCfi) {
+        statusText.textContent = "当前页已在书签中";
+        return;
+      }
+    }
+    var label = chapterLabelFor(currentHref);
+    var bm = {
+      cfi: currentCfi,
+      href: currentHref,
+      label: label,
+      chapter: label,
+      created: Date.now()
+    };
+    if (locationsReady) bm.percent = book.locations.percentageFromCfi(currentCfi);
+    bookmarks.unshift(bm);
+    store("er_bookmarks", bookmarks);
+    updateBookmarkBtn();
+    renderBookmarks();
+    statusText.textContent = "已添加书签";
+  }
+
   function renderBookmarks() {
     var listEl = document.getElementById("bookmarksList");
     listEl.innerHTML = "";
@@ -323,7 +343,7 @@
   function resolveChapterText(href) {
     var p = null;
     try {
-      var absolute = book.resolver(href);
+      var absolute = typeof book.resolve === "function" ? book.resolve(href) : href;
       if (book.archive && typeof book.archive.getText === "function") {
         p = book.archive.getText(absolute);
       }
@@ -429,36 +449,10 @@
   document.getElementById("nextBtn").addEventListener("click", function () { rendition.next(); });
 
   document.getElementById("bookmarkBtn").addEventListener("click", function () {
-    if (!bookmarksPanel.classList.contains("hidden")) {
-      // 面板已打开：在面板上点击 → 关闭面板
-      bookmarksPanel.classList.add("hidden");
-      return;
-    }
-    if (!currentCfi) return;
-    var existing = -1;
-    for (var i = 0; i < bookmarks.length; i++) {
-      if (bookmarks[i].cfi === currentCfi) { existing = i; break; }
-    }
-    if (existing >= 0) {
-      bookmarks.splice(existing, 1);
-      statusText.textContent = "已删除书签";
-    } else {
-      var label = chapterLabelFor(currentHref);
-      var bm = {
-        cfi: currentCfi,
-        href: currentHref,
-        label: label,
-        chapter: label,
-        created: Date.now()
-      };
-      if (locationsReady) bm.percent = book.locations.percentageFromCfi(currentCfi);
-      bookmarks.unshift(bm);
-      statusText.textContent = "已添加书签";
-    }
-    store("er_bookmarks", bookmarks);
-    updateBookmarkBtn();
-    renderBookmarks();
+    togglePanel(bookmarksPanel);
+    if (!bookmarksPanel.classList.contains("hidden")) renderBookmarks();
   });
+  document.getElementById("addBookmarkBtn").addEventListener("click", addCurrentBookmark);
 
   // 设置面板
   function bindOpts(id, dataKey, apply) {
@@ -538,44 +532,70 @@
   document.getElementById("gutterRight").addEventListener("click", function () { rendition.next(); });
 
   // ---- 初始化 ----
-  book = ePub(fileParam);
+  // EdgeHTML 下 epub.js 内部以 XHR(blob) 读取 ms-appdata 会一直无响应；
+  // 先自行以 arraybuffer 读取整本书，再把二进制交给 epub.js（ArrayBuffer 走 openEpub）。
+  function initBook(data) {
+    book = ePub(data);
 
-  book.loaded.metadata.then(function (meta) {
-    document.getElementById("bookTitle").textContent = meta.title || "EPUB 阅读器";
-  }).catch(function () { });
+    book.loaded.metadata.then(function (meta) {
+      document.getElementById("bookTitle").textContent = meta.title || "EPUB 阅读器";
+    }).catch(function () { });
 
-  rendition = book.renderTo("viewer", {
-    width: "100%",
-    height: "100%",
-    flow: "paginated",
-    spread: "none"
-  });
+    rendition = book.renderTo("viewer", {
+      width: "100%",
+      height: "100%",
+      flow: "paginated",
+      spread: "none"
+    });
 
-  rendition.on("relocated", function (location) {
-    if (!location || !location.start) return;
-    currentCfi = location.start.cfi;
-    currentHref = location.start.href;
-    updateDots(currentHref);
-    updateBookmarkBtn();
-    if (locationsReady) {
-      var pct = book.locations.percentageFromCfi(currentCfi);
-      updateProgress(pct * 100);
-    }
-    saveProgress();
-  });
+    rendition.on("relocated", function (location) {
+      if (!location || !location.start) return;
+      currentCfi = location.start.cfi;
+      currentHref = location.start.href;
+      updateDots(currentHref);
+      updateBookmarkBtn();
+      if (locationsReady) {
+        var pct = book.locations.percentageFromCfi(currentCfi);
+        updateProgress(pct * 100);
+      }
+      statusText.textContent = "阅读模式：分页";
+      saveProgress();
+    });
 
-  var openPromise = savedProgress && savedProgress.cfi
-    ? rendition.display(savedProgress.cfi)
-    : rendition.display();
+    var openPromise = savedProgress && savedProgress.cfi
+      ? rendition.display(savedProgress.cfi)
+      : rendition.display();
 
-  openPromise.then(function () {
-    statusText.textContent = "阅读模式：分页";
-    loadToc();
-    loadSpineDots();
-    buildLocations();
-    applySettings();
-    renderBookmarks();
-  }).catch(function (err) {
-    statusText.textContent = "打开失败：" + (err && err.message ? err.message : err);
-  });
+    openPromise.then(function () {
+      statusText.textContent = "阅读模式：分页";
+      loadToc();
+      loadSpineDots();
+      buildLocations();
+      applySettings();
+      renderBookmarks();
+    }).catch(function (err) {
+      statusText.textContent = "打开失败：" + (err && err.message ? err.message : err);
+    });
+  }
+
+  if (fileParam.indexOf("ms-appdata:") === 0) {
+    var bookXhr = new XMLHttpRequest();
+    bookXhr.open("GET", fileParam, true);
+    bookXhr.responseType = "arraybuffer";
+    bookXhr.onreadystatechange = function () {
+      if (bookXhr.readyState !== 4) return;
+      if ((bookXhr.status === 200 || bookXhr.status === 0)
+          && bookXhr.response && bookXhr.response.byteLength > 0) {
+        initBook(bookXhr.response);
+      } else {
+        statusText.textContent = "打开失败：无法读取电子书 (" + bookXhr.status + ")";
+      }
+    };
+    bookXhr.onerror = function () {
+      statusText.textContent = "打开失败：无法读取电子书";
+    };
+    bookXhr.send();
+  } else {
+    initBook(fileParam);
+  }
 })();

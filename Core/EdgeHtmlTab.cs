@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.ApplicationModel;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
@@ -169,7 +171,11 @@ namespace EdgeRebuild.Core
 
             string[] exts = { ".exe", ".zip", ".rar", ".7z", ".pdf", ".epub", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".mp3", ".mp4", ".avi", ".mkv", ".apk", ".msi", ".tar", ".gz", ".bz2", ".dmg", ".iso" };
             string url = args.Uri?.ToString() ?? "";
-            if (exts.Any(ext => url.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+            // 仅拦截网络地址：本地阅读器自身页面（ms-appx-web reader.html?file=...&src=xxx.epub）
+            // 整串以 .epub 结尾，若一并拦截会被误当成下载，导致阅读器永远打不开。
+            bool isNetworkUrl = args.Uri != null
+                && (args.Uri.Scheme == Uri.UriSchemeHttp || args.Uri.Scheme == Uri.UriSchemeHttps);
+            if (isNetworkUrl && exts.Any(ext => url.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
             {
                 args.Cancel = true;
                 DownloadRequested?.Invoke(url);
@@ -373,6 +379,34 @@ namespace EdgeRebuild.Core
         {
             if (string.IsNullOrEmpty(html)) return Task.CompletedTask;
             try { _webView.NavigateToString(html); } catch { }
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// 用 ms-local-stream 打开本地 EPUB 阅读器。阅读器页面、脚本与 EPUB 同源，
+        /// 规避 EdgeHTML 对 ms-appx-web → ms-appdata 的 XHR 封锁。
+        /// </summary>
+        public Task NavigateToEpubReaderAsync(string epubPath, string sourceUrl)
+        {
+            if (string.IsNullOrEmpty(epubPath) || !File.Exists(epubPath))
+            {
+                Services.Diagnostics.Log($"[EPUB 阅读器] 缓存文件不存在: {epubPath}");
+                return Task.CompletedTask;
+            }
+            try
+            {
+                string assetDir = Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "EpubReader");
+                string relative = "reader.html?file=" + ReaderStreamResolver.VirtualEpubName;
+                if (!string.IsNullOrEmpty(sourceUrl))
+                    relative += "&src=" + Uri.EscapeDataString(sourceUrl);
+                var uri = _webView.BuildLocalStreamUri("epubreader", relative);
+                Services.Diagnostics.Log($"[EPUB 阅读器] 本地流地址: {uri}");
+                _webView.NavigateToLocalStreamUri(uri, new ReaderStreamResolver(assetDir, epubPath));
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[EPUB 阅读器] 本地流导航失败: {ex.Message}");
+            }
             return Task.CompletedTask;
         }
 

@@ -1770,7 +1770,6 @@ namespace EdgeRebuild
             this.Resources["TabHoverBackgroundBrush"] = colors.TabHoverBackground;
 
             TabBarBorder.Background = colors.ToolbarBackground;
-            ActiveTabSeam.Background = colors.TabActiveBackground;
             VerticalTabSidebar.Background = _isVerticalTabs
                 ? new SolidColorBrush(Colors.Transparent)
                 : colors.ToolbarBackground;
@@ -2174,13 +2173,9 @@ namespace EdgeRebuild
                 await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
                 {
                     if (!(_tabManager?.CurrentTab is EdgeHtmlTab edgeTab)) return;
-                    string fileParam = await DownloadDocToCacheAsync("epub", url);
-                    if (string.IsNullOrEmpty(fileParam)) return;
-                    var pageUrl = new Uri(
-                        "ms-appx-web:///Assets/EpubReader/reader.html?file=" + Uri.EscapeDataString(fileParam)
-                        + "&src=" + Uri.EscapeDataString(url));
-                    Services.Diagnostics.Log($"[EPUB 阅读器] EdgeHTML 实际地址: {pageUrl}");
-                    await edgeTab.NavigateAsync(pageUrl.ToString());
+                    string filePath = await DownloadDocToCacheAsync("epub", url);
+                    if (string.IsNullOrEmpty(filePath)) return;
+                    await edgeTab.NavigateToEpubReaderAsync(filePath, url);
                 });
                 return;
             }
@@ -2188,7 +2183,7 @@ namespace EdgeRebuild
         }
 
         /// <summary>
-        /// 下载 PDF/EPUB 到 contentcache，返回可供阅读器加载的本地 URL。
+        /// 下载 PDF/EPUB 到 contentcache，返回本地物理路径。
         /// </summary>
         private async Task<string?> DownloadDocToCacheAsync(string kind, string url)
         {
@@ -2207,7 +2202,7 @@ namespace EdgeRebuild
                 var filePath = Path.Combine(cacheDir, fileName);
                 await File.WriteAllBytesAsync(filePath, bytes);
                 Services.Diagnostics.Log($"[阅读器] {kind} 已缓存: {filePath} ({bytes.Length} 字节)");
-                return "ms-appdata:///local/contentcache/" + fileName;
+                return filePath;
             }
             catch (Exception ex)
             {
