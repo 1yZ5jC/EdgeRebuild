@@ -89,6 +89,11 @@ namespace EdgeRebuild
         public MainPage()
         {
             this.InitializeComponent();
+            // 本地 EPUB/PDF 拖放：统一挂在根布局上；handledEventsToo=true 以接收
+            // WebView/标签条等子元素已处理的拖放事件。
+            RootGrid.AllowDrop = true;
+            RootGrid.AddHandler(UIElement.DragOverEvent, new DragEventHandler(RootGrid_DragOver), true);
+            RootGrid.AddHandler(UIElement.DropEvent, new DragEventHandler(RootGrid_Drop), true);
             this.Loaded += OnLoaded;
             this.Unloaded += OnUnloaded;
         }
@@ -344,7 +349,8 @@ namespace EdgeRebuild
                         ? (ReadAloudService.IsPaused ? "继续朗读" : "停止朗读")
                         : "大声朗读",
                     ToggleReadAloud,
-                    () => { _ = WindowManager.OpenDemoWindowAsync(); }
+                    () => { _ = WindowManager.OpenDemoWindowAsync(); },
+                    () => _ = OpenLocalFilePickerAsync()
                 );
 
                 // ---- 为所有标签附加拖拽事件 ----
@@ -1826,6 +1832,16 @@ namespace EdgeRebuild
         // ---- 工具栏事件 ----
         private async void ToolbarControl_UrlSubmitted(string url)
         {
+            if (string.IsNullOrWhiteSpace(url)) return;
+
+            // 本地 EPUB/PDF：地址栏输入 file:/// 或 Windows 路径时直接进入阅读器，
+            // 不能交给引擎当普通网址导航（EdgeHTML 会拼成 https://，WebView2 无阅读器）。
+            if (DocumentOpenService.IsLocalDocumentSource(url))
+            {
+                await OpenLocalDocumentAsync(url);
+                return;
+            }
+
             if (_tabManager.CurrentTab != null)
             {
                 // 历史由 TabManager.UrlChanged 统一记录（占位标题 + TitleChanged 修正），此处不重复添加
@@ -2173,41 +2189,120 @@ namespace EdgeRebuild
                 await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
                 {
                     if (!(_tabManager?.CurrentTab is EdgeHtmlTab edgeTab)) return;
-                    string filePath = await DownloadDocToCacheAsync("epub", url);
+                    string filePath = await DocumentOpenService.DownloadAsync(DocumentKind.Epub, url);
                     if (string.IsNullOrEmpty(filePath)) return;
-                    await edgeTab.NavigateToEpubReaderAsync(filePath, url);
+                    await edgeTab.NavigateToEpubReaderAsync(filePath, url, Path.GetFileName(filePath));
                 });
                 return;
             }
             await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url));
         }
 
-        /// <summary>
-        /// 下载 PDF/EPUB 到 contentcache，返回本地物理路径。
-        /// </summary>
-        private async Task<string?> DownloadDocToCacheAsync(string kind, string url)
+        // ---- 本地 EPUB/PDF 打开（文件选择器 / 拖放 / 地址栏 file://） ----
+
+        private async Task OpenLocalFilePickerAsync()
         {
             try
             {
-                using var client = new Windows.Web.Http.HttpClient();
-                var response = await client.GetAsync(new Uri(url));
-                response.EnsureSuccessStatusCode();
-                var buffer = await response.Content.ReadAsBufferAsync();
-                byte[] bytes = WindowsRuntimeBufferExtensions.ToArray(buffer);
-                string fileName = kind == "pdf"
-                    ? $"doc_{DateTime.Now:yyyyMMdd_HHmmss_fff}.pdf"
-                    : "doc_reader.epub";
-                var cacheDir = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache");
-                Directory.CreateDirectory(cacheDir);
-                var filePath = Path.Combine(cacheDir, fileName);
-                await File.WriteAllBytesAsync(filePath, bytes);
-                Services.Diagnostics.Log($"[阅读器] {kind} 已缓存: {filePath} ({bytes.Length} 字节)");
-                return filePath;
+                var picker = new FileOpenPicker
+                {
+                    SuggestedStartLocation = PickerLocationId.Downloads,
+                    ViewMode = PickerViewMode.List
+                };
+                picker.FileTypeFilter.Add(".epub");
+                picker.FileTypeFilter.Add(".pdf");
+
+                var file = await picker.PickSingleFileAsync();
+                if (file == null) return;
+                await OpenLocalDocumentAsync(file.Path, file);
             }
             catch (Exception ex)
             {
-                Services.Diagnostics.Log($"[阅读器] 缓存 {kind} 失败: {ex.Message}");
-                return null;
+                Services.Diagnostics.Log($"[本地文件] 文件选择器失败: {ex.Message}");
+                NotificationService.ShowToast("无法打开文件", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 本地文档统一入口：空白/NTP 标签复用当前标签，否则新建标签；
+        /// PDF 强制 WebView2（EdgeHTML 无法运行 pdf.js）。
+        /// </summary>
+        private async Task OpenLocalDocumentAsync(string source, StorageFile file = null)
+        {
+            DocumentKind kind = file != null && DocumentOpenService.TryGetDocumentKind(file.Name, out var fileKind)
+                ? fileKind
+                : (DocumentOpenService.TryGetDocumentKind(source, out var sourceKind) ? sourceKind : DocumentKind.Epub);
+
+            var current = _tabManager?.CurrentTab;
+            bool currentIsBlank = current != null
+                && (string.IsNullOrEmpty(current.CurrentUrl)
+                    || current.CurrentUrl == "about:blank"
+                    || ToolbarControl.IsNtpUrl(current.CurrentUrl));
+            bool currentEngineOk = kind != DocumentKind.Pdf || current is WebView2Tab;
+
+            if (currentIsBlank && currentEngineOk)
+            {
+                bool opened = file != null
+                    ? await DocumentOpenService.OpenLocalFileAsync(current, file)
+                    : await DocumentOpenService.OpenDocumentAsync(current, source);
+                if (!opened) ShowLocalOpenError(string.IsNullOrEmpty(source) ? (file?.Name ?? "") : source);
+                else SetFocusToCurrentTabContent();
+                return;
+            }
+
+            EngineType engine = kind == DocumentKind.Pdf ? EngineType.WebView2 : _defaultEngine;
+            var created = await _tabManager.CreateTabAsync(engine, null);
+            bool ok = file != null
+                ? await DocumentOpenService.OpenLocalFileAsync(created.Tab, file)
+                : await DocumentOpenService.OpenDocumentAsync(created.Tab, source);
+            if (!ok) ShowLocalOpenError(string.IsNullOrEmpty(source) ? (file?.Name ?? "") : source);
+            else SetFocusToCurrentTabContent();
+        }
+
+        private void ShowLocalOpenError(string source)
+        {
+            Services.Diagnostics.Log($"[本地文件] 打开失败: {source}");
+            NotificationService.ShowToast("无法打开文件",
+                "请用“打开本地文件…”选择文件，或在系统设置→隐私→文件系统中允许 EdgeRebuild 访问文件。");
+        }
+
+        private void RootGrid_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.DataView.Contains(StandardDataFormats.StorageItems))
+            {
+                e.AcceptedOperation = DataPackageOperation.Copy;
+                try
+                {
+                    e.DragUIOverride.Caption = "打开 EPUB / PDF";
+                    e.DragUIOverride.IsCaptionVisible = true;
+                    e.DragUIOverride.IsGlyphVisible = true;
+                }
+                catch { }
+            }
+        }
+
+        private async void RootGrid_Drop(object sender, DragEventArgs e)
+        {
+            if (!e.DataView.Contains(StandardDataFormats.StorageItems)) return;
+            try
+            {
+                var items = await e.DataView.GetStorageItemsAsync();
+                var files = items.OfType<StorageFile>()
+                    .Where(f => f.Name.EndsWith(".epub", StringComparison.OrdinalIgnoreCase)
+                             || f.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (files.Count == 0)
+                {
+                    NotificationService.ShowToast("无法打开文件", "仅支持 EPUB 和 PDF");
+                    return;
+                }
+                foreach (var file in files)
+                    await OpenLocalDocumentAsync(file.Path, file);
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[本地文件] 拖放打开失败: {ex.Message}");
+                NotificationService.ShowToast("无法打开文件", ex.Message);
             }
         }
 

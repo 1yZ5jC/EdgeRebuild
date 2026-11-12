@@ -42,6 +42,7 @@ namespace EdgeRebuild.Core
         private readonly Func<string> _getReadAloudLabel;
         private readonly Action _onToggleReadAloud;
         private readonly Action _onOpenDemoWindow;
+        private readonly Action _onOpenLocalFile;
 
         public AppMenuManager(
             TabManager tabManager,
@@ -75,7 +76,8 @@ namespace EdgeRebuild.Core
             Action onToggleReaderMode,
             Func<string> getReadAloudLabel,
             Action onToggleReadAloud,
-            Action onOpenDemoWindow = null)
+            Action onOpenDemoWindow = null,
+            Action onOpenLocalFile = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -109,6 +111,7 @@ namespace EdgeRebuild.Core
             _getReadAloudLabel = getReadAloudLabel;
             _onToggleReadAloud = onToggleReadAloud;
             _onOpenDemoWindow = onOpenDemoWindow;
+            _onOpenLocalFile = onOpenLocalFile;
         }
 
         public MenuFlyout BuildMenu()
@@ -154,6 +157,11 @@ namespace EdgeRebuild.Core
             var demoWindowItem = new MenuFlyoutItem { Text = "打开多窗口测试页" };
             demoWindowItem.Click += (_, _) => _onOpenDemoWindow?.Invoke();
             menu.Items.Add(demoWindowItem);
+
+            // 本地 EPUB/PDF：文件选择器打开（拖放/地址栏 file:// 同样支持）
+            var openLocalFileItem = new MenuFlyoutItem { Text = "打开本地文件…" };
+            openLocalFileItem.Click += (_, _) => _onOpenLocalFile?.Invoke();
+            menu.Items.Add(openLocalFileItem);
             menu.Items.Add(new MenuFlyoutSeparator());
 
             // 缩放子菜单：标题直接显示当前比例（旧版 Edge 的做法，避免在菜单里塞滑杆）

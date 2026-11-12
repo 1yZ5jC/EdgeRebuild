@@ -21,6 +21,19 @@ namespace EdgeRebuild.Services
             raw = (raw ?? "").Trim();
             if (string.IsNullOrEmpty(raw)) return null;
 
+            // 地址栏直接打开本地文件：file:///C:/...、C:\...、C:/...、\\server\share\...
+            // 必须在“含空格 → 搜索”之前判断，否则带空格的路径会被当成搜索词。
+            raw = raw.Trim('"');
+            if (raw.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+                return raw;
+            if (raw.Length >= 3
+                && char.IsLetter(raw[0])
+                && raw[1] == ':'
+                && (raw[2] == '\\' || raw[2] == '/'))
+                return raw;
+            if (raw.StartsWith(@"\\", StringComparison.Ordinal))
+                return raw;
+
             if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||

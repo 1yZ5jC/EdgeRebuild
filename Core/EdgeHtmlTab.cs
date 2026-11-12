@@ -386,7 +386,7 @@ namespace EdgeRebuild.Core
         /// 用 ms-local-stream 打开本地 EPUB 阅读器。阅读器页面、脚本与 EPUB 同源，
         /// 规避 EdgeHTML 对 ms-appx-web → ms-appdata 的 XHR 封锁。
         /// </summary>
-        public Task NavigateToEpubReaderAsync(string epubPath, string sourceUrl)
+        public Task NavigateToEpubReaderAsync(string epubPath, string sourceUrl, string cacheFileName = null)
         {
             if (string.IsNullOrEmpty(epubPath) || !File.Exists(epubPath))
             {
@@ -399,6 +399,9 @@ namespace EdgeRebuild.Core
                 string relative = "reader.html?file=" + ReaderStreamResolver.VirtualEpubName;
                 if (!string.IsNullOrEmpty(sourceUrl))
                     relative += "&src=" + Uri.EscapeDataString(sourceUrl);
+                // cache 仅用于会话恢复定位 contentcache 里的实际文件；resolver 会忽略该参数
+                if (!string.IsNullOrEmpty(cacheFileName))
+                    relative += "&cache=" + Uri.EscapeDataString(cacheFileName);
                 var uri = _webView.BuildLocalStreamUri("epubreader", relative);
                 Services.Diagnostics.Log($"[EPUB 阅读器] 本地流地址: {uri}");
                 _webView.NavigateToLocalStreamUri(uri, new ReaderStreamResolver(assetDir, epubPath));

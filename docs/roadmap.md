@@ -53,6 +53,16 @@
       垂直 3px 左侧强调条，亮/暗/ModernIE 均验证；恢复标签栏与工具栏之间整窗宽淡灰分割线，
       地址栏保持 40px 满高。Release|x86 NativeAOT 发布通过。
 - [ ] R4-3b 打磨剩余：标签预览带、PDF 单双页/连续滚动 + 工具栏锁定、捕获/批注紫色强调、Hub 窄窗溢出
+- [x] R4-3c 本地文档打开 + 阅读器会话恢复（2026-11-12）：
+      新增 `DocumentOpenService` 统一识别网络/本地 PDF·EPUB，先下载或复制到
+      `LocalState\contentcache`（按来源哈希命名，避免互相覆盖），再交给 EdgeHTML EPUB 阅读器
+      或 WebView2 PDF/EPUB 查看器；PDF 始终强制 WebView2（EdgeHTML 无法运行 pdf.js）。
+      阅读器标签恢复解析 `src`/`cache`/`file` 后重建缓存与查看器地址，不再直接 Navigate
+      旧的 `ms-local-stream` / `pdfviewer.local` 地址。
+      入口：菜单“打开本地文件…”（FileOpenPicker）、拖放到窗口非网页区域、地址栏
+      `file:///` 与 Windows 路径（含空格、UNC）；网页内容区保留给页面自身拖放（如上传）。
+      已验证本地 EPUB/PDF 打开、重启恢复、拖放（非网页区域）；单元测试 31 项通过；
+      Release|x86 NativeAOT 发布通过（约 11.3 MB）。
 - [-] R4-4 暂缓：PDF 朗读、Sweep 重命名/共享整组/首次引导动画、经典皮肤、扩展体系/独立 PDF 进程
       （原因：成本/收益不匹配，或与现有 WebView2/pdf.js 架构冲突）
 - [ ] R4-5 待决策：Tab Sweep 高保真复刻 vs 产品化“标签页中心”；先 quick wins vs 先 Tab Sweep；

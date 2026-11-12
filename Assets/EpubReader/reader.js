@@ -10,6 +10,10 @@
   var fileParam = new URLSearchParams(location.search).get("file") || "book.epub";
 
   var fileName = fileParam.split("/").pop() || "book.epub";
+  // EdgeHTML 阅读器始终以虚拟名 book.epub 加载，真实缓存名经 cache 参数传入；
+  // 进度/书签按 cache 区分，避免不同 EPUB 互相覆盖（旧 URL 无 cache 时回退文件名）。
+  var cacheParam = new URLSearchParams(location.search).get("cache") || "";
+  var storageName = cacheParam.split("/").pop() || fileName;
   var book, rendition;
   var currentCfi = null;
   var currentHref = null;
@@ -28,10 +32,10 @@
 
   // ---- 持久化（localStorage，按文件名区分） ----
   function store(key, value) {
-    try { localStorage.setItem(key + "_" + fileName, JSON.stringify(value)); } catch (e) { }
+    try { localStorage.setItem(key + "_" + storageName, JSON.stringify(value)); } catch (e) { }
   }
   function loadStore(key) {
-    try { return JSON.parse(localStorage.getItem(key + "_" + fileName)) || null; } catch (e) { return null; }
+    try { return JSON.parse(localStorage.getItem(key + "_" + storageName)) || null; } catch (e) { return null; }
   }
 
   var settings = loadStore("er_settings") || {};

@@ -24,6 +24,25 @@ namespace EdgeRebuild.CoreTests
             Assert.Equal(input, UrlInputResolver.Resolve(input, Google));
         }
 
+        // ---- 本地文件路径：优先于“含空格→搜索”，地址栏可直接打开 ----
+        [Theory]
+        [InlineData(@"C:\Users\Alan\Downloads\book.epub")]
+        [InlineData("C:/Users/Alan/Downloads/book.pdf")]
+        [InlineData(@"\\server\share\book.epub")]
+        [InlineData("file:///C:/Users/Alan/Downloads/book.epub")]
+        [InlineData(@"C:\Users\Alan\My Books\book.epub")]
+        public void Resolve_LocalPath_PassesThrough(string input)
+        {
+            Assert.Equal(input, UrlInputResolver.Resolve(input, Google));
+        }
+
+        [Fact]
+        public void Resolve_QuotedLocalPath_TrimsQuotes()
+        {
+            Assert.Equal(@"C:\Users\Alan\My Books\book.epub",
+                UrlInputResolver.Resolve("\"C:\\Users\\Alan\\My Books\\book.epub\"", Google));
+        }
+
         // ---- 含空格 → 搜索（优先级高于点号判断）----
         [Theory]
         [InlineData("hello world")]

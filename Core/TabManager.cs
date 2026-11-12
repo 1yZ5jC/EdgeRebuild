@@ -107,6 +107,15 @@ namespace EdgeRebuild.Core
 
         public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false)
         {
+            // PDF 需要 pdf.js（WebView2）：即使调用方指定 EdgeHTML（如地址栏直接输入
+            // 本地 PDF 路径），也自动改用 WebView2，避免 EdgeHTML 下载/空白页。
+            if (!string.IsNullOrEmpty(url)
+                && DocumentOpenService.TryGetDocumentKind(url, out var docKind)
+                && docKind == DocumentKind.Pdf)
+            {
+                engine = EngineType.WebView2;
+            }
+
             IBrowserTab tab = engine == EngineType.WebView2 ? new WebView2Tab() : new EdgeHtmlTab();
             if (isMetroHome) tab.SetMetroHome();
             if (IsInPrivateWindow) tab.SetInPrivate();
@@ -136,9 +145,16 @@ namespace EdgeRebuild.Core
             TabCreated?.Invoke(viewItem);
 
             if (!string.IsNullOrEmpty(url))
-                await tab.NavigateAsync(url);
+            {
+                // 阅读器标签恢复 / 本地 PDF·EPUB / 网络文档：统一走文档打开流程，
+                // 不能把 ms-local-stream / pdfviewer.local 旧地址直接 Navigate。
+                if (!await DocumentOpenService.TryNavigateAsync(tab, url))
+                    await tab.NavigateAsync(url);
+            }
             else
+            {
                 await tab.NavigateAsync("about:blank");
+            }
 
             TabCountChanged?.Invoke(_tabs.Count);
 

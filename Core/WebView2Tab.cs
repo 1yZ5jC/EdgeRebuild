@@ -328,46 +328,69 @@ namespace EdgeRebuild.Core
         /// </summary>
         private async Task OpenLocalViewerAsync(string kind, string url)
         {
+            var docKind = kind == "pdf" ? DocumentKind.Pdf : DocumentKind.Epub;
             try
             {
-                using var client = new Windows.Web.Http.HttpClient();
-                var response = await client.GetAsync(new Uri(url));
-                response.EnsureSuccessStatusCode();
-                var buffer = await response.Content.ReadAsBufferAsync();
-                byte[] bytes = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(buffer);
                 // PDF 用固定 annot_<sha12(来源)> 缓存名：批注保存时回写同名文件，
-                // 下次打开直接恢复批注；EPUB 用固定文件名（阅读器按文件名持久化进度）。
-                string fileName;
-                if (kind == "pdf")
+                // 下次打开直接恢复批注。
+                if (docKind == DocumentKind.Pdf)
                 {
                     _currentDocSource = url;
-                    string sha = Sha12(url);
-                    // 批注版已存在则直接打开，不再下载源（防止覆盖已有批注）
-                    string annotPath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", $"annot_{sha}.pdf");
+                    string annotPath = DocumentOpenService.GetCachePath(
+                        $"annot_{DocumentOpenService.Sha12(url)}.pdf");
                     if (File.Exists(annotPath))
                     {
-                        _webView.CoreWebView2?.Navigate(
-                            $"https://pdfviewer.local/viewer.html?file=https://contentcache.local/annot_{sha}.pdf&src={Uri.EscapeDataString(url)}");
+                        await OpenLocalDocumentAsync(docKind, annotPath, url);
                         return;
                     }
-                    fileName = $"annot_{sha}.pdf";
                 }
-                else
-                {
-                    fileName = "doc_reader.epub";
-                }
-                var filePath = Path.Combine(ApplicationData.Current.LocalFolder.Path, "contentcache", fileName);
-                await File.WriteAllBytesAsync(filePath, bytes);
-                string page = kind == "pdf" ? "viewer.html" : "reader.html";
-                string viewerHost = kind == "pdf" ? "pdfviewer.local" : "epubreader.local";
-                // src 参数保留来源网址：地址栏据此显示原始来源（阅读器内部地址进诊断日志）
-                _webView.CoreWebView2?.Navigate(
-                    $"https://{viewerHost}/{page}?file=https://contentcache.local/{Path.GetFileName(filePath)}&src={Uri.EscapeDataString(url)}");
+
+                string filePath = await DocumentOpenService.DownloadAsync(docKind, url);
+                if (string.IsNullOrEmpty(filePath)) return;
+                await OpenLocalDocumentAsync(docKind, filePath, url);
             }
             catch (Exception ex)
             {
                 Diagnostics.Log($"[本地查看器] 打开 {kind} 失败: {ex}");
                 try { NotificationService.ShowToast("打开失败", ex.Message); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// 用 contentcache 中已有的文件打开本地 PDF/EPUB 查看器。
+        /// 供本地文件打开、拖放与会话恢复共用（不重新下载）。
+        /// </summary>
+        public async Task OpenLocalDocumentAsync(DocumentKind kind, string cachePath, string sourceUrl)
+        {
+            if (_disposed || string.IsNullOrEmpty(cachePath)) return;
+            try
+            {
+                await EnsureInitializedAsync();
+                if (_webView?.CoreWebView2 == null) return;
+
+                _currentDocSource = sourceUrl;
+                string fileName = Path.GetFileName(cachePath);
+                if (kind == DocumentKind.Pdf)
+                {
+                    // 已有批注版优先（批注回写与来源 URL/本地路径绑定）
+                    string annotPath = DocumentOpenService.GetCachePath(
+                        $"annot_{DocumentOpenService.Sha12(sourceUrl ?? cachePath)}.pdf");
+                    if (File.Exists(annotPath))
+                        fileName = Path.GetFileName(annotPath);
+                }
+
+                string page = kind == DocumentKind.Pdf ? "viewer.html" : "reader.html";
+                string viewerHost = kind == DocumentKind.Pdf ? "pdfviewer.local" : "epubreader.local";
+                // src 参数保留来源网址/本地路径：地址栏据此显示原始来源
+                string src = string.IsNullOrEmpty(sourceUrl)
+                    ? ""
+                    : "&src=" + Uri.EscapeDataString(sourceUrl);
+                _webView.CoreWebView2.Navigate(
+                    $"https://{viewerHost}/{page}?file=https://contentcache.local/{Uri.EscapeDataString(fileName)}{src}");
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[本地查看器] 打开缓存文档失败: {ex}");
             }
         }
 
