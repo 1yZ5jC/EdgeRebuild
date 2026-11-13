@@ -56,6 +56,10 @@ namespace EdgeRebuild.Controls
         private string _historySearchFilter = "";
         private string _favoritesSearchFilter = "";
 
+        // 窄窗响应式：导航栏收成图标、收藏夹顶部按钮收进“更多”
+        private bool _compactNav;
+        private bool _favoritesOverflow;
+
         // 历史分组展开状态(参考规范:默认仅展开 past-hour)
         private readonly HashSet<string> _expandedHistoryGroups = new HashSet<string> { "past-hour" };
 
@@ -75,6 +79,40 @@ namespace EdgeRebuild.Controls
             RefreshReadingList();
             LoadDownloads();
             HubNavView.SelectedItem = HubNavView.MenuItems[0];
+            ApplyResponsiveLayout(ActualWidth);
+        }
+
+        private void HubPane_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.NewSize.Width > 0)
+                ApplyResponsiveLayout(e.NewSize.Width);
+        }
+
+        /// <summary>
+        /// 窄窗降级：&lt;480px 导航栏改图标模式；&lt;540px 收藏夹“导入/导出/管理”
+        /// 收进“更多”菜单，搜索框占满剩余宽度。
+        /// UWP 窗口最小内容宽度约 500px，面板最多缩到约 476px；阈值按实际可达宽度取，
+        /// 否则 440-480px 的窗口在系统层面就到不了，降级永远不会触发。
+        /// </summary>
+        private void ApplyResponsiveLayout(double width)
+        {
+            bool compactNav = width < 480;
+            if (compactNav != _compactNav)
+            {
+                _compactNav = compactNav;
+                HubNavView.PaneDisplayMode = compactNav
+                    ? NavigationViewPaneDisplayMode.LeftCompact
+                    : NavigationViewPaneDisplayMode.Left;
+            }
+
+            bool overflow = width < 540;
+            if (overflow == _favoritesOverflow) return;
+            _favoritesOverflow = overflow;
+
+            ImportFavBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
+            ExportFavBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
+            ToggleManageBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
+            FavoritesOverflowBtn.Visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
         }
 
         public void ApplySkinColors(SolidColorBrush foreground, SolidColorBrush muted, bool isDark)
@@ -84,6 +122,8 @@ namespace EdgeRebuild.Controls
 
             ImportFavBtn.Foreground = foreground;
             ExportFavBtn.Foreground = foreground;
+            ToggleManageBtn.Foreground = foreground;
+            FavoritesOverflowBtn.Foreground = foreground;
             ClearHistoryBtn.Foreground = foreground;
             FavoritesSearchBox.Foreground = foreground;
             HistorySearchBox.Foreground = foreground;

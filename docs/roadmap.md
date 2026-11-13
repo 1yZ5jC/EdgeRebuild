@@ -52,7 +52,17 @@
       （`book.resolve`）、书签面板入口（“添加当前页书签”）；活动标签水平 2px 顶部、
       垂直 3px 左侧强调条，亮/暗/ModernIE 均验证；恢复标签栏与工具栏之间整窗宽淡灰分割线，
       地址栏保持 40px 满高。Release|x86 NativeAOT 发布通过。
-- [ ] R4-3b 打磨剩余：标签预览带、PDF 单双页/连续滚动 + 工具栏锁定、捕获/批注紫色强调、Hub 窄窗溢出
+- [x] R4-3b 打磨收尾（2026-11-13）：
+      标签预览带移到标签栏下方独立一行（高 120），展开时工具栏与网页整体下推；卡片宽度
+      逐列跟随标签实际列宽，缩略图 Uniform 居中；预览带与 TabScrollViewer 等宽同偏移单向
+      同步滚动，每次打开偏移归零，关闭按钮仅悬停显示。捕获并发限制为 2、解码宽 320px、
+      PNG 先缩到 480px、关闭时释放位图，修复展开预览带触发的 0xc00001ad
+      （STATUS_FATAL_MEMORY_EXHAUSTION，私有内存约 478MB → 103MB）。LayoutManager.Recalculate
+      改为排队执行并读取最新 ActualWidth，修复连续缩放后标签条停在旧宽度。Hub 窄窗按实际
+      可达宽度适配（窗口最窄约 516×900、面板 476）：OpenPaneLength 取 min(520, available-24)，
+      收藏夹导入/导出/管理在 <540 收进“更多”，导航栏 <480 切 LeftCompact。PDF 单双页/
+      连续滚动、工具栏锁定/自动隐藏、紫色批注强调已实现，样本 PDF 渲染正常。
+      注：真实 1809 环境复验待后续；UWP 内容区最小宽度受系统限制约 500px。
 - [x] R4-3c 本地文档打开 + 阅读器会话恢复（2026-11-12）：
       新增 `DocumentOpenService` 统一识别网络/本地 PDF·EPUB，先下载或复制到
       `LocalState\contentcache`（按来源哈希命名，避免互相覆盖），再交给 EdgeHTML EPUB 阅读器

@@ -21,9 +21,12 @@ namespace EdgeRebuild.Core
         private double _tabWidth;
         private int _tabCount;
         private bool _recalcQueued;
+        private double _pendingContainerWidth;
+        private int _pendingTabCount;
+        private int _pendingPinnedCount;
 
         // UI 引用
-        private UIElement _container;
+        private FrameworkElement _container;
         private ScrollViewer _tabScrollViewer;
         private StackPanel _tabBarPanel;
         private StackPanel _rightSidePanel;
@@ -41,7 +44,7 @@ namespace EdgeRebuild.Core
         public int TabCount => _tabCount;
 
         public LayoutManager(
-            UIElement container,
+            FrameworkElement container,
             ScrollViewer tabScrollViewer,
             StackPanel tabBarPanel,
             StackPanel rightSidePanel,
@@ -65,6 +68,12 @@ namespace EdgeRebuild.Core
         {
             if (containerWidth <= 0 || tabCount == 0) return;
 
+            // 记录最新参数：窗口连续缩放时，排队中的旧回调不能继续用旧宽度，
+            // 否则标签条会停留在上一次窗口大小的宽度。
+            _pendingContainerWidth = containerWidth;
+            _pendingTabCount = tabCount;
+            _pendingPinnedCount = pinnedCount;
+
             // 原实现直接同步执行并在 UpdateRightPanelMargin 里强制 UpdateLayout()：
             // 当 Recalculate 来自 XamlRoot.Changed 等布局敏感回调时,会在布局过程中
             // 触发重入布局 → 嵌套 MeasureOverride → COMException 0x8000FFFF(E_UNEXPECTED),
@@ -81,7 +90,10 @@ namespace EdgeRebuild.Core
             _ = dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
             {
                 _recalcQueued = false;
-                RecalculateCore(containerWidth, tabCount, pinnedCount);
+                // 布局完成后容器宽度才是最终值；优先读取 ActualWidth
+                double width = _container != null ? _container.ActualWidth : 0;
+                if (width <= 0) width = _pendingContainerWidth;
+                RecalculateCore(width, _pendingTabCount, _pendingPinnedCount);
             });
         }
 

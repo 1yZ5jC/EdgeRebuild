@@ -184,11 +184,53 @@
             <Setter Property="Foreground" Value="{StaticResource ForegroundBrush}"/>
             <Setter Property="SelectionHighlightColor" Value="{ThemeResource SystemAccentColor}"/>
         </Style>
+
+        <!-- 标签预览卡右上角关闭按钮：深色半透明底 + 白色叉，悬停变红 -->
+        <Style x:Key="TabPreviewCloseButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="#B0000000"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="CloseRoot" Background="{TemplateBinding Background}">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CloseRoot" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#E81123"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CloseRoot" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#F1707A"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Page.Resources>
 
     <Grid x:Name="RootGrid" Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="32"/>
+            <!-- 标签预览带：展开时插在标题/标签栏下方，工具栏与网页整体下推 -->
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="40"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
@@ -206,7 +248,7 @@
         </Border>
 
         <!-- 垂直标签栏侧边栏（默认隐藏，设置中切换） -->
-        <Border x:Name="VerticalTabSidebar" Grid.Row="0" Grid.RowSpan="4" Grid.Column="0"
+        <Border x:Name="VerticalTabSidebar" Grid.Row="0" Grid.RowSpan="5" Grid.Column="0"
                 Width="220" Visibility="Collapsed"
                 BorderThickness="0,0,1,0" BorderBrush="{StaticResource SeparatorBrush}">
             <Grid Background="{StaticResource ToolbarAcrylicBrush}">
@@ -232,6 +274,11 @@
                             <Button x:Name="VerticalNewTabBtn" Content="&#xE710;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
                                     Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"/>
+                            <Button x:Name="VerticalPreviewBtn" Content="&#xE8A9;"
+                                    Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
+                                    Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="标签预览"
+                                    AutomationProperties.AutomationId="VerticalPreviewBtn"
+                                    AutomationProperties.Name="标签预览"/>
                             <Button x:Name="VerticalTabToggleBtn" Content="&#xE711;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
                                     Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"/>
@@ -297,6 +344,12 @@
                             Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
                             Click="ScrollRightBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                             Visibility="Collapsed" Margin="0,0,0,0"/>
+                    <Button x:Name="TabPreviewToggleBtn" Content="&#xE8A9;"
+                            Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"
+                            Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="标签预览"
+                            AutomationProperties.AutomationId="TabPreviewToggleBtn"
+                            AutomationProperties.Name="标签预览"
+                            Foreground="{StaticResource ForegroundBrush}" Margin="0,0,2,0"/>
                     <Button x:Name="NewTabButton" Content="&#xE710;"
                             Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"
                             Click="NewTabBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
@@ -308,9 +361,29 @@
             </Grid>
         </Border>
 
+        <!-- 标签预览带：紧贴标题/标签栏下方，展开时把工具栏与网页整体下推。
+             卡片宽度跟随标签列宽，缩略图完整居中显示；高度取 120 以少占内容区。
+             预览带视口与标签滚动视口等宽同偏移，卡片按标签列一一对齐。 -->
+        <Border x:Name="TabPreviewStrip" Grid.Row="1" Grid.Column="1"
+                Height="120" Visibility="Collapsed"
+                Background="{StaticResource ToolbarAcrylicBrush}"
+                BorderBrush="{StaticResource SeparatorBrush}"
+                BorderThickness="0,0,0,1">
+            <ScrollViewer x:Name="TabPreviewScrollViewer"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          HorizontalScrollMode="Enabled"
+                          VerticalScrollMode="Disabled"
+                          IsTabStop="False"
+                          PointerWheelChanged="TabPreviewScrollViewer_PointerWheelChanged">
+                <StackPanel x:Name="TabPreviewPanel" Orientation="Horizontal"
+                            Spacing="0" VerticalAlignment="Top"/>
+            </ScrollViewer>
+        </Border>
+
         <!-- 工具栏 -->
         <controls:ToolbarControl x:Name="toolbarControl"
-                                 Grid.Row="1" Grid.Column="1"
+                                 Grid.Row="2" Grid.Column="1"
                                  UrlSubmitted="ToolbarControl_UrlSubmitted"
                                  BackRequested="ToolbarControl_BackRequested"
                                  ForwardRequested="ToolbarControl_ForwardRequested"
@@ -322,7 +395,7 @@
                                  EngineSwitched="ToolbarControl_EngineSwitched"/>
 
         <!-- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行) -->
-        <Border x:Name="FavoritesBar" Grid.Row="2" Grid.Column="1" Visibility="Collapsed"
+        <Border x:Name="FavoritesBar" Grid.Row="3" Grid.Column="1" Visibility="Collapsed"
                 Background="{StaticResource ToolbarAcrylicBrush}" Height="44">
             <Grid>
                 <ScrollViewer HorizontalScrollBarVisibility="Hidden"
@@ -339,7 +412,7 @@
         </Border>
 
         <!-- 网页区域 -->
-        <Grid Grid.Row="3" Grid.Column="1">
+        <Grid Grid.Row="4" Grid.Column="1">
             <SplitView x:Name="HubSplitView" DisplayMode="Overlay"
                        OpenPaneLength="520" PanePlacement="Right"
                        PaneBackground="{StaticResource ToolbarAcrylicBrush}">
@@ -347,7 +420,6 @@
                     <controls:HubPane x:Name="hubPane"
                                       NavigateRequested="HubPane_NavigateRequested"
                                       CloseRequested="HubPane_CloseRequested"
-                                      Width="520"
                                       HorizontalAlignment="Stretch"
                                       VerticalAlignment="Stretch"/>
                 </SplitView.Pane>
@@ -397,7 +469,7 @@
 
         <!-- 网页捕获覆盖层：截图 + 画笔批注（保留在可视树中以便 RenderTargetBitmap 合成） -->
         <!-- 网页捕获覆盖层：只覆盖网页区域（Row 2），地址栏/标签栏保持可见，如同旧版 Edge 批注模式 -->
-        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="3" Grid.Column="1" Canvas.ZIndex="90"
+        <Grid x:Name="CaptureOverlay" Visibility="Collapsed" Grid.Row="4" Grid.Column="1" Canvas.ZIndex="90"
               Background="#A0000000" Tapped="CaptureOverlay_Tapped">
                 <Border x:Name="CaptureBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
                         BorderBrush="Gray" BorderThickness="1" Padding="12">
@@ -431,11 +503,11 @@
                 </Border>
         </Grid>
 
-        <Canvas x:Name="DragCanvas" Grid.RowSpan="4" Background="Transparent"
+        <Canvas x:Name="DragCanvas" Grid.RowSpan="5" Background="Transparent"
                 IsHitTestVisible="False" Canvas.ZIndex="1000"/>
 
         <!-- 大声朗读控制浮层：网页/EPUB 朗读时的播放控制（直角 + 主题化，颜色由 ApplyTheme 提供） -->
-        <Border x:Name="ReadAloudBar" Visibility="Collapsed" Grid.Row="3"
+        <Border x:Name="ReadAloudBar" Visibility="Collapsed" Grid.Row="4"
                 HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,20"
                 Padding="14,6" BorderThickness="1"
                 Canvas.ZIndex="95">

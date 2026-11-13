@@ -59,11 +59,20 @@
         <Grid>
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup x:Name="WidthStates">
-                    <VisualState x:Name="Wide"/>
+                    <VisualState x:Name="Wide">
+                        <Storyboard>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="UrlBox" Storyboard.TargetProperty="MinWidth">
+                                <DiscreteObjectKeyFrame KeyTime="0" Value="200"/>
+                            </ObjectAnimationUsingKeyFrames>
+                        </Storyboard>
+                    </VisualState>
                     <VisualState x:Name="Medium">
                         <Storyboard>
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="EngineCombo" Storyboard.TargetProperty="Visibility">
                                 <DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed"/>
+                            </ObjectAnimationUsingKeyFrames>
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="UrlBox" Storyboard.TargetProperty="MinWidth">
+                                <DiscreteObjectKeyFrame KeyTime="0" Value="200"/>
                             </ObjectAnimationUsingKeyFrames>
                         </Storyboard>
                     </VisualState>
@@ -77,6 +86,10 @@
                             </ObjectAnimationUsingKeyFrames>
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CaptureBtn" Storyboard.TargetProperty="Visibility">
                                 <DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed"/>
+                            </ObjectAnimationUsingKeyFrames>
+                            <!-- 窄窗允许地址栏继续收缩，窗口才能降到 Hub 响应式阈值以下 -->
+                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="UrlBox" Storyboard.TargetProperty="MinWidth">
+                                <DiscreteObjectKeyFrame KeyTime="0" Value="80"/>
                             </ObjectAnimationUsingKeyFrames>
                         </Storyboard>
                     </VisualState>

@@ -6,7 +6,8 @@
     Background="Transparent"
     IsHitTestVisible="True"
     HorizontalAlignment="Stretch"
-    VerticalAlignment="Stretch">
+    VerticalAlignment="Stretch"
+    SizeChanged="HubPane_SizeChanged">
 
     <UserControl.Resources>
         <!-- 亮色主题列表项样式 -->
@@ -213,29 +214,52 @@
                 <Grid>
                     <!-- 收藏夹面板 -->
                     <StackPanel x:Name="FavPanel" Visibility="Visible">
-                        <StackPanel Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
-                            <!-- 新增：收藏夹搜索框 -->
-                            <TextBox x:Name="FavoritesSearchBox" 
-                                     PlaceholderText="搜索收藏夹..." 
-                                     Width="150"
+                        <Grid Margin="12,8,12,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- 收藏夹搜索框：窄窗时收缩，按钮收进“更多” -->
+                            <TextBox x:Name="FavoritesSearchBox"
+                                     Grid.Column="0"
+                                     PlaceholderText="搜索收藏夹..."
+                                     MinWidth="80"
                                      TextChanged="FavoritesSearchBox_TextChanged"
                                      VerticalAlignment="Center"/>
-                            <Button x:Name="ImportFavBtn" Content="导入"
+                            <Button x:Name="ImportFavBtn" Grid.Column="1" Content="导入"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
-                                    Padding="10,4" FontSize="12"
+                                    Padding="10,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ImportFavBtn_Click"/>
-                            <Button x:Name="ExportFavBtn" Content="导出"
+                            <Button x:Name="ExportFavBtn" Grid.Column="2" Content="导出"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
-                                    Padding="10,4" FontSize="12"
+                                    Padding="10,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ExportFavBtn_Click"/>
-                            <Button x:Name="ToggleManageBtn" Content="管理"
+                            <Button x:Name="ToggleManageBtn" Grid.Column="3" Content="管理"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
-                                    Padding="10,4" FontSize="12"
+                                    Padding="10,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ToggleManageBtn_Click"/>
-                        </StackPanel>
+                            <Button x:Name="FavoritesOverflowBtn" Grid.Column="4" Content="&#xE712;"
+                                    FontFamily="Segoe MDL2 Assets"
+                                    Background="Transparent"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="10,4" FontSize="12" Margin="8,0,0,0"
+                                    Visibility="Collapsed"
+                                    ToolTipService.ToolTip="更多操作">
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="导入收藏夹" Click="ImportFavBtn_Click"/>
+                                        <MenuFlyoutItem Text="导出收藏夹" Click="ExportFavBtn_Click"/>
+                                        <MenuFlyoutItem Text="管理收藏夹" Click="ToggleManageBtn_Click"/>
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                        </Grid>
 
                         <!-- 多选管理操作栏 -->
                         <Border x:Name="ManageBar" Visibility="Collapsed" Margin="12,0,12,4"
@@ -299,19 +323,24 @@
 
                     <!-- 历史记录面板 -->
                     <StackPanel x:Name="HistoryPanel" Visibility="Collapsed">
-                        <StackPanel x:Name="HistoryToolbar" Orientation="Horizontal" Margin="12,8,12,4" Spacing="8">
-                            <!-- 新增：历史记录搜索框 -->
-                            <TextBox x:Name="HistorySearchBox" 
-                                     PlaceholderText="搜索历史..." 
-                                     Width="180"
+                        <Grid x:Name="HistoryToolbar" Margin="12,8,12,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- 历史记录搜索框：窄窗时收缩，避免挤出面板 -->
+                            <TextBox x:Name="HistorySearchBox"
+                                     Grid.Column="0"
+                                     PlaceholderText="搜索历史..."
+                                     MinWidth="80"
                                      TextChanged="HistorySearchBox_TextChanged"
                                      VerticalAlignment="Center"/>
-                            <Button x:Name="ClearHistoryBtn" Content="清除全部历史"
+                            <Button x:Name="ClearHistoryBtn" Grid.Column="1" Content="清除全部历史"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
-                                    Padding="12,4" FontSize="12"
+                                    Padding="12,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ClearHistoryBtn_Click"/>
-                        </StackPanel>
+                        </Grid>
 
                         <!-- InPrivate：不展示历史列表，改为面板内提示 -->
                         <StackPanel x:Name="InPrivateNotice" Visibility="Collapsed"

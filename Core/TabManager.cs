@@ -34,6 +34,7 @@ namespace EdgeRebuild.Core
 
         public event Action<TabViewItem> TabCreated;
         public event Action<TabViewItem> TabChanged;
+        public event Action<TabViewItem> TabTitleChanged;   // 标题变化（不触发 TabChanged，避免抢焦点）
         public event Action<int> TabCountChanged;
         public event Action<TabViewItem> TabClosed;
         public event Action<IBrowserTab, bool> TabSuspendedChanged;
@@ -377,6 +378,7 @@ namespace EdgeRebuild.Core
                     if (tab.IsSuspended) displayTitle = "[已挂起] " + displayTitle;
                     viewItem.TitleText.Text = displayTitle;
                     ToolTipService.SetToolTip(viewItem.TitleText, displayTitle);
+                    TabTitleChanged?.Invoke(viewItem);
                 });
 
                 // 真实标题到达 → 修正占位历史记录（URL 未再变化才修正）

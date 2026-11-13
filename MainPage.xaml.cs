@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Threading;
 using System.Threading.Tasks;
 using Windows.ApplicationModel.Core;
 using Windows.ApplicationModel.DataTransfer;
@@ -27,6 +28,7 @@ using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
+using ProgressRing = Windows.UI.Xaml.Controls.ProgressRing;
 
 namespace EdgeRebuild
 {
@@ -206,6 +208,8 @@ namespace EdgeRebuild
             }
             _hoverTimer?.Stop();
             _previewCloseTimer?.Stop();
+            _previewStripRefreshTimer?.Stop();
+            _previewStripRefreshQueue.Clear();
             if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
@@ -253,6 +257,8 @@ namespace EdgeRebuild
                     ScrollRightBtn
                 );
                 _layoutManager.LayoutUpdated += OnLayoutUpdated;
+                // 标签条位置/宽度变化（滚动按钮出现、窗口缩放、标签增删）后重新对齐预览带
+                TabScrollViewer.LayoutUpdated += OnTabScrollViewerLayoutUpdated;
 
                 // ---- 标签管理器 ----
                 // 多窗口会话：每个 MainPage 窗口持独立 Slot（0=主窗），互不覆盖；
@@ -322,8 +328,8 @@ namespace EdgeRebuild
                     PrintCurrentPageAsync,
                     ViewSourceAsync,
                     WebCaptureCurrentAsync,
-                    () => { HubSplitView.IsPaneOpen = true; hubPane.ShowHistory(); },
-                    () => SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen,
+                    () => { SetTabPreviewStripOpen(false); HubSplitView.IsPaneOpen = true; hubPane.ShowHistory(); },
+                    () => { SetTabPreviewStripOpen(false); SettingsSplitView.IsPaneOpen = !SettingsSplitView.IsPaneOpen; },
                     ClearBrowsingDataAsync,
                     BookmarkAllTabs,
                     ShowAboutDialog,
@@ -647,6 +653,7 @@ namespace EdgeRebuild
                 PlatformCompat.SetDialogRoot(errorDialog, this);
                 await errorDialog.ShowAsync();
             }
+            UpdatePaneWidths();
             if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 完成");
         }
 
@@ -1188,11 +1195,21 @@ namespace EdgeRebuild
         private void CaptureCloseBtn_Click(object sender, RoutedEventArgs e) => CloseCapture();
 
         // ---- TabManager 事件处理 ----
-        private void OnTabOrderChanged() => SyncTabPanelOrder();
+        private void OnTabOrderChanged()
+        {
+            SyncTabPanelOrder();
+            SyncPreviewStripOrder();
+        }
 
         // ---- 核心修复：新建标签后自动激活并焦点到地址栏 ----
         private async void OnTabManagerTabCreated(TabViewItem viewItem)
         {
+            // 预览带展开时增量加入新卡片，保持与标签顺序一致
+            if (_isPreviewStripOpen && !_previewStripCards.ContainsKey(viewItem))
+            {
+                AddTabPreviewCard(viewItem);
+                SyncPreviewStripOrder();
+            }
             // 垂直标签模式：新建标签被 TabManager 加到水平面板，需迁移到垂直面板
             if (_isVerticalTabs && viewItem.Container != null)
             {
@@ -1230,6 +1247,13 @@ namespace EdgeRebuild
             if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
                 AppWindowCompat.SetTitle(_appWindow, tab.Title ?? "新标签页");
+            }
+
+            if (_isPreviewStripOpen)
+            {
+                UpdatePreviewStripSelection();
+                if (_previewStripCards.TryGetValue(viewItem, out var previewCard))
+                    _ = CaptureStripCardAsync(previewCard);
             }
 
             SetFocusToCurrentTabContent();
@@ -1314,7 +1338,19 @@ namespace EdgeRebuild
             _tabManager.UpdateSuspendedState(tab, suspended);
         }
 
-        private void OnTabManagerTabClosedCleanup(TabViewItem viewItem) => _readerModeUrls.Remove(viewItem.Tab);
+        private void OnTabManagerTabClosedCleanup(TabViewItem viewItem)
+        {
+            _readerModeUrls.Remove(viewItem.Tab);
+            _previewCache.Remove(viewItem.Tab);
+            _previewStripRefreshQueue.Remove(viewItem);
+
+            if (_previewStripCards.TryGetValue(viewItem, out var card))
+            {
+                TabPreviewPanel.Children.Remove(card.Root);
+                _previewStripCards.Remove(viewItem);
+                UpdatePreviewStripSelection();
+            }
+        }
 
         private void OnTabManagerNewWindowRequested(string url)
         {
@@ -1388,6 +1424,30 @@ namespace EdgeRebuild
         private Windows.UI.Xaml.Controls.ProgressRing _tabPreviewRing;
         private TabViewItem _tabPreviewTarget;
         private readonly Dictionary<IBrowserTab, byte[]> _previewCache = new Dictionary<IBrowserTab, byte[]>();
+        private readonly Dictionary<IBrowserTab, Task<byte[]>> _previewCaptureTasks = new Dictionary<IBrowserTab, Task<byte[]>>();
+        // 预览带一次最多同时捕获 2 个标签，避免 x86 进程瞬间分配多张全尺寸位图
+        private readonly SemaphoreSlim _previewStripCaptureGate = new SemaphoreSlim(2);
+
+        // ---- 标签预览带（常驻展开的缩略图行） ----
+        private bool _isPreviewStripOpen;
+        private readonly Dictionary<TabViewItem, TabPreviewStripCard> _previewStripCards =
+            new Dictionary<TabViewItem, TabPreviewStripCard>();
+        private DispatcherTimer _previewStripRefreshTimer;
+        private readonly HashSet<TabViewItem> _previewStripRefreshQueue = new HashSet<TabViewItem>();
+
+        private sealed class TabPreviewStripCard
+        {
+            public TabViewItem Item { get; set; }
+            public Border Root { get; set; }
+            public Border Frame { get; set; }
+            public Grid ThumbHost { get; set; }
+            public Image Image { get; set; }
+            public ProgressRing Ring { get; set; }
+            public FontIcon Placeholder { get; set; }
+            public Button CloseButton { get; set; }
+            public string CaptureUrl { get; set; }
+        }
+
         private DispatcherTimer _hoverTimer;
         private DispatcherTimer _previewCloseTimer;   // 鼠标离开标签后延迟关闭预览卡
         private bool _isPreviewHovered;               // 鼠标是否在预览卡内
@@ -1477,8 +1537,22 @@ namespace EdgeRebuild
             }
         }
 
-        // 导航后旧缩略图作废
-        private void OnPreviewCacheInvalidate(IBrowserTab tab, string url) => _previewCache.Remove(tab);
+        // 导航后旧缩略图作废；预览带中的卡片同步回占位图并延迟重捕
+        private void OnPreviewCacheInvalidate(IBrowserTab tab, string url)
+        {
+            _previewCache.Remove(tab);
+            if (!_isPreviewStripOpen) return;
+
+            var item = _tabManager.Tabs.FirstOrDefault(v => v.Tab == tab);
+            if (item == null || !_previewStripCards.TryGetValue(item, out var card)) return;
+
+            card.CaptureUrl = null;
+            card.Image.Source = null;
+            card.Image.Opacity = 0;
+            card.Placeholder.Visibility = Visibility.Visible;
+            card.Ring.Visibility = Visibility.Collapsed;
+            SchedulePreviewStripRefresh(item);
+        }
 
         private async Task ShowTabPreviewAsync()
         {
@@ -1527,24 +1601,12 @@ namespace EdgeRebuild
 
             try
             {
-                if (!_previewCache.TryGetValue(target.Tab, out byte[] png))
-                {
-                    // 后台标签容器 Collapsed → 捕获前临时置可见；期间切到该标签则不还原
-                    var container = target.ContentContainer;
-                    bool restore = container != null && container.Visibility != Visibility.Visible;
-                    if (restore) container.Visibility = Visibility.Visible;
-                    try { png = await WebCaptureService.CapturePagePngAsync(target.Tab); }
-                    finally
-                    {
-                        if (restore && container != null && _tabManager.CurrentTab != target.Tab)
-                            container.Visibility = Visibility.Collapsed;
-                    }
-                    if (png != null && png.Length > 0 && _tabPreviewTarget == target)
-                        _previewCache[target.Tab] = png;
-                }
-                if (_tabPreviewTarget != target || png == null || png.Length == 0) return;
+                byte[] png = await GetTabPreviewPngAsync(target.Tab);
+                if (_tabPreviewTarget != target || target.Tab.CurrentUrl != url
+                    || png == null || png.Length == 0) return;
 
-                var bmp = new BitmapImage();
+                // 悬停预览最大 240×150，按 2 倍 DPI 解码即可，避免全尺寸位图常驻
+                var bmp = new BitmapImage { DecodePixelWidth = 480 };
                 using (var ms = new MemoryStream(png))
                 {
                     await bmp.SetSourceAsync(ms.AsRandomAccessStream());
@@ -1558,6 +1620,396 @@ namespace EdgeRebuild
                 Services.Diagnostics.Log($"[标签预览] 捕获失败: {ex.Message}");
                 if (_tabPreviewTarget == target) _tabPreviewRing.Visibility = Visibility.Collapsed;
             }
+        }
+
+        // ---- 缩略图捕获：悬停预览与预览带共用，按标签去重并缓存 ----
+        private Task<byte[]> GetTabPreviewPngAsync(IBrowserTab tab)
+        {
+            if (_previewCache.TryGetValue(tab, out byte[] cached) && cached != null && cached.Length > 0)
+                return Task.FromResult(cached);
+            if (_previewCaptureTasks.TryGetValue(tab, out Task<byte[]> pending))
+                return pending;
+            return CaptureAndCacheTabPreviewAsync(tab);
+        }
+
+        private async Task<byte[]> CaptureAndCacheTabPreviewAsync(IBrowserTab tab)
+        {
+            Task<byte[]> task = CaptureTabPreviewCoreAsync(tab);
+            _previewCaptureTasks[tab] = task;
+            try
+            {
+                byte[] png = await task;
+                // 标签可能在捕获期间被关闭，避免把已释放标签留在缓存里
+                if (png != null && png.Length > 0 && _tabManager.Tabs.Any(v => v.Tab == tab))
+                    _previewCache[tab] = png;
+                return png;
+            }
+            finally
+            {
+                _previewCaptureTasks.Remove(tab);
+            }
+        }
+
+        private async Task<byte[]> CaptureTabPreviewCoreAsync(IBrowserTab tab)
+        {
+            // 后台标签容器 Collapsed → 捕获前临时置可见；期间切到该标签则不还原
+            var item = _tabManager.Tabs.FirstOrDefault(v => v.Tab == tab);
+            var container = item?.ContentContainer;
+            bool restore = container != null && container.Visibility != Visibility.Visible;
+            if (restore) container.Visibility = Visibility.Visible;
+            try { return await WebCaptureService.CapturePagePngAsync(tab, 480); }
+            finally
+            {
+                if (restore && container != null && _tabManager.CurrentTab != tab)
+                    container.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        // ---- 标签预览带 ----
+        private void TabPreviewToggleBtn_Click(object sender, RoutedEventArgs e)
+            => SetTabPreviewStripOpen(!_isPreviewStripOpen);
+
+        private void SetTabPreviewStripOpen(bool open)
+        {
+            if (open == _isPreviewStripOpen) return;
+            _isPreviewStripOpen = open;
+
+            if (open)
+            {
+                // 预览带与 Hub/设置面板都是覆盖层，同时打开会互相遮挡
+                HubSplitView.IsPaneOpen = false;
+                SettingsSplitView.IsPaneOpen = false;
+
+                // 标签保持默认自适应宽度，卡片按每个标签的实际列宽逐列对齐
+                RebuildTabPreviewStrip();
+                TabPreviewStrip.Visibility = Visibility.Visible;
+
+                // 每次打开都从第一张卡开始；标签条与预览带一起归零，避免沿用上次偏移
+                TabScrollViewer.ChangeView(0, null, null, true);
+                TabPreviewScrollViewer.ChangeView(0, null, null, true);
+                _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
+                {
+                    if (!_isPreviewStripOpen) return;
+                    AlignPreviewStripToTabs();
+                    TabScrollViewer.ChangeView(0, null, null, true);
+                    TabPreviewScrollViewer.ChangeView(0, null, null, true);
+                });
+                ApplyPreviewStripTheme();
+                UpdatePreviewStripSelection();
+
+                var currentItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
+                if (currentItem != null && _previewStripCards.TryGetValue(currentItem, out var card))
+                    _ = CaptureStripCardAsync(card);
+                Services.Diagnostics.Log("[标签预览带] 已展开");
+            }
+            else
+            {
+                TabPreviewStrip.Visibility = Visibility.Collapsed;
+                _previewStripRefreshTimer?.Stop();
+                _previewStripRefreshQueue.Clear();
+                // 显式断开位图引用，避免 XAML 合成器继续持有已解码缩略图
+                foreach (var card in _previewStripCards.Values)
+                    card.Image.Source = null;
+                TabPreviewPanel.Children.Clear();
+                _previewStripCards.Clear();
+                ApplyPreviewStripTheme();
+                Services.Diagnostics.Log("[标签预览带] 已收起");
+            }
+        }
+
+        private void RebuildTabPreviewStrip()
+        {
+            TabPreviewPanel.Children.Clear();
+            _previewStripCards.Clear();
+            foreach (var item in _tabManager.Tabs)
+                AddTabPreviewCard(item);
+        }
+
+        private void AddTabPreviewCard(TabViewItem item)
+        {
+            if (item?.Tab == null || _previewStripCards.ContainsKey(item)) return;
+            var colors = ThemeManager.Colors;
+
+            // 卡片宽度跟随标签的实际列宽（自适应/固定标签都一致），高 120；
+            // 左右各留 1px + 1px 边框，缩略图完整居中显示，空白处用卡片背景填充。
+            double cardWidth = GetPreviewCardWidth(item);
+
+            var image = new Image
+            {
+                // Uniform 会完整显示截图并在卡片内居中，多余部分由卡片背景填充
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Opacity = 0,
+                IsHitTestVisible = false
+            };
+            var placeholder = new FontIcon
+            {
+                Glyph = "\uE8A5",
+                FontSize = 30,
+                Opacity = 0.35,
+                Foreground = colors.MutedForegroundBrush,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                IsHitTestVisible = false
+            };
+            var ring = new ProgressRing
+            {
+                IsActive = true,
+                Width = 24,
+                Height = 24,
+                Visibility = Visibility.Collapsed,
+                Foreground = colors.AccentBrush,
+                IsHitTestVisible = false
+            };
+            var thumbHost = new Grid
+            {
+                Background = colors.TabActiveBackground
+            };
+            thumbHost.Children.Add(placeholder);
+            thumbHost.Children.Add(image);
+            thumbHost.Children.Add(ring);
+
+            // 关闭按钮只在悬停时出现，避免破坏旧版“纯缩略图”观感
+            var closeBtn = new Button
+            {
+                Content = "\uE711",
+                Style = Resources["TabPreviewCloseButtonStyle"] as Style,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 4, 4, 0),
+                Visibility = Visibility.Collapsed
+            };
+            closeBtn.Click += async (s, e) => await _tabManager.CloseTabAsync(item);
+            // 关闭按钮的 Tapped 不再冒泡到卡片，避免“先切换再关闭”抢走当前标签
+            closeBtn.Tapped += (s, e) => e.Handled = true;
+            thumbHost.Children.Add(closeBtn);
+
+            // 1px 边框包住缩略图；活动标签时换成 2px 强调色
+            var frame = new Border
+            {
+                Background = colors.TabActiveBackground,
+                BorderBrush = colors.SeparatorBrush,
+                BorderThickness = new Thickness(1),
+                Child = thumbHost
+            };
+            var root = new Border
+            {
+                Width = cardWidth,
+                Height = 120,
+                Padding = new Thickness(1, 0, 1, 0),
+                Background = new SolidColorBrush(Colors.Transparent),
+                Child = frame
+            };
+
+            var card = new TabPreviewStripCard
+            {
+                Item = item,
+                Root = root,
+                Frame = frame,
+                ThumbHost = thumbHost,
+                Image = image,
+                Ring = ring,
+                Placeholder = placeholder,
+                CloseButton = closeBtn
+            };
+            _previewStripCards[item] = card;
+            TabPreviewPanel.Children.Add(root);
+
+            root.PointerEntered += (s, e) => closeBtn.Visibility = Visibility.Visible;
+            root.PointerExited += (s, e) => closeBtn.Visibility = Visibility.Collapsed;
+            root.Tapped += async (s, e) =>
+            {
+                e.Handled = true;
+                if (_tabManager.Tabs.Contains(item))
+                    await _tabManager.SwitchToTabAsync(item);
+            };
+            // 卡片进入视口才捕获，标签多时不会一次性截全部后台页
+            root.EffectiveViewportChanged += (s, e) =>
+            {
+                if (e.EffectiveViewport.Width > 0 && e.EffectiveViewport.Height > 0)
+                    _ = CaptureStripCardAsync(card);
+            };
+        }
+
+        private double GetPreviewCardWidth(TabViewItem item)
+        {
+            if (item == null) return LayoutManager.MaxTabWidth;
+            if (item.IsPinned) return TabManager.PinnedTabWidth;
+
+            var container = item.Container;
+            if (container != null)
+            {
+                if (container.ActualWidth > 0) return container.ActualWidth;
+                if (!double.IsNaN(container.Width) && container.Width > 0) return container.Width;
+            }
+            return _isVerticalTabs
+                ? 220
+                : (_layoutManager != null && _layoutManager.TabWidth > 0
+                    ? _layoutManager.TabWidth
+                    : LayoutManager.MaxTabWidth);
+        }
+
+        /// <summary>预览卡宽度始终等于对应标签列宽，保证左边缘和分隔线逐列对齐。</summary>
+        private void UpdatePreviewStripCardWidths()
+        {
+            if (!_isPreviewStripOpen) return;
+            foreach (var pair in _previewStripCards)
+            {
+                double width = GetPreviewCardWidth(pair.Key);
+                if (width > 0 && Math.Abs(pair.Value.Root.Width - width) > 0.5)
+                    pair.Value.Root.Width = width;
+            }
+        }
+
+        private async Task CaptureStripCardAsync(TabPreviewStripCard card)
+        {
+            if (!_isPreviewStripOpen || card == null || !_previewStripCards.ContainsKey(card.Item)) return;
+            var tab = card.Item.Tab;
+            if (tab == null) return;
+
+            string url = tab.CurrentUrl;
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                card.CaptureUrl = null;
+                card.Image.Source = null;
+                card.Image.Opacity = 0;
+                card.Placeholder.Visibility = Visibility.Visible;
+                card.Ring.Visibility = Visibility.Collapsed;
+                return;
+            }
+            if (card.CaptureUrl == url && card.Image.Source != null) return;
+
+            card.CaptureUrl = url;
+            card.Ring.Visibility = Visibility.Visible;
+            card.Placeholder.Visibility = Visibility.Collapsed;
+            try
+            {
+                await _previewStripCaptureGate.WaitAsync();
+                byte[] png;
+                try
+                {
+                    // 排队期间预览带可能已收起，别再做无用的全页捕获
+                    if (!_isPreviewStripOpen || !_previewStripCards.ContainsKey(card.Item))
+                        return;
+                    png = await GetTabPreviewPngAsync(tab);
+                }
+                finally { _previewStripCaptureGate.Release(); }
+                if (!_isPreviewStripOpen
+                    || !_previewStripCards.TryGetValue(card.Item, out var current) || current != card
+                    || tab.CurrentUrl != url)
+                    return;
+                if (png == null || png.Length == 0)
+                {
+                    card.Ring.Visibility = Visibility.Collapsed;
+                    card.Placeholder.Visibility = Visibility.Visible;
+                    return;
+                }
+
+                // 卡片最大宽度 160，按 2 倍 DPI 解码到 320 物理像素即可；
+                // 避免每张缩略图都按 1920×1176 全尺寸解码，x86 进程内存会迅速耗尽。
+                var bmp = new BitmapImage { DecodePixelWidth = 320 };
+                using (var ms = new MemoryStream(png))
+                    await bmp.SetSourceAsync(ms.AsRandomAccessStream());
+                if (!_isPreviewStripOpen || !_previewStripCards.ContainsKey(card.Item) || tab.CurrentUrl != url)
+                    return;
+
+                card.Image.Source = bmp;
+                card.Image.Opacity = 1;
+                card.Placeholder.Visibility = Visibility.Collapsed;
+                card.Ring.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[标签预览带] 捕获失败: {ex.Message}");
+                if (_previewStripCards.ContainsKey(card.Item))
+                {
+                    card.Ring.Visibility = Visibility.Collapsed;
+                    card.Placeholder.Visibility = Visibility.Visible;
+                }
+            }
+        }
+
+        private void SchedulePreviewStripRefresh(TabViewItem item, int delayMs = 700)
+        {
+            if (!_isPreviewStripOpen || item == null) return;
+            _previewStripRefreshQueue.Add(item);
+
+            if (_previewStripRefreshTimer == null)
+            {
+                _previewStripRefreshTimer = new DispatcherTimer();
+                _previewStripRefreshTimer.Tick += (s, e) =>
+                {
+                    _previewStripRefreshTimer.Stop();
+                    var batch = _previewStripRefreshQueue.ToList();
+                    _previewStripRefreshQueue.Clear();
+                    foreach (var viewItem in batch)
+                        if (_previewStripCards.TryGetValue(viewItem, out var card))
+                            _ = CaptureStripCardAsync(card);
+                };
+            }
+            _previewStripRefreshTimer.Stop();
+            _previewStripRefreshTimer.Interval = TimeSpan.FromMilliseconds(delayMs);
+            _previewStripRefreshTimer.Start();
+        }
+
+        private void SyncPreviewStripOrder()
+        {
+            if (!_isPreviewStripOpen) return;
+            TabPreviewPanel.Children.Clear();
+            foreach (var item in _tabManager.Tabs)
+                if (_previewStripCards.TryGetValue(item, out var card))
+                    TabPreviewPanel.Children.Add(card.Root);
+            UpdatePreviewStripSelection();
+            _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, AlignPreviewStripToTabs);
+        }
+
+        private void UpdatePreviewStripSelection()
+        {
+            if (!_isPreviewStripOpen) return;
+            var colors = ThemeManager.Colors;
+            if (colors == null) return;
+            foreach (var card in _previewStripCards.Values)
+            {
+                bool current = card.Item.Tab == _tabManager.CurrentTab;
+                card.Frame.BorderBrush = current ? colors.AccentBrush : colors.SeparatorBrush;
+                card.Frame.BorderThickness = new Thickness(current ? 2 : 1);
+            }
+        }
+
+        private void ApplyPreviewStripTheme()
+        {
+            var colors = ThemeManager.Colors;
+            if (colors == null) return;
+
+            TabPreviewStrip.Background = colors.ToolbarBackground;
+            TabPreviewStrip.BorderBrush = colors.SeparatorBrush;
+            var toggleBrush = _isPreviewStripOpen ? colors.AccentBrush : colors.ForegroundBrush;
+            TabPreviewToggleBtn.Foreground = toggleBrush;
+            VerticalPreviewBtn.Foreground = toggleBrush;
+
+            foreach (var card in _previewStripCards.Values)
+            {
+                card.Frame.Background = colors.TabActiveBackground;
+                card.ThumbHost.Background = colors.TabActiveBackground;
+                card.Placeholder.Foreground = colors.MutedForegroundBrush;
+                card.Ring.Foreground = colors.AccentBrush;
+                bool current = card.Item.Tab == _tabManager.CurrentTab;
+                card.Frame.BorderBrush = current ? colors.AccentBrush : colors.SeparatorBrush;
+                card.Frame.BorderThickness = new Thickness(current ? 2 : 1);
+            }
+        }
+
+        private void TabPreviewScrollViewer_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+        {
+            int delta = e.GetCurrentPoint(TabPreviewScrollViewer).Properties.MouseWheelDelta;
+            if (delta == 0) return;
+
+            // 以标签条为主滚动源，预览带通过 ViewChanged 跟随，避免两边偏移分叉
+            double max = Math.Max(0, TabScrollViewer.ScrollableWidth);
+            double target = Math.Max(0, Math.Min(max, TabScrollViewer.HorizontalOffset - delta));
+            TabScrollViewer.ChangeView(target, null, null, true);
+            e.Handled = true;
         }
 
         // ---- 系统分享（Share contract：标题 + URL 交给系统分享面板） ----
@@ -1680,8 +2132,10 @@ namespace EdgeRebuild
             double tabWidth = _layoutManager.TabWidth;
             foreach (var item in _tabManager.Tabs)
             {
-                if (item.Container != null)
-                    item.Container.Width = tabWidth;
+                if (item.Container == null || item.IsPinned) continue;
+                item.Container.Width = tabWidth;
+                item.Container.MinWidth = LayoutManager.MinTabWidth;
+                item.Container.MaxWidth = LayoutManager.MaxTabWidth;
             }
         }
 
@@ -1692,6 +2146,8 @@ namespace EdgeRebuild
             if (_isVerticalTabs) return;
             int pinnedCount = _tabManager.GetPinnedTabCount();
             _layoutManager.Recalculate(TabBarBorder.ActualWidth, _tabManager.TabCount, pinnedCount);
+            if (_isPreviewStripOpen)
+                _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, AlignPreviewStripToTabs);
         }
 
         private void SyncTabPanelOrder()
@@ -1714,7 +2170,42 @@ namespace EdgeRebuild
             // 17763：每个原生视图有自己的 Window.Current，用 SizeChanged 等价替代。
             _sizeChangedSubscription = PlatformCompat.SubscribeSizeChanged(
                 this,
-                () => { if (!_isDragging) UpdateTabLayout(); });
+                () => { if (!_isDragging) UpdateTabLayout(); UpdatePaneWidths(); });
+        }
+
+        /// <summary>
+        /// Hub/设置覆盖面板不超出内容区：窄窗时按可用宽度收缩，避免固定 520px 溢出。
+        /// </summary>
+        private void UpdatePaneWidths()
+        {
+            if (HubSplitView == null) return;
+            double available = HubSplitView.ActualWidth;
+            if (available <= 0)
+            {
+                try { available = PlatformCompat.GetWindowSize(this).Width; }
+                catch { return; }
+            }
+            if (available <= 0) return;
+
+            // XamlRoot.Changed 触发时 ActualWidth 可能还是旧窗口宽度，取窗口宽度作为上限，
+            // 否则会把 OpenPaneLength 固定在旧值，反过来限制窗口最小宽度。
+            try
+            {
+                double windowWidth = PlatformCompat.GetWindowSize(this).Width;
+                if (windowWidth > 0 && available > windowWidth)
+                    available = windowWidth;
+            }
+            catch { }
+
+            // 覆盖面板比内容区略窄，避免 SplitView 的 OpenPaneLength 反过来把窗口最小宽度钉死
+            double paneWidth = Math.Max(240, Math.Min(520, available - 24));
+            if (Math.Abs(HubSplitView.OpenPaneLength - paneWidth) > 0.5)
+            {
+                HubSplitView.OpenPaneLength = paneWidth;
+                Services.Diagnostics.Log($"[Hub] available={available:F0} pane={paneWidth:F0}");
+            }
+            if (Math.Abs(SettingsSplitView.OpenPaneLength - paneWidth) > 0.5)
+                SettingsSplitView.OpenPaneLength = paneWidth;
         }
 
         // 真·多视图：每个窗口拥有独立 CoreWindow/XamlRoot。
@@ -1734,6 +2225,12 @@ namespace EdgeRebuild
         // ---- 副视图键盘快捷键（XAML 路由；副视图不挂 CoreWindow 全局钩子） ----
         private void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (e.Key == VirtualKey.Escape && _isPreviewStripOpen)
+            {
+                SetTabPreviewStripOpen(false);
+                e.Handled = true;
+                return;
+            }
             ShortcutManager.UpdateModifiers(e.Key, true);
             if (ShortcutManager.TryHandle(e.Key))
                 e.Handled = true;
@@ -1752,7 +2249,89 @@ namespace EdgeRebuild
 
         private void ScrollLeftBtn_Click(object sender, RoutedEventArgs e) => _layoutManager?.ScrollToLeft();
         private void ScrollRightBtn_Click(object sender, RoutedEventArgs e) => _layoutManager?.ScrollToRight();
-        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { }
+
+        // ---- 预览带与标签条对齐/同步滚动 ----
+        private bool _alignPreviewQueued;
+        private bool _aligningPreviewStrip;
+        private double _lastPreviewViewportWidth = -1;
+        private double _lastPreviewOriginX = double.NaN;
+
+        private void OnTabScrollViewerLayoutUpdated(object sender, object e)
+        {
+            if (!_isPreviewStripOpen || _isVerticalTabs || _alignPreviewQueued) return;
+            double viewport = TabScrollViewer.ActualWidth;
+            if (viewport <= 0) return;
+            // 只有视口宽度或标签条相对预览带的位置真的变了才排队，避免每次布局都改 Margin 形成回环
+            double originX;
+            try
+            {
+                originX = TabScrollViewer.TransformToVisual(TabPreviewStrip)
+                    .TransformPoint(new Point(0, 0)).X;
+            }
+            catch { return; }
+            if (Math.Abs(viewport - _lastPreviewViewportWidth) < 0.5
+                && Math.Abs(originX - _lastPreviewOriginX) < 0.5)
+                return;
+
+            // LayoutUpdated 处于布局栈内：此处只排队，真正改 Margin/ChangeView 放到下一轮
+            _alignPreviewQueued = true;
+            _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () =>
+            {
+                _alignPreviewQueued = false;
+                AlignPreviewStripToTabs();
+            });
+        }
+
+        /// <summary>
+        /// 预览带视口与标签滚动视口等宽、等左边缘；两者内容宽度一致，
+        /// 因此横向偏移可以直接 1:1 同步，卡片始终落在对应标签列下方。
+        /// </summary>
+        private void AlignPreviewStripToTabs()
+        {
+            if (!_isPreviewStripOpen || _isVerticalTabs) return;
+            if (TabPreviewStrip.Visibility != Visibility.Visible) return;
+            if (_aligningPreviewStrip) return;
+
+            // 标签宽度可能因窗口缩放/标签增删而变，卡片宽度先跟随实际列宽
+            UpdatePreviewStripCardWidths();
+
+            double viewport = TabScrollViewer.ActualWidth;
+            if (viewport <= 0 || TabPreviewStrip.ActualWidth <= 0) return;
+
+            _aligningPreviewStrip = true;
+            try
+            {
+                var origin = TabScrollViewer.TransformToVisual(TabPreviewStrip)
+                    .TransformPoint(new Point(0, 0));
+                double left = Math.Max(0, origin.X);
+                double right = Math.Max(0, TabPreviewStrip.ActualWidth - left - viewport);
+                _lastPreviewViewportWidth = viewport;
+                _lastPreviewOriginX = origin.X;
+                if (Math.Abs(TabPreviewScrollViewer.Margin.Left - left) > 0.5
+                    || Math.Abs(TabPreviewScrollViewer.Margin.Right - right) > 0.5)
+                {
+                    TabPreviewScrollViewer.Margin = new Thickness(left, 0, right, 0);
+                }
+            }
+            catch { }
+            finally
+            {
+                _aligningPreviewStrip = false;
+            }
+
+            SyncPreviewScrollTo(TabScrollViewer.HorizontalOffset);
+        }
+
+        private void TabScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+            => SyncPreviewScrollTo(TabScrollViewer.HorizontalOffset);
+
+        /// <summary>单向同步：标签条是唯一滚动源，预览带只跟随，避免双向 ChangeView 形成回环。</summary>
+        private void SyncPreviewScrollTo(double offset)
+        {
+            if (!_isPreviewStripOpen || _aligningPreviewStrip) return;
+            if (Math.Abs(TabPreviewScrollViewer.HorizontalOffset - offset) < 0.5) return;
+            TabPreviewScrollViewer.ChangeView(offset, null, null, true);
+        }
 
         // ---- 主题 ----
         private void OnThemeChanged(SkinManager.SkinColors colors, bool isDark)
@@ -1811,6 +2390,8 @@ namespace EdgeRebuild
             FindPrevBtn.Foreground = colors.ForegroundBrush;
             FindNextBtn.Foreground = colors.ForegroundBrush;
             FindCloseBtn.Foreground = colors.ForegroundBrush;
+
+            ApplyPreviewStripTheme();
 
             // 朗读控制浮层：亚克力背景 + 主题配色（与工具栏一致）
             ReadAloudBar.Background = colors.ToolbarBackground;
@@ -1877,6 +2458,7 @@ namespace EdgeRebuild
 
         private void ToolbarControl_HubClicked()
         {
+            SetTabPreviewStripOpen(false);
             HubSplitView.IsPaneOpen = !HubSplitView.IsPaneOpen;
             if (HubSplitView.IsPaneOpen) hubPane.RefreshAll();
         }
@@ -1923,6 +2505,12 @@ namespace EdgeRebuild
                 }
                 _dragManager?.SetTargetPanel(VerticalTabPanel);
                 _dragManager.IsVertical = true;
+                if (_isPreviewStripOpen)
+                {
+                    // 垂直模式没有横向标签条可对齐，预览卡按侧边栏宽度重建
+                    TabPreviewScrollViewer.Margin = new Thickness(0);
+                    RebuildTabPreviewStrip();
+                }
             }
             else
             {
@@ -1937,7 +2525,14 @@ namespace EdgeRebuild
                 }
                 _dragManager?.SetTargetPanel(TabBarPanel);
                 _dragManager.IsVertical = false;
+                UpdateTabLayout();
+                if (_isPreviewStripOpen)
+                {
+                    RebuildTabPreviewStrip();
+                    _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, AlignPreviewStripToTabs);
+                }
             }
+            UpdatePaneWidths();
         }
 
         /// <summary>将标签 Border 从水平样式调整为垂直样式：宽填满、高固定 36px、底部分隔线、左侧 3px 活动强调条</summary>
