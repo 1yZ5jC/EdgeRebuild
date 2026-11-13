@@ -73,6 +73,13 @@
       `file:///` 与 Windows 路径（含空格、UNC）；网页内容区保留给页面自身拖放（如上传）。
       已验证本地 EPUB/PDF 打开、重启恢复、拖放（非网页区域）；单元测试 31 项通过；
       Release|x86 NativeAOT 发布通过（约 11.3 MB）。
+- [x] R4-3d 标签预览带动画 + 箭头状态（2026-11-13）：
+      预览带 `Height` 0↔120 Storyboard（展开 180ms、收起 140ms，CubicEase.EaseOut，
+      EnableDependentAnimation），展开时工具栏与网页平滑下推；收起动画结束后再释放卡片位图。
+      快速连点以当前 ActualHeight 为新基准并校验 Completed 引用；尊重系统“显示动画”设置。
+      两个预览按钮改为状态箭头：收起 `E70D`、展开 `E70E`，ToolTip/UIA Name 同步切换。
+      Debug|x86 构建通过，UI 效果由用户实测确认；实现与退路记录见
+      `docs/preview-strip-animation-research.md`。
 - [-] R4-4 暂缓：PDF 朗读、Sweep 重命名/共享整组/首次引导动画、经典皮肤、扩展体系/独立 PDF 进程
       （原因：成本/收益不匹配，或与现有 WebView2/pdf.js 架构冲突）
 - [ ] R4-5 待决策：Tab Sweep 高保真复刻 vs 产品化“标签页中心”；先 quick wins vs 先 Tab Sweep；

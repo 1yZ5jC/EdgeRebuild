@@ -274,11 +274,11 @@
                             <Button x:Name="VerticalNewTabBtn" Content="&#xE710;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
                                     Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"/>
-                            <Button x:Name="VerticalPreviewBtn" Content="&#xE8A9;"
+                            <Button x:Name="VerticalPreviewBtn" Content="&#xE70D;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
-                                    Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="标签预览"
+                                    Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="展开标签预览"
                                     AutomationProperties.AutomationId="VerticalPreviewBtn"
-                                    AutomationProperties.Name="标签预览"/>
+                                    AutomationProperties.Name="展开标签预览"/>
                             <Button x:Name="VerticalTabToggleBtn" Content="&#xE711;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
                                     Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"/>
@@ -344,11 +344,11 @@
                             Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
                             Click="ScrollRightBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
                             Visibility="Collapsed" Margin="0,0,0,0"/>
-                    <Button x:Name="TabPreviewToggleBtn" Content="&#xE8A9;"
+                    <Button x:Name="TabPreviewToggleBtn" Content="&#xE70D;"
                             Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"
-                            Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="标签预览"
+                            Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="展开标签预览"
                             AutomationProperties.AutomationId="TabPreviewToggleBtn"
-                            AutomationProperties.Name="标签预览"
+                            AutomationProperties.Name="展开标签预览"
                             Foreground="{StaticResource ForegroundBrush}" Margin="0,0,2,0"/>
                     <Button x:Name="NewTabButton" Content="&#xE710;"
                             Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"

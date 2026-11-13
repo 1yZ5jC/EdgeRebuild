@@ -21,10 +21,13 @@ using Windows.Storage.Streams;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
@@ -1429,7 +1432,10 @@ namespace EdgeRebuild
         private readonly SemaphoreSlim _previewStripCaptureGate = new SemaphoreSlim(2);
 
         // ---- 标签预览带（常驻展开的缩略图行） ----
+        private const double PreviewStripHeight = 120;
         private bool _isPreviewStripOpen;
+        private Storyboard _previewStripStoryboard;
+        private readonly UISettings _uiSettings = new UISettings();
         private readonly Dictionary<TabViewItem, TabPreviewStripCard> _previewStripCards =
             new Dictionary<TabViewItem, TabPreviewStripCard>();
         private DispatcherTimer _previewStripRefreshTimer;
@@ -1673,6 +1679,7 @@ namespace EdgeRebuild
         {
             if (open == _isPreviewStripOpen) return;
             _isPreviewStripOpen = open;
+            UpdatePreviewToggleVisualState();
 
             if (open)
             {
@@ -1682,7 +1689,6 @@ namespace EdgeRebuild
 
                 // 标签保持默认自适应宽度，卡片按每个标签的实际列宽逐列对齐
                 RebuildTabPreviewStrip();
-                TabPreviewStrip.Visibility = Visibility.Visible;
 
                 // 每次打开都从第一张卡开始；标签条与预览带一起归零，避免沿用上次偏移
                 TabScrollViewer.ChangeView(0, null, null, true);
@@ -1700,21 +1706,121 @@ namespace EdgeRebuild
                 var currentItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
                 if (currentItem != null && _previewStripCards.TryGetValue(currentItem, out var card))
                     _ = CaptureStripCardAsync(card);
+
+                // 从 0（或收起动画的当前高度）展开到 120
+                AnimatePreviewStrip(true);
                 Services.Diagnostics.Log("[标签预览带] 已展开");
             }
             else
             {
-                TabPreviewStrip.Visibility = Visibility.Collapsed;
+                // 捕获任务会因 _isPreviewStripOpen=false 自行退出；
+                // 卡片/位图延迟到收起动画结束再释放，避免收起时内容突然消失。
                 _previewStripRefreshTimer?.Stop();
                 _previewStripRefreshQueue.Clear();
-                // 显式断开位图引用，避免 XAML 合成器继续持有已解码缩略图
-                foreach (var card in _previewStripCards.Values)
-                    card.Image.Source = null;
-                TabPreviewPanel.Children.Clear();
-                _previewStripCards.Clear();
-                ApplyPreviewStripTheme();
+                AnimatePreviewStrip(false);
                 Services.Diagnostics.Log("[标签预览带] 已收起");
             }
+        }
+
+        /// <summary>
+        /// 预览带高度动画：打开 0→120，收起 120→0。
+        /// 快速连续点击时先以当前实际高度为新基准，再停旧动画，避免跳回旧值。
+        /// </summary>
+        private void AnimatePreviewStrip(bool open)
+        {
+            bool wasVisible = TabPreviewStrip.Visibility == Visibility.Visible;
+            double current = wasVisible ? TabPreviewStrip.ActualHeight : 0;
+
+            // 把当前实际高度固化为基准值，Stop() 时不会跳回旧值
+            TabPreviewStrip.Height = current;
+            var previousStoryboard = _previewStripStoryboard;
+            _previewStripStoryboard = null;
+            previousStoryboard?.Stop();
+
+            if (open && !wasVisible)
+            {
+                TabPreviewStrip.Visibility = Visibility.Visible;
+                TabPreviewStrip.Height = 0;
+                current = 0;
+            }
+
+            double target = open ? PreviewStripHeight : 0;
+
+            // 系统关闭“显示动画”时直接到位
+            if (!_uiSettings.AnimationsEnabled || Math.Abs(current - target) < 0.5)
+            {
+                FinishPreviewStripAnimation(open);
+                return;
+            }
+
+            var sb = new Storyboard();
+            var anim = new DoubleAnimation
+            {
+                From = current,
+                To = target,
+                Duration = TimeSpan.FromMilliseconds(open ? 180 : 140),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                EnableDependentAnimation = true
+            };
+            Storyboard.SetTarget(anim, TabPreviewStrip);
+            Storyboard.SetTargetProperty(anim, "Height");
+            sb.Children.Add(anim);
+            sb.Completed += (s, e) =>
+            {
+                // 旧动画的 Completed 不能把新动画的状态收掉
+                if (!ReferenceEquals(_previewStripStoryboard, sb)) return;
+                FinishPreviewStripAnimation(open);
+            };
+            _previewStripStoryboard = sb;
+
+            try
+            {
+                sb.Begin();
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[标签预览带] 动画启动失败，直接切换: {ex.Message}");
+                FinishPreviewStripAnimation(open);
+            }
+        }
+
+        private void FinishPreviewStripAnimation(bool open)
+        {
+            TabPreviewStrip.Height = open ? PreviewStripHeight : 0;
+            var storyboard = _previewStripStoryboard;
+            _previewStripStoryboard = null;
+            storyboard?.Stop();
+
+            if (open) return;
+
+            TabPreviewStrip.Visibility = Visibility.Collapsed;
+            TeardownPreviewStripCards();
+        }
+
+        /// <summary>收起动画结束后再断开位图引用并清空卡片。</summary>
+        private void TeardownPreviewStripCards()
+        {
+            _previewStripRefreshTimer?.Stop();
+            _previewStripRefreshQueue.Clear();
+            foreach (var card in _previewStripCards.Values)
+                card.Image.Source = null;
+            TabPreviewPanel.Children.Clear();
+            _previewStripCards.Clear();
+            ApplyPreviewStripTheme();
+        }
+
+        /// <summary>按钮在“展开/收起”两态间切换箭头、提示与无障碍名称。</summary>
+        private void UpdatePreviewToggleVisualState()
+        {
+            string glyph = _isPreviewStripOpen ? "\uE70E" : "\uE70D";
+            string tip = _isPreviewStripOpen ? "收起标签预览" : "展开标签预览";
+
+            TabPreviewToggleBtn.Content = glyph;
+            VerticalPreviewBtn.Content = glyph;
+            ToolTipService.SetToolTip(TabPreviewToggleBtn, tip);
+            ToolTipService.SetToolTip(VerticalPreviewBtn, tip);
+            AutomationProperties.SetName(TabPreviewToggleBtn, tip);
+            AutomationProperties.SetName(VerticalPreviewBtn, tip);
         }
 
         private void RebuildTabPreviewStrip()
