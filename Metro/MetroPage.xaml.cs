@@ -346,6 +346,7 @@ namespace EdgeRebuild.Metro
             // 与主窗口「清除浏览数据」同范围：历史 + Cookie + 已完成下载 + 关闭的标签
             await HistoryManager.ClearAsync();
             _tabManager.ClearClosedTabs();
+            await SweptTabManager.ClearAllAsync();
             DownloadManager.ClearCompleted();
             foreach (var item in _tabManager.Tabs)
             {

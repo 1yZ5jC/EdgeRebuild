@@ -68,6 +68,8 @@
             <x:Double x:Key="ControlContentThemeFontSize">14</x:Double>
             <Thickness x:Key="ButtonPadding">8,4,8,4</Thickness>
             <FontFamily x:Key="ContentControlThemeFontFamily">Segoe UI</FontFamily>
+            <!-- 旧版 Edge 标签栏图标字体（仅含图标字形，随应用打包） -->
+            <FontFamily x:Key="BrowserMdlFontFamily">ms-appx:///Assets/Fonts/BrowserMDL.ttf#Browser MDL2 Assets</FontFamily>
 
             <!-- Metro IE 窗口按钮样式（放 Application.Resources：UserControl 的
                  StaticResource 解析时看不到父 Page 资源，必须全局可见） -->

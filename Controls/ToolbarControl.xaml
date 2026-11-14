@@ -81,9 +81,6 @@
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="EngineCombo" Storyboard.TargetProperty="Visibility">
                                 <DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed"/>
                             </ObjectAnimationUsingKeyFrames>
-                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="AddFavBtn" Storyboard.TargetProperty="Visibility">
-                                <DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed"/>
-                            </ObjectAnimationUsingKeyFrames>
                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="CaptureBtn" Storyboard.TargetProperty="Visibility">
                                 <DiscreteObjectKeyFrame KeyTime="0" Value="Collapsed"/>
                             </ObjectAnimationUsingKeyFrames>
@@ -128,7 +125,7 @@
                          KeyDown="UrlBox_KeyDown" GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
                          TextChanged="UrlBox_TextChanged" VerticalContentAlignment="Center"
                          Background="White" BorderBrush="LightGray" BorderThickness="1"
-                         Padding="32,8,4,0" VerticalAlignment="Stretch" FontSize="13">
+                         Padding="32,8,32,0" VerticalAlignment="Stretch" FontSize="13">
                     <FlyoutBase.AttachedFlyout>
                         <Flyout x:Name="SuggestionsFlyout" Placement="Bottom">
                             <Border x:Name="SuggestionBorder" Background="Transparent" BorderThickness="0" MinWidth="200" MaxHeight="200">
@@ -143,22 +140,29 @@
                         HorizontalAlignment="Left" VerticalAlignment="Center"
                         Background="Transparent" BorderThickness="0"
                         Click="SiteInfoButton_Click">
-                    <TextBlock x:Name="SiteInfoText" Text="🔒" FontSize="14"
+                    <TextBlock x:Name="SiteInfoText" Text="&#xE72E;" FontSize="14"
+                               FontFamily="Segoe MDL2 Assets"
                                VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                </Button>
+
+                <Button x:Name="AddFavBtn"
+                        Width="28" Height="28" Margin="0,0,2,0" Padding="0"
+                        HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Background="Transparent" BorderThickness="0"
+                        Click="AddFavBtn_Click">
+                    <FontIcon x:Name="AddFavGlyph" Glyph="&#xE734;"
+                              FontFamily="Segoe MDL2 Assets" FontSize="14"/>
                 </Button>
             </Grid>
 
             <StackPanel Grid.Column="5" Orientation="Horizontal" Margin="4,0" VerticalAlignment="Center">
-                <Button x:Name="AddFavBtn" Content="&#xE734;"
-                        Width="32" Height="32" Margin="2,0" Click="AddFavBtn_Click"
-                        Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
                 <Button x:Name="CaptureBtn" Content="&#xE931;"
                         Width="32" Height="32" Margin="2,0" Click="CaptureBtn_Click"
                         Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"
                         ToolTipService.ToolTip="网页捕获（截图批注）"/>
-                <Button x:Name="HubBtn" Content="📚"
+                <Button x:Name="HubBtn" Content="&#xE728;"
                         Width="32" Height="32" Margin="2,0" Click="HubBtn_Click"
-                        Background="Transparent" BorderThickness="0" FontSize="14"/>
+                        Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
                 <Button x:Name="MenuBtn" Content="&#xE712;"
                         Width="32" Height="32" Margin="2,0" Click="MenuBtn_Click"
                         Background="Transparent" BorderThickness="0" FontFamily="Segoe MDL2 Assets" FontSize="14"/>

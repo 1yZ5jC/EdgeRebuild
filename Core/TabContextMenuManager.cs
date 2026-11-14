@@ -20,6 +20,7 @@ namespace EdgeRebuild.Core
         private readonly Action<TabViewItem> _onTogglePin;
         private readonly Func<Task> _onWebCapture;
         private readonly Func<Task> _onShareRequested;
+        private readonly Action<TabViewItem> _onSweepTab;
 
         public TabContextMenuManager(
             TabManager tabManager,
@@ -29,7 +30,8 @@ namespace EdgeRebuild.Core
             Func<Task> onViewSourceRequested,
             Action<TabViewItem> onTogglePin = null,
             Func<Task> onWebCapture = null,
-            Func<Task> onShareRequested = null)
+            Func<Task> onShareRequested = null,
+            Action<TabViewItem> onSweepTab = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -39,6 +41,7 @@ namespace EdgeRebuild.Core
             _onTogglePin = onTogglePin;
             _onWebCapture = onWebCapture;
             _onShareRequested = onShareRequested;
+            _onSweepTab = onSweepTab;
         }
 
         // 搜索项文案带当前引擎名；引擎名异步读取，菜单弹出后原地更新
@@ -85,8 +88,25 @@ namespace EdgeRebuild.Core
                 };
                 pinItem.Click += (_, _) => _onTogglePin?.Invoke(viewItem);
                 menu.Items.Add(pinItem);
-                menu.Items.Add(new MenuFlyoutSeparator());
             }
+
+            // ---- 搁置此标签页（固定标签、最后一个标签、InPrivate 时禁用） ----
+            if (_onSweepTab != null)
+            {
+                bool canSweep = !viewItem.IsPinned
+                    && !_tabManager.IsInPrivateWindow
+                    && _tabManager.Tabs.Count > 1;
+                var sweepItem = new MenuFlyoutItem
+                {
+                    Text = "搁置此标签页",
+                    IsEnabled = canSweep
+                };
+                sweepItem.Click += (_, _) => _onSweepTab?.Invoke(viewItem);
+                menu.Items.Add(sweepItem);
+            }
+
+            if (_onTogglePin != null || _onSweepTab != null)
+                menu.Items.Add(new MenuFlyoutSeparator());
 
             // ---- 关闭其他标签页 ----
             var closeOthersItem = new MenuFlyoutItem { Text = "关闭其他标签页" };

@@ -38,6 +38,7 @@ namespace EdgeRebuild.Controls
 
         private bool _isSecure = false;
         private bool _isLocalInterface = false;
+        private bool _isFavorite = false;
         private string _currentHost = "";
 
         // ---- 自动补全相关字段 ----
@@ -159,7 +160,7 @@ namespace EdgeRebuild.Controls
             BackBtn.Foreground = _mutedForegroundBrush;
             ForwardBtn.Foreground = _mutedForegroundBrush;
             RefreshBtn.Foreground = _mutedForegroundBrush;
-            AddFavBtn.Foreground = _mutedForegroundBrush;
+            ApplyFavoriteVisual();
             HubBtn.Foreground = _mutedForegroundBrush;
             MenuBtn.Foreground = _mutedForegroundBrush;
         }
@@ -256,10 +257,20 @@ namespace EdgeRebuild.Controls
 
         public void UpdateFavoriteButton(bool isFavorite)
         {
-            AddFavBtn.Content = isFavorite ? "\xE735" : "\xE734";
-            AddFavBtn.Foreground = isFavorite
+            _isFavorite = isFavorite;
+            ApplyFavoriteVisual();
+        }
+
+        private void ApplyFavoriteVisual()
+        {
+            AddFavGlyph.Glyph = _isFavorite ? "\xE735" : "\xE734";
+            var brush = _isFavorite
                 ? new SolidColorBrush(Colors.Gold)
-                : new SolidColorBrush(Colors.Gray);
+                : (_mutedForegroundBrush ?? new SolidColorBrush(Colors.Gray));
+            // FontIcon 的本地前景色优先于按钮模板的悬停/按下状态，避免星星被刷黑
+            AddFavGlyph.Foreground = brush;
+            AddFavBtn.Foreground = brush;
+            ToolTipService.SetToolTip(AddFavBtn, _isFavorite ? "从收藏夹删除" : "添加到收藏夹");
         }
 
         public void ShowMenu(MenuFlyout menu) => menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
@@ -281,7 +292,8 @@ namespace EdgeRebuild.Controls
             }
             else
             {
-                SiteInfoText.Text = isSecure ? "🔒" : "🌐";
+                SiteInfoText.Text = isSecure ? "\uE72E" : "\uE774";
+                SiteInfoText.FontFamily = new FontFamily("Segoe MDL2 Assets");
                 ToolTipService.SetToolTip(SiteInfoButton, isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
             }
         }
@@ -341,6 +353,7 @@ namespace EdgeRebuild.Controls
             {
                 SiteInfoText.Text = GetEngineShortName(tempEngine);
                 SiteInfoText.FontSize = 14;
+                SiteInfoText.FontFamily = new FontFamily("Segoe UI");
                 ToolTipService.SetToolTip(SiteInfoButton, $"临时搜索引擎：{GetEngineFullName(tempEngine)}");
             }
             else
@@ -354,8 +367,9 @@ namespace EdgeRebuild.Controls
                 }
                 else
                 {
-                    SiteInfoText.Text = _isSecure ? "🔒" : "🌐";
+                    SiteInfoText.Text = _isSecure ? "\uE72E" : "\uE774";
                     SiteInfoText.FontSize = 14;
+                    SiteInfoText.FontFamily = new FontFamily("Segoe MDL2 Assets");
                     ToolTipService.SetToolTip(SiteInfoButton, _isSecure ? $"安全连接 - {_currentHost}" : $"普通连接 - {_currentHost}");
                 }
             }
@@ -513,11 +527,14 @@ namespace EdgeRebuild.Controls
         {
             var accentColor = (Color)Application.Current.Resources["SystemAccentColor"];
             UrlBox.BorderBrush = new SolidColorBrush(accentColor);
+            // 输入状态下让位给文本框自带的清除按钮
+            AddFavBtn.Visibility = Visibility.Collapsed;
             if (InPrivateMode) UrlBox.Opacity = 1.0;
         }
         private void UrlBox_LostFocus(object sender, RoutedEventArgs e)
         {
             UrlBox.BorderBrush = new SolidColorBrush(Colors.LightGray);
+            AddFavBtn.Visibility = Visibility.Visible;
             if (InPrivateMode) UrlBox.Opacity = 0.3;
         }
 

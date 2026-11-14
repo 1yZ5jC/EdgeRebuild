@@ -17,6 +17,7 @@
        扩展规则：被纳入文件不得引用 EdgeRebuild 其他需要 XAML/WinRT 的类型。 -->
   <ItemGroup>
     <Compile Include="..\..\Services\UrlInputResolver.cs" Link="Services\UrlInputResolver.cs" />
+    <Compile Include="..\..\Core\SweptTabTime.cs" Link="Core\SweptTabTime.cs" />
   </ItemGroup>
 
   <!-- 历史构建可能把中间目录设为 tempobj；其中的生成文件（AssemblyInfo 等）

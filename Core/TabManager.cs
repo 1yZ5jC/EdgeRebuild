@@ -240,7 +240,8 @@ namespace EdgeRebuild.Core
 
                 var suspendedIndicator = new TextBlock
                 {
-                    Text = "💤",
+                    Text = "\uE708",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
                     FontSize = 10,
                     Foreground = ThemeManager.GetMutedForegroundBrush(),
                     Margin = new Thickness(0, 0, 2, 0),

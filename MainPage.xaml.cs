@@ -274,6 +274,7 @@ namespace EdgeRebuild
                     SessionSlot = _sessionSlot
                 };
                 _tabManager.Initialize(TabBarPanel, ContentContainer);
+                sweptTabsPane.Initialize(_tabManager);
                 if (_isInPrivate)
                 {
                     InPrivateBadge.Visibility = Visibility.Visible;
@@ -281,6 +282,7 @@ namespace EdgeRebuild
                     hubPane.SuppressHistory = true;
                     Services.Diagnostics.Log("[InPrivate] InPrivate 窗口已启用（不写历史、不存会话）");
                 }
+                UpdateSweptTabsAvailability();
                 _tabManager.TabOrderChanged += OnTabOrderChanged;
                 _tabManager.TabCreated += OnTabManagerTabCreated;
                 _tabManager.TabChanged += OnTabManagerTabChanged;
@@ -316,7 +318,8 @@ namespace EdgeRebuild
                     ViewSourceAsync,
                     (viewItem) => _ = _tabManager.TogglePinTabAsync(viewItem),
                     WebCaptureCurrentAsync,
-                    ShareCurrentPageAsync
+                    ShareCurrentPageAsync,
+                    SweepSingleTab
                 );
 
                 // ---- 下载协调器 ----
@@ -1434,6 +1437,7 @@ namespace EdgeRebuild
         // ---- 标签预览带（常驻展开的缩略图行） ----
         private const double PreviewStripHeight = 120;
         private bool _isPreviewStripOpen;
+        private bool _isSweptPaneOpen;
         private Storyboard _previewStripStoryboard;
         private readonly UISettings _uiSettings = new UISettings();
         private readonly Dictionary<TabViewItem, TabPreviewStripCard> _previewStripCards =
@@ -1686,6 +1690,7 @@ namespace EdgeRebuild
                 // 预览带与 Hub/设置面板都是覆盖层，同时打开会互相遮挡
                 HubSplitView.IsPaneOpen = false;
                 SettingsSplitView.IsPaneOpen = false;
+                CloseSweptTabsPane(false);
 
                 // 标签保持默认自适应宽度，卡片按每个标签的实际列宽逐列对齐
                 RebuildTabPreviewStrip();
@@ -1821,6 +1826,155 @@ namespace EdgeRebuild
             ToolTipService.SetToolTip(VerticalPreviewBtn, tip);
             AutomationProperties.SetName(TabPreviewToggleBtn, tip);
             AutomationProperties.SetName(VerticalPreviewBtn, tip);
+        }
+
+        // ---- 已搁置的标签页（Tab Sweep 抽屉） ----
+        private void TabCenterBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_isSweptPaneOpen)
+                CloseSweptTabsPane();
+            else
+                _ = OpenSweptTabsPaneAsync();
+        }
+
+        private async Task OpenSweptTabsPaneAsync()
+        {
+            if (_isSweptPaneOpen) return;
+            if (_isInPrivate)
+            {
+                NotificationService.ShowToast("标签页", "InPrivate 窗口不支持搁置标签页");
+                return;
+            }
+
+            // 抽屉与预览带、Hub、设置都是覆盖层，互斥
+            SetTabPreviewStripOpen(false);
+            HubSplitView.IsPaneOpen = false;
+            SettingsSplitView.IsPaneOpen = false;
+
+            _isSweptPaneOpen = true;
+            UpdateSweptPaneWidth();
+            sweptTabsPane.ApplyTheme();
+            SweptPaneHost.Visibility = Visibility.Visible;
+            await sweptTabsPane.RefreshAsync();
+            if (_isSweptPaneOpen)
+                sweptTabsPane.FocusPane();
+        }
+
+        private void CloseSweptTabsPane(bool restoreFocus = true)
+        {
+            if (!_isSweptPaneOpen) return;
+            _isSweptPaneOpen = false;
+            SweptPaneHost.Visibility = Visibility.Collapsed;
+
+            if (restoreFocus)
+            {
+                var focusTarget = _isVerticalTabs ? (Control)VerticalSweptTabsBtn : TabCenterBtn;
+                focusTarget.Focus(FocusState.Programmatic);
+            }
+        }
+
+        private void SweptTabsPane_CloseRequested() => CloseSweptTabsPane();
+
+        private void SweptTabsPane_SweepOtherRequested() => _ = SweepOtherTabsAsync();
+
+        private void SweptPaneDismissLayer_Tapped(object sender, TappedRoutedEventArgs e)
+            => CloseSweptTabsPane();
+
+        private void HubSplitView_PaneOpening(object sender, object args)
+            => CloseSweptTabsPane(false);
+
+        private void SettingsSplitView_PaneOpening(object sender, object args)
+            => CloseSweptTabsPane(false);
+
+        private void ContentHost_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateSweptPaneWidth();
+
+        private void UpdateSweptPaneWidth()
+        {
+            double available = ContentHost.ActualWidth;
+            if (available <= 0) return;
+
+            double width = Math.Clamp(available * 0.556, 320, 667);
+            if (available < 320) width = available;
+            SweptPaneFrame.Width = width;
+        }
+
+        private void UpdateSweptTabsAvailability()
+        {
+            // InPrivate 不提供搁置入口：直接隐藏水平/垂直标签栏上的按钮
+            bool visible = !_isInPrivate;
+            TabCenterBtn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            VerticalSweptTabsBtn.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            TabCenterBtn.IsEnabled = visible;
+            VerticalSweptTabsBtn.IsEnabled = visible;
+
+            if (!visible)
+                CloseSweptTabsPane(false);
+        }
+
+        private void SweepSingleTab(TabViewItem viewItem)
+        {
+            if (viewItem == null || _isInPrivate || viewItem.IsPinned) return;
+            if (_tabManager == null || _tabManager.Tabs.Count <= 1) return;
+            _ = SweepTabsAsync(new[] { viewItem });
+        }
+
+        private async Task SweepOtherTabsAsync()
+        {
+            if (_isInPrivate || _tabManager == null) return;
+
+            var current = _tabManager.CurrentTab;
+            if (current == null && _tabManager.Tabs.Count > 0)
+                current = _tabManager.Tabs[0].Tab;
+
+            var others = _tabManager.Tabs
+                .Where(t => t.Tab != current && !t.IsPinned)
+                .ToList();
+            if (others.Count == 0)
+            {
+                NotificationService.ShowToast("标签页", "没有可搁置的其他标签页");
+                return;
+            }
+            await SweepTabsAsync(others);
+        }
+
+        private async Task SweepTabsAsync(IReadOnlyList<TabViewItem> tabs)
+        {
+            if (_isInPrivate || _tabManager == null || tabs == null) return;
+
+            var sweep = tabs
+                .Where(t => t != null && !t.IsPinned && _tabManager.Tabs.Contains(t))
+                .ToList();
+            if (sweep.Count == 0 || _tabManager.Tabs.Count - sweep.Count < 1)
+            {
+                NotificationService.ShowToast("标签页", "没有可搁置的标签页");
+                return;
+            }
+
+            // 只复用已有预览缓存；没有缓存的卡片显示骨架，不为搁置额外截图
+            var thumbs = new List<byte[]>();
+            foreach (var item in sweep)
+            {
+                byte[] png = null;
+                if (item.Tab != null)
+                    _previewCache.TryGetValue(item.Tab, out png);
+                thumbs.Add(png);
+            }
+
+            var group = await SweptTabManager.SweepAsync(_tabManager, sweep, _tabManager.SessionSlot);
+            if (group == null)
+            {
+                NotificationService.ShowToast("标签页", "搁置失败，请稍后重试");
+                return;
+            }
+
+            if (group.Tabs.Count == sweep.Count)
+                sweptTabsPane.StoreThumbnails(group, thumbs);
+
+            if (_isSweptPaneOpen)
+                await sweptTabsPane.RefreshAsync();
+
+            NotificationService.ShowToast("标签页", $"已搁置 {group.Tabs.Count} 个标签页");
         }
 
         private void RebuildTabPreviewStrip()
@@ -2331,6 +2485,12 @@ namespace EdgeRebuild
         // ---- 副视图键盘快捷键（XAML 路由；副视图不挂 CoreWindow 全局钩子） ----
         private void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (e.Key == VirtualKey.Escape && _isSweptPaneOpen)
+            {
+                CloseSweptTabsPane();
+                e.Handled = true;
+                return;
+            }
             if (e.Key == VirtualKey.Escape && _isPreviewStripOpen)
             {
                 SetTabPreviewStripOpen(false);
@@ -2475,10 +2635,15 @@ namespace EdgeRebuild
             // 垂直侧边栏标题 + 按钮前景色
             VerticalTabTitle.Foreground = colors.ForegroundBrush;
             VerticalNewTabBtn.Foreground = colors.ForegroundBrush;
+            VerticalSweptTabsBtn.Foreground = colors.ForegroundBrush;
             VerticalTabToggleBtn.Foreground = colors.ForegroundBrush;
             VerticalTabEmptyText.Foreground = colors.MutedForegroundBrush;
+            TabCenterBtn.Foreground = colors.ForegroundBrush;
             HubSplitView.PaneBackground = colors.ToolbarBackground;
             SettingsSplitView.PaneBackground = colors.ToolbarBackground;
+            SweptPaneFrame.Background = colors.ToolbarBackground;
+            SweptPaneFrame.BorderBrush = colors.SeparatorBrush;
+            sweptTabsPane.ApplyTheme();
             FavoritesBar.Background = colors.ToolbarBackground;
             FavoritesBarEmpty.Foreground = colors.MutedForegroundBrush;
             RefreshFavoritesBar();
@@ -3230,6 +3395,10 @@ namespace EdgeRebuild
             await HistoryManager.ClearAsync();
             DownloadManager.ClearCompleted();
             _tabManager.ClearClosedTabs();   // 与 Metro 设置面板语义一致
+            await SweptTabManager.ClearAllAsync();
+            sweptTabsPane.ClearThumbnailCache();
+            if (_isSweptPaneOpen)
+                await sweptTabsPane.RefreshAsync();
             if (HubSplitView.IsPaneOpen)
                 hubPane.RefreshAll();
             await ClearAllCookiesInternalAsync();
@@ -3332,6 +3501,7 @@ namespace EdgeRebuild
             toolbarControl.InPrivateMode = _isInPrivate;
             hubPane.SuppressHistory = _isInPrivate;
             InPrivateBadge.Visibility = _isInPrivate ? Visibility.Visible : Visibility.Collapsed;
+            UpdateSweptTabsAvailability();
 
             if (_isInPrivate)
             {

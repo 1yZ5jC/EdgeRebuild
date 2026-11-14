@@ -60,6 +60,8 @@
     <Content Include="Themes\Spartan.xaml" />
     <Content Include="Assets\MarkScript.js" />
     <Content Include="Assets\Readability.js" />
+    <!-- 旧版 Edge 标签栏图标字体：U+ED50 堆叠窗口（已搁置的标签页） -->
+    <Content Include="Assets\Fonts\**" />
     <Content Include="Assets\PdfViewer\**" />
     <Content Include="Assets\EpubReader\jszip.min.js" />
     <Content Include="Assets\EpubReader\**" />
