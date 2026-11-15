@@ -180,7 +180,7 @@ namespace EdgeRebuild
             DownloadManager.RetryDownloadRequested -= OnRetryDownloadRequested;
             EdgeHtmlTab.DownloadRequested -= OnEdgeHtmlDownloadRequested;
             SettingsManager.SettingChanged -= OnSettingChanged;
-            FavoritesManager.Instance.Favorites.CollectionChanged -= OnFavoritesCollectionChanged;
+            FavoritesManager.Instance.Changed -= OnFavoritesChanged;
 
             ShortcutManager.OnNewTab -= _shortcutNewTab;
             ShortcutManager.OnCloseTab -= _shortcutCloseTab;
@@ -430,7 +430,7 @@ namespace EdgeRebuild
                 // ---- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行)----
                 string favBarSetting = await SettingsManager.GetAsync("ShowFavoritesBar") ?? "False";
                 ShowFavoritesBar(favBarSetting == "True" || favBarSetting == "true");
-                FavoritesManager.Instance.Favorites.CollectionChanged += OnFavoritesCollectionChanged;
+                FavoritesManager.Instance.Changed += OnFavoritesChanged;
                 RefreshFavoritesBar();
 
                 // ---- 创建首页标签 / 恢复会话 ----
@@ -2706,19 +2706,10 @@ namespace EdgeRebuild
         private async void ToolbarControl_ForwardRequested() { if (_tabManager.CurrentTab?.CanGoForward == true) { await _tabManager.CurrentTab.GoForwardAsync(); SetFocusToCurrentTabContent(); } }
         private async void ToolbarControl_RefreshRequested() { if (_tabManager.CurrentTab != null) { await _tabManager.CurrentTab.RefreshAsync(); SetFocusToCurrentTabContent(); } }
 
-        private async void ToolbarControl_AddFavoriteClicked()
+        private void ToolbarControl_AddFavoriteClicked()
         {
             if (_tabManager.CurrentTab == null || string.IsNullOrEmpty(_tabManager.CurrentTab.CurrentUrl)) return;
-            string url = _tabManager.CurrentTab.CurrentUrl;
-            if (FavoritesManager.Instance.ContainsUrl(url))
-            {
-                var item = FavoritesManager.Instance.Favorites.FirstOrDefault(f => f.Url == url);
-                if (item != null) await FavoritesManager.Instance.RemoveAsync(item);
-            }
-            else
-                await FavoritesManager.Instance.AddAsync(!string.IsNullOrEmpty(_tabManager.CurrentTab.Title) ? _tabManager.CurrentTab.Title : url, url);
-            UpdateStarButton();
-            if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
+            toolbarControl.ShowFavoriteEditor(_tabManager.CurrentTab.Title, _tabManager.CurrentTab.CurrentUrl);
         }
 
         private async void ToolbarControl_CaptureClicked()
@@ -2961,9 +2952,14 @@ namespace EdgeRebuild
         }
 
         // ---- 收藏夹栏(参考规范 §6.1)----
-        private void OnFavoritesCollectionChanged(object sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        private void OnFavoritesChanged(object sender, EventArgs e)
         {
-            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, RefreshFavoritesBar);
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                RefreshFavoritesBar();
+                UpdateStarButton();
+                if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
+            });
         }
 
         private void ShowFavoritesBar(bool visible)
@@ -2977,55 +2973,170 @@ namespace EdgeRebuild
         {
             if (FavoritesBarPanel == null) return;
             FavoritesBarPanel.Children.Clear();
-            bool isEmpty = true;
-            foreach (var fav in FavoritesManager.Instance.Favorites)
+
+            var manager = FavoritesManager.Instance;
+            var rootFolders = manager.GetFolders(null).ToList();
+            var rootItems = manager.GetItems(null).ToList();
+
+            foreach (var folder in rootFolders)
+                FavoritesBarPanel.Children.Add(CreateFavoriteFolderBarButton(folder));
+            foreach (var fav in rootItems)
+                FavoritesBarPanel.Children.Add(CreateFavoriteBarButton(fav));
+
+            FavoritesBarEmpty.Visibility = rootFolders.Count == 0 && rootItems.Count == 0
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        private Button CreateFavoriteBarButton(FavoriteItem fav)
+        {
+            var star = new FontIcon
             {
-                isEmpty = false;
-                var star = new FontIcon
+                Glyph = "\uE734",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 12,
+                Foreground = new SolidColorBrush(Colors.Gold),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+            var title = new TextBlock
+            {
+                Text = fav.Title ?? fav.Url,
+                FontSize = 13,
+                MaxWidth = 110,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = ThemeManager.Colors.ForegroundBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            stack.Children.Add(star);
+            stack.Children.Add(title);
+            var btn = new Button
+            {
+                Content = stack,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(6, 3, 6, 3),
+                Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            btn.Click += (s, args) => NavigateFromFavoritesBar(fav.Url);
+            btn.RightTapped += (s, args) =>
+            {
+                var menu = new MenuFlyout();
+                var openItem = new MenuFlyoutItem { Text = "打开" };
+                openItem.Click += (_, _) => NavigateFromFavoritesBar(fav.Url);
+                menu.Items.Add(openItem);
+                var removeItem = new MenuFlyoutItem { Text = "从收藏夹移除" };
+                removeItem.Click += (_, _) => _ = FavoritesManager.Instance.RemoveAsync(fav);
+                menu.Items.Add(removeItem);
+                menu.ShowAt(btn, args.GetPosition(btn));
+            };
+            return btn;
+        }
+
+        private Button CreateFavoriteFolderBarButton(FavoriteFolder folder)
+        {
+            var icon = new FontIcon
+            {
+                Glyph = "\uE8B7",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 12,
+                Foreground = ThemeManager.Colors.ForegroundBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+            var title = new TextBlock
+            {
+                Text = folder.Name ?? "",
+                FontSize = 13,
+                MaxWidth = 110,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = ThemeManager.Colors.ForegroundBrush,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var chevron = new FontIcon
+            {
+                Glyph = "\uE70D",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 8,
+                Foreground = ThemeManager.Colors.MutedForegroundBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 0, 0)
+            };
+            var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            stack.Children.Add(icon);
+            stack.Children.Add(title);
+            stack.Children.Add(chevron);
+
+            var btn = new Button
+            {
+                Content = stack,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(6, 3, 6, 3),
+                Margin = new Thickness(0, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+
+            var flyout = new MenuFlyout();
+            PopulateFavoriteFolderFlyout(flyout.Items, folder.Id);
+            btn.Flyout = flyout;
+
+            btn.RightTapped += async (s, args) =>
+            {
+                var menu = new MenuFlyout();
+                var deleteItem = new MenuFlyoutItem { Text = "删除文件夹" };
+                deleteItem.Click += async (_, _) =>
                 {
-                    Glyph = "\uE734",
-                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                    FontSize = 12,
-                    Foreground = new SolidColorBrush(Colors.Gold),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 6, 0)
+                    var dialog = new ContentDialog
+                    {
+                        Title = "删除文件夹",
+                        Content = $"将删除“{folder.Name}”及其中的所有子文件夹和书签，是否继续？",
+                        PrimaryButtonText = "删除",
+                        CloseButtonText = "取消"
+                    };
+                    PlatformCompat.SetDialogRoot(dialog, this);
+                    if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+                        await FavoritesManager.Instance.DeleteFolderAsync(folder);
                 };
-                var title = new TextBlock
-                {
-                    Text = fav.Title ?? fav.Url,
-                    FontSize = 13,
-                    MaxWidth = 110,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    Foreground = ThemeManager.Colors.ForegroundBrush,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-                stack.Children.Add(star);
-                stack.Children.Add(title);
-                var btn = new Button
-                {
-                    Content = stack,
-                    Background = new SolidColorBrush(Colors.Transparent),
-                    BorderThickness = new Thickness(0),
-                    Padding = new Thickness(6, 3, 6, 3),
-                    Margin = new Thickness(0, 0, 2, 0),
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-                btn.Click += (s, args) => { if (FavoritesBar != null) _ = _tabManager.CurrentTab?.NavigateAsync(fav.Url); };
-                btn.RightTapped += (s, args) =>
-                {
-                    var menu = new MenuFlyout();
-                    var openItem = new MenuFlyoutItem { Text = "打开" };
-                    openItem.Click += (_, _) => { if (FavoritesBar != null) _ = _tabManager.CurrentTab?.NavigateAsync(fav.Url); };
-                    menu.Items.Add(openItem);
-                    var removeItem = new MenuFlyoutItem { Text = "从收藏夹移除" };
-                    removeItem.Click += (_, _) => _ = FavoritesManager.Instance.RemoveAsync(fav);
-                    menu.Items.Add(removeItem);
-                    menu.ShowAt(btn, args.GetPosition(btn));
-                };
-                FavoritesBarPanel.Children.Add(btn);
+                menu.Items.Add(deleteItem);
+                menu.ShowAt(btn, args.GetPosition(btn));
+            };
+
+            return btn;
+        }
+
+        private void PopulateFavoriteFolderFlyout(IList<MenuFlyoutItemBase> items, int? parentId)
+        {
+            var manager = FavoritesManager.Instance;
+            var folders = manager.GetFolders(parentId).ToList();
+            var favs = manager.GetItems(parentId).ToList();
+
+            if (folders.Count == 0 && favs.Count == 0)
+            {
+                items.Add(new MenuFlyoutItem { Text = "（空文件夹）", IsEnabled = false });
+                return;
             }
-            FavoritesBarEmpty.Visibility = isEmpty ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (var sub in folders)
+            {
+                var subItem = new MenuFlyoutSubItem { Text = sub.Name };
+                PopulateFavoriteFolderFlyout(subItem.Items, sub.Id);
+                items.Add(subItem);
+            }
+            foreach (var fav in favs)
+            {
+                var item = new MenuFlyoutItem { Text = fav.Title ?? fav.Url };
+                item.Click += (_, _) => NavigateFromFavoritesBar(fav.Url);
+                items.Add(item);
+            }
+        }
+
+        private void NavigateFromFavoritesBar(string url)
+        {
+            if (FavoritesBar != null)
+                _ = _tabManager.CurrentTab?.NavigateAsync(url);
         }
 
         // ---- 下载事件 ----

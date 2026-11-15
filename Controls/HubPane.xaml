@@ -221,6 +221,7 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <!-- 收藏夹搜索框：窄窗时收缩，按钮收进“更多” -->
                             <TextBox x:Name="FavoritesSearchBox"
@@ -229,22 +230,29 @@
                                      MinWidth="80"
                                      TextChanged="FavoritesSearchBox_TextChanged"
                                      VerticalAlignment="Center"/>
-                            <Button x:Name="ImportFavBtn" Grid.Column="1" Content="导入"
+                            <Button x:Name="NewFolderFavBtn" Grid.Column="1" Content="&#xE8F4;"
+                                    FontFamily="Segoe MDL2 Assets"
+                                    Background="Transparent"
+                                    BorderThickness="1" BorderBrush="LightGray"
+                                    Padding="10,4" FontSize="14" Margin="8,0,0,0"
+                                    ToolTipService.ToolTip="新建文件夹"
+                                    Click="NewFolderFavBtn_Click"/>
+                            <Button x:Name="ImportFavBtn" Grid.Column="2" Content="导入"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
                                     Padding="10,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ImportFavBtn_Click"/>
-                            <Button x:Name="ExportFavBtn" Grid.Column="2" Content="导出"
+                            <Button x:Name="ExportFavBtn" Grid.Column="3" Content="导出"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
                                     Padding="10,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ExportFavBtn_Click"/>
-                            <Button x:Name="ToggleManageBtn" Grid.Column="3" Content="管理"
+                            <Button x:Name="ToggleManageBtn" Grid.Column="4" Content="管理"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
                                     Padding="10,4" FontSize="12" Margin="8,0,0,0"
                                     Click="ToggleManageBtn_Click"/>
-                            <Button x:Name="FavoritesOverflowBtn" Grid.Column="4" Content="&#xE712;"
+                            <Button x:Name="FavoritesOverflowBtn" Grid.Column="5" Content="&#xE712;"
                                     FontFamily="Segoe MDL2 Assets"
                                     Background="Transparent"
                                     BorderThickness="1" BorderBrush="LightGray"
@@ -253,6 +261,7 @@
                                     ToolTipService.ToolTip="更多操作">
                                 <Button.Flyout>
                                     <MenuFlyout>
+                                        <MenuFlyoutItem Text="新建文件夹" Click="NewFolderFavBtn_Click"/>
                                         <MenuFlyoutItem Text="导入收藏夹" Click="ImportFavBtn_Click"/>
                                         <MenuFlyoutItem Text="导出收藏夹" Click="ExportFavBtn_Click"/>
                                         <MenuFlyoutItem Text="管理收藏夹" Click="ToggleManageBtn_Click"/>
@@ -296,11 +305,16 @@
                                           RightTapped="FavItem_RightTapped">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
-                                        <FontIcon x:Name="FavIcon" Glyph="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                        <TextBlock x:Name="ChevronText" FontFamily="Segoe MDL2 Assets"
+                                                   FontSize="10" VerticalAlignment="Center"
+                                                   Margin="0,0,8,0" Visibility="Collapsed"/>
+                                        <FontIcon x:Name="FavIcon" Grid.Column="1" Glyph="&#xE735;"
+                                                  FontFamily="Segoe MDL2 Assets" FontSize="16"
                                                   Foreground="Gold" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                        <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
+                                        <StackPanel Grid.Column="2" Spacing="3" VerticalAlignment="Center">
                                             <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
                                                        TextTrimming="CharacterEllipsis"/>
                                             <TextBlock x:Name="UrlText" FontSize="11"

@@ -41,6 +41,12 @@ namespace EdgeRebuild.Controls
         private bool _isFavorite = false;
         private string _currentHost = "";
 
+        // ---- 收藏编辑面板 ----
+        private string _favoriteEditorUrl = "";
+        private string _favoriteEditorFallbackTitle = "";
+        private bool _favoriteEditorBusy;
+        private readonly List<int?> _favoriteFolderChoiceIds = new List<int?>();
+
         // ---- 自动补全相关字段 ----
         private bool _isAutoCompleting = false;
         private string _lastInputText = "";
@@ -270,7 +276,7 @@ namespace EdgeRebuild.Controls
             // FontIcon 的本地前景色优先于按钮模板的悬停/按下状态，避免星星被刷黑
             AddFavGlyph.Foreground = brush;
             AddFavBtn.Foreground = brush;
-            ToolTipService.SetToolTip(AddFavBtn, _isFavorite ? "从收藏夹删除" : "添加到收藏夹");
+            ToolTipService.SetToolTip(AddFavBtn, _isFavorite ? "编辑收藏" : "添加到收藏夹");
         }
 
         public void ShowMenu(MenuFlyout menu) => menu.ShowAt(MenuBtn, new Point(0, MenuBtn.ActualHeight));
@@ -393,6 +399,250 @@ namespace EdgeRebuild.Controls
         private void CaptureBtn_Click(object sender, RoutedEventArgs e) => CaptureClicked?.Invoke();
         private void HubBtn_Click(object sender, RoutedEventArgs e) => HubClicked?.Invoke();
         private void MenuBtn_Click(object sender, RoutedEventArgs e) => MenuClicked?.Invoke();
+
+        // ---- 收藏编辑面板 ----
+
+        /// <summary>在收藏按钮下方打开编辑面板；已收藏时预填名称与位置。</summary>
+        public void ShowFavoriteEditor(string title, string url)
+        {
+            if (string.IsNullOrWhiteSpace(url) || FavoriteEditFlyout.IsOpen) return;
+
+            _favoriteEditorUrl = url;
+            var existing = FavoritesManager.Instance.FindByUrl(url);
+            _favoriteEditorFallbackTitle = !string.IsNullOrWhiteSpace(existing?.Title)
+                ? existing.Title
+                : (!string.IsNullOrWhiteSpace(title) ? title.Trim() : url);
+
+            bool editing = existing != null;
+            FavoriteEditTitleText.Text = editing ? "编辑收藏" : "添加收藏";
+            FavoriteNameBox.Text = _favoriteEditorFallbackTitle;
+            FavoriteSaveBtn.Content = editing ? "保存" : "添加";
+            FavoriteDeleteBtn.Visibility = editing ? Visibility.Visible : Visibility.Collapsed;
+            NewFavoriteFolderPanel.Visibility = Visibility.Collapsed;
+            NewFavoriteFolderNameBox.Text = "";
+            PopulateFavoriteFolderChoices(existing?.FolderId);
+
+            // Ctrl+D 可能在地址栏输入时触发，此时收藏按钮被隐藏；先恢复布局再以它为锚点。
+            AddFavBtn.Visibility = Visibility.Visible;
+            AddFavBtn.UpdateLayout();
+            FavoriteEditFlyout.ShowAt(AddFavBtn);
+        }
+
+        private void FavoriteEditFlyout_Opened(object sender, object e)
+        {
+            FavoriteNameBox.Focus(FocusState.Programmatic);
+            FavoriteNameBox.SelectAll();
+        }
+
+        private void FavoriteNameBox_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == Windows.System.VirtualKey.Enter)
+            {
+                e.Handled = true;
+                _ = SaveFavoriteFromEditorAsync();
+            }
+        }
+
+        private async void FavoriteSaveBtn_Click(object sender, RoutedEventArgs e)
+            => await SaveFavoriteFromEditorAsync();
+
+        private async Task SaveFavoriteFromEditorAsync()
+        {
+            if (string.IsNullOrEmpty(_favoriteEditorUrl) || _favoriteEditorBusy) return;
+
+            string title = FavoriteNameBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(title)) title = _favoriteEditorFallbackTitle;
+            int? folderId = GetSelectedFavoriteFolderId();
+
+            _favoriteEditorBusy = true;
+            FavoriteSaveBtn.IsEnabled = false;
+            FavoriteDeleteBtn.IsEnabled = false;
+            try
+            {
+                var manager = FavoritesManager.Instance;
+                var existing = manager.FindByUrl(_favoriteEditorUrl);
+                if (existing == null)
+                {
+                    await manager.AddAsync(title, _favoriteEditorUrl, folderId);
+                }
+                else
+                {
+                    if (!string.Equals(existing.Title, title, StringComparison.Ordinal))
+                        await manager.RenameAsync(existing, title);
+                    if (existing.FolderId != folderId)
+                        await manager.MoveItemAsync(existing, folderId);
+                }
+                FavoriteEditFlyout.Hide();
+            }
+            finally
+            {
+                _favoriteEditorBusy = false;
+                FavoriteSaveBtn.IsEnabled = true;
+                FavoriteDeleteBtn.IsEnabled = true;
+            }
+        }
+
+        private async void FavoriteDeleteBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_favoriteEditorUrl))
+            {
+                FavoriteEditFlyout.Hide();
+                return;
+            }
+            if (_favoriteEditorBusy) return;
+
+            _favoriteEditorBusy = true;
+            FavoriteSaveBtn.IsEnabled = false;
+            FavoriteDeleteBtn.IsEnabled = false;
+            try
+            {
+                var item = FavoritesManager.Instance.FindByUrl(_favoriteEditorUrl);
+                if (item != null) await FavoritesManager.Instance.RemoveAsync(item);
+                FavoriteEditFlyout.Hide();
+            }
+            finally
+            {
+                _favoriteEditorBusy = false;
+                FavoriteSaveBtn.IsEnabled = true;
+                FavoriteDeleteBtn.IsEnabled = true;
+            }
+        }
+
+        private void FavoriteCancelBtn_Click(object sender, RoutedEventArgs e) => FavoriteEditFlyout.Hide();
+
+        // ---- 面板内新建文件夹 ----
+
+        private void NewFavoriteFolderBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_favoriteEditorBusy) return;
+
+            if (NewFavoriteFolderPanel.Visibility == Visibility.Visible)
+            {
+                HideNewFavoriteFolderPanel();
+                return;
+            }
+
+            NewFavoriteFolderNameBox.Text = "";
+            UpdateNewFavoriteFolderParentText();
+            NewFavoriteFolderPanel.Visibility = Visibility.Visible;
+            NewFavoriteFolderNameBox.Focus(FocusState.Programmatic);
+        }
+
+        private void CancelNewFavoriteFolderBtn_Click(object sender, RoutedEventArgs e)
+            => HideNewFavoriteFolderPanel();
+
+        private void HideNewFavoriteFolderPanel()
+        {
+            NewFavoriteFolderPanel.Visibility = Visibility.Collapsed;
+            NewFavoriteFolderNameBox.Text = "";
+        }
+
+        private void FavoriteFolderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (NewFavoriteFolderPanel.Visibility == Visibility.Visible)
+                UpdateNewFavoriteFolderParentText();
+        }
+
+        private void UpdateNewFavoriteFolderParentText()
+        {
+            int? parentId = GetSelectedFavoriteFolderId();
+            string path = parentId.HasValue
+                ? FavoritesManager.Instance.GetFolderPath(parentId)
+                : "";
+            NewFavoriteFolderParentText.Text = string.IsNullOrEmpty(path)
+                ? "将在“收藏夹（根目录）”下新建"
+                : $"将在“{path}”下新建";
+        }
+
+        private void NewFavoriteFolderNameBox_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == Windows.System.VirtualKey.Enter)
+            {
+                e.Handled = true;
+                _ = CreateFavoriteFolderAsync();
+            }
+            else if (e.Key == Windows.System.VirtualKey.Escape)
+            {
+                e.Handled = true;
+                HideNewFavoriteFolderPanel();
+            }
+        }
+
+        private async void CreateFavoriteFolderBtn_Click(object sender, RoutedEventArgs e)
+            => await CreateFavoriteFolderAsync();
+
+        private async Task CreateFavoriteFolderAsync()
+        {
+            if (_favoriteEditorBusy) return;
+
+            string name = NewFavoriteFolderNameBox.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) name = "新建文件夹";
+            int? parentId = GetSelectedFavoriteFolderId();
+
+            _favoriteEditorBusy = true;
+            FavoriteSaveBtn.IsEnabled = false;
+            FavoriteDeleteBtn.IsEnabled = false;
+            CreateFavoriteFolderBtn.IsEnabled = false;
+            try
+            {
+                var folder = await FavoritesManager.Instance.AddFolderAsync(name, parentId);
+                PopulateFavoriteFolderChoices(folder.Id);
+                HideNewFavoriteFolderPanel();
+                FavoriteNameBox.Focus(FocusState.Programmatic);
+            }
+            finally
+            {
+                _favoriteEditorBusy = false;
+                FavoriteSaveBtn.IsEnabled = true;
+                FavoriteDeleteBtn.IsEnabled = true;
+                CreateFavoriteFolderBtn.IsEnabled = true;
+            }
+        }
+
+        private void PopulateFavoriteFolderChoices(int? selectedFolderId)
+        {
+            FavoriteFolderCombo.Items.Clear();
+            _favoriteFolderChoiceIds.Clear();
+
+            AddFavoriteFolderChoice("收藏夹（根目录）", null, 0);
+            AddFavoriteFolderChoices(null, 0);
+
+            int selectedIndex = _favoriteFolderChoiceIds.IndexOf(selectedFolderId);
+            FavoriteFolderCombo.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        }
+
+        private void AddFavoriteFolderChoices(int? parentId, int depth)
+        {
+            foreach (var folder in FavoritesManager.Instance.GetFolders(parentId))
+            {
+                AddFavoriteFolderChoice(folder.Name, folder.Id, depth);
+                AddFavoriteFolderChoices(folder.Id, depth + 1);
+            }
+        }
+
+        private void AddFavoriteFolderChoice(string label, int? folderId, int depth)
+        {
+            var text = new TextBlock
+            {
+                Text = label,
+                Margin = new Thickness(depth * 16, 0, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxWidth = 260
+            };
+            if (folderId.HasValue)
+                ToolTipService.SetToolTip(text, FavoritesManager.Instance.GetFolderPath(folderId));
+
+            FavoriteFolderCombo.Items.Add(new ComboBoxItem { Content = text });
+            _favoriteFolderChoiceIds.Add(folderId);
+        }
+
+        private int? GetSelectedFavoriteFolderId()
+        {
+            int index = FavoriteFolderCombo.SelectedIndex;
+            return index >= 0 && index < _favoriteFolderChoiceIds.Count
+                ? _favoriteFolderChoiceIds[index]
+                : null;
+        }
 
         // ---- 地址栏键盘事件 ----
         private void UrlBox_KeyDown(object sender, KeyRoutedEventArgs e)

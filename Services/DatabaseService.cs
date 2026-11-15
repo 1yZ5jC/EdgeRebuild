@@ -28,6 +28,7 @@ namespace EdgeRebuild.Services
             _database = new SQLiteAsyncConnection(dbPath);
 
             // 创建表
+            await _database.CreateTableAsync<FavoriteFolder>(); // 收藏夹文件夹
             await _database.CreateTableAsync<FavoriteItem>();
             await _database.CreateTableAsync<HistoryItem>();
             await _database.CreateTableAsync<SettingItem>();

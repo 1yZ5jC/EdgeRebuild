@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -24,6 +25,19 @@ namespace EdgeRebuild.Controls
 
         protected override DataTemplate SelectTemplateCore(object item)
             => item is HistoryGroup ? HeaderTemplate : ItemTemplate;
+    }
+
+    /// <summary>Hub 收藏夹列表行：文件夹或书签二选一。</summary>
+    public sealed class FavoriteRow
+    {
+        public FavoriteFolder Folder { get; set; }
+        public FavoriteItem Item { get; set; }
+        public int Depth { get; set; }
+        public bool IsExpanded { get; set; }
+        public int ChildCount { get; set; }
+        public string SearchPath { get; set; }
+
+        public bool IsFolder => Folder != null;
     }
 
     /// <summary>历史分组键(参考规范 §7.7:past-hour/today/yesterday/date-YYYY-M-D/earlier)。</summary>
@@ -51,10 +65,14 @@ namespace EdgeRebuild.Controls
         public SolidColorBrush MutedForegroundBrush { get; set; } = new SolidColorBrush(Colors.DimGray);
 
         private readonly Dictionary<DownloadItem, Grid> _downloadContainers = new Dictionary<DownloadItem, Grid>();
+        private readonly SolidColorBrush _favoriteGoldBrush = new SolidColorBrush(Colors.Gold);
 
         // 搜索过滤
         private string _historySearchFilter = "";
         private string _favoritesSearchFilter = "";
+
+        // 收藏夹文件夹展开状态（默认全部折叠）
+        private readonly HashSet<int> _expandedFavoriteFolders = new HashSet<int>();
 
         // 窄窗响应式：导航栏收成图标、收藏夹顶部按钮收进“更多”
         private bool _compactNav;
@@ -109,6 +127,7 @@ namespace EdgeRebuild.Controls
             if (overflow == _favoritesOverflow) return;
             _favoritesOverflow = overflow;
 
+            NewFolderFavBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
             ImportFavBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
             ExportFavBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
             ToggleManageBtn.Visibility = overflow ? Visibility.Collapsed : Visibility.Visible;
@@ -120,6 +139,7 @@ namespace EdgeRebuild.Controls
             ForegroundBrush = foreground;
             MutedForegroundBrush = muted;
 
+            NewFolderFavBtn.Foreground = foreground;
             ImportFavBtn.Foreground = foreground;
             ExportFavBtn.Foreground = foreground;
             ToggleManageBtn.Foreground = foreground;
@@ -164,13 +184,28 @@ namespace EdgeRebuild.Controls
         {
             if (FavListView == null) return;
             FavListView.Items.Clear();
-            var items = string.IsNullOrEmpty(_favoritesSearchFilter)
-                ? FavoritesManager.Instance.Favorites
-                : FavoritesManager.Instance.Favorites.Where(f =>
-                    f.Title?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true ||
-                    f.Url?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true);
-            foreach (var fav in items)
-                FavListView.Items.Add(fav);
+
+            if (!string.IsNullOrEmpty(_favoritesSearchFilter))
+            {
+                // 搜索时平铺结果，并显示所属文件夹路径
+                var matches = FavoritesManager.Instance.Favorites.Where(f =>
+                        f.Title?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true ||
+                        f.Url?.Contains(_favoritesSearchFilter, StringComparison.OrdinalIgnoreCase) == true)
+                    .OrderBy(f => f.Title);
+                foreach (var fav in matches)
+                {
+                    string path = FavoritesManager.Instance.GetFolderPath(fav.FolderId);
+                    FavListView.Items.Add(new FavoriteRow
+                    {
+                        Item = fav,
+                        SearchPath = string.IsNullOrEmpty(path) ? "收藏夹" : "收藏夹 / " + path
+                    });
+                }
+            }
+            else
+            {
+                AddFavoriteFolderRows(null, 0);
+            }
 
             bool empty = FavListView.Items.Count == 0;
             FavListView.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
@@ -184,6 +219,29 @@ namespace EdgeRebuild.Controls
                     ? $"没有与“{_favoritesSearchFilter}”匹配的收藏，试试其他关键词。"
                     : "浏览网页时点击 ☆，或从另一个浏览器导入书签。";
                 FavoritesEmptyState.ActionText = filtered ? "清除搜索" : "导入收藏夹";
+            }
+        }
+
+        private void AddFavoriteFolderRows(int? parentId, int depth)
+        {
+            var manager = FavoritesManager.Instance;
+            foreach (var folder in manager.GetFolders(parentId))
+            {
+                bool expanded = _expandedFavoriteFolders.Contains(folder.Id);
+                int childCount = manager.Folders.Count(f => f.ParentId == folder.Id) +
+                                 manager.Favorites.Count(f => f.FolderId == folder.Id);
+                FavListView.Items.Add(new FavoriteRow
+                {
+                    Folder = folder,
+                    Depth = depth,
+                    IsExpanded = expanded,
+                    ChildCount = childCount
+                });
+                if (expanded) AddFavoriteFolderRows(folder.Id, depth + 1);
+            }
+            foreach (var fav in manager.GetItems(parentId))
+            {
+                FavListView.Items.Add(new FavoriteRow { Item = fav, Depth = depth });
             }
         }
 
@@ -411,39 +469,44 @@ namespace EdgeRebuild.Controls
         private void FavItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var grid = sender as Grid;
-            if (grid == null) return;
-            var fav = grid.DataContext as FavoriteItem;
-            if (fav == null) return;
+            var row = grid?.DataContext as FavoriteRow;
+            if (row == null) return;
 
             var menu = new MenuFlyout();
+            if (row.IsFolder)
+                BuildFolderMenu(menu, row.Folder);
+            else
+                BuildFavoriteMenu(menu, row.Item);
+
+            menu.ShowAt(grid, e.GetPosition(grid));
+        }
+
+        private void BuildFavoriteMenu(MenuFlyout menu, FavoriteItem fav)
+        {
+            var openItem = new MenuFlyoutItem { Text = "打开" };
+            openItem.Click += (s, args) => NavigateRequested?.Invoke(fav.Url);
+            menu.Items.Add(openItem);
+
             var renameItem = new MenuFlyoutItem { Text = "重命名" };
             renameItem.Click += async (s, args) =>
             {
-                var box = new TextBox { Text = fav.Title ?? "" };
-                var dialog = new ContentDialog
-                {
-                    Title = "重命名书签",
-                    Content = box,
-                    PrimaryButtonText = "确定",
-                    CloseButtonText = "取消"
-                };
-                PlatformCompat.SetDialogRoot(dialog, this);
-                var result = await dialog.ShowAsync();
-                if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(box.Text))
-                {
-                    await FavoritesManager.Instance.RenameAsync(fav, box.Text.Trim());
-                    RefreshFavorites();
-                }
+                string name = await PromptTextAsync("重命名书签", "名称", fav.Title);
+                if (name == null) return;
+                await FavoritesManager.Instance.RenameAsync(fav, name);
+                RefreshFavorites();
             };
             menu.Items.Add(renameItem);
 
-            var deleteItem = new MenuFlyoutItem { Text = "删除" };
-            deleteItem.Click += (s, args) =>
+            var moveItem = new MenuFlyoutItem { Text = "移动到文件夹…" };
+            moveItem.Click += async (s, args) =>
             {
-                _ = FavoritesManager.Instance.RemoveAsync(fav);
-                RefreshFavorites();
+                int target = await PickFolderAsync("移动书签到");
+                if (target < 0) return;
+                int? folderId = target == 0 ? (int?)null : target;
+                if (await FavoritesManager.Instance.MoveItemAsync(fav, folderId))
+                    RefreshFavorites();
             };
-            menu.Items.Add(deleteItem);
+            menu.Items.Add(moveItem);
 
             var copyLinkItem = new MenuFlyoutItem { Text = "复制链接" };
             copyLinkItem.Click += (s, args) =>
@@ -454,7 +517,166 @@ namespace EdgeRebuild.Controls
             };
             menu.Items.Add(copyLinkItem);
 
-            menu.ShowAt(grid, e.GetPosition(grid));
+            var deleteItem = new MenuFlyoutItem { Text = "删除" };
+            deleteItem.Click += async (s, args) =>
+            {
+                await FavoritesManager.Instance.RemoveAsync(fav);
+                RefreshFavorites();
+            };
+            menu.Items.Add(deleteItem);
+        }
+
+        private void BuildFolderMenu(MenuFlyout menu, FavoriteFolder folder)
+        {
+            bool hasChildren = FavoritesManager.Instance.GetFolders(folder.Id).Any() ||
+                               FavoritesManager.Instance.GetItems(folder.Id).Any();
+            if (hasChildren)
+            {
+                var toggleItem = new MenuFlyoutItem
+                {
+                    Text = _expandedFavoriteFolders.Contains(folder.Id) ? "折叠" : "展开"
+                };
+                toggleItem.Click += (s, args) => ToggleFavoriteFolder(folder);
+                menu.Items.Add(toggleItem);
+            }
+
+            var newSubItem = new MenuFlyoutItem { Text = "新建子文件夹" };
+            newSubItem.Click += async (s, args) => await CreateFolderAsync(folder.Id);
+            menu.Items.Add(newSubItem);
+
+            var renameItem = new MenuFlyoutItem { Text = "重命名" };
+            renameItem.Click += async (s, args) =>
+            {
+                string name = await PromptTextAsync("重命名文件夹", "名称", folder.Name);
+                if (name == null) return;
+                await FavoritesManager.Instance.RenameFolderAsync(folder, name);
+                RefreshFavorites();
+            };
+            menu.Items.Add(renameItem);
+
+            var moveItem = new MenuFlyoutItem { Text = "移动到文件夹…" };
+            moveItem.Click += async (s, args) =>
+            {
+                int target = await PickFolderAsync("移动文件夹到", folder);
+                if (target < 0) return;
+                int? parentId = target == 0 ? (int?)null : target;
+                if (await FavoritesManager.Instance.MoveFolderAsync(folder, parentId))
+                    RefreshFavorites();
+            };
+            menu.Items.Add(moveItem);
+
+            var deleteItem = new MenuFlyoutItem { Text = "删除文件夹" };
+            deleteItem.Click += async (s, args) => await DeleteFolderWithConfirmAsync(folder);
+            menu.Items.Add(deleteItem);
+        }
+
+        private async void NewFolderFavBtn_Click(object sender, RoutedEventArgs e)
+            => await CreateFolderAsync(null);
+
+        private async Task CreateFolderAsync(int? parentId)
+        {
+            string name = await PromptTextAsync("新建文件夹", "文件夹名称", "新建文件夹");
+            if (name == null) return;
+            await FavoritesManager.Instance.AddFolderAsync(name, parentId);
+            if (parentId.HasValue) _expandedFavoriteFolders.Add(parentId.Value);
+
+            if (!string.IsNullOrEmpty(_favoritesSearchFilter))
+            {
+                // 清空搜索会触发 TextChanged 并刷新列表，让新文件夹可见
+                FavoritesSearchBox.Text = "";
+                return;
+            }
+            RefreshFavorites();
+        }
+
+        private async Task<string> PromptTextAsync(string title, string label, string initial)
+        {
+            var box = new TextBox { Text = initial ?? "", Header = label };
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = box,
+                PrimaryButtonText = "确定",
+                CloseButtonText = "取消"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            var result = await dialog.ShowAsync();
+            if (result != ContentDialogResult.Primary) return null;
+            string text = box.Text?.Trim();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+
+        /// <summary>返回 -1=取消，0=根目录，&gt;0=文件夹 Id。</summary>
+        private async Task<int> PickFolderAsync(string title, FavoriteFolder movingFolder = null)
+        {
+            var combo = new ComboBox
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                MinWidth = 240
+            };
+            combo.Items.Add(new ComboBoxItem { Content = "收藏夹（根目录）" });
+            var folderIds = new List<int> { 0 };
+            AddFolderPickItems(combo, folderIds, null, 0, movingFolder);
+            combo.SelectedIndex = 0;
+
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = combo,
+                PrimaryButtonText = "移动",
+                CloseButtonText = "取消"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return -1;
+
+            int index = combo.SelectedIndex;
+            return index >= 0 && index < folderIds.Count ? folderIds[index] : 0;
+        }
+
+        private void AddFolderPickItems(ComboBox combo, List<int> folderIds,
+            int? parentId, int depth, FavoriteFolder movingFolder)
+        {
+            foreach (var folder in FavoritesManager.Instance.GetFolders(parentId))
+            {
+                if (movingFolder != null &&
+                    !FavoritesManager.Instance.CanMoveFolder(movingFolder, folder.Id))
+                    continue;
+
+                combo.Items.Add(new ComboBoxItem
+                {
+                    Content = new TextBlock
+                    {
+                        Text = folder.Name,
+                        Margin = new Thickness(depth * 16, 0, 0, 0)
+                    }
+                });
+                folderIds.Add(folder.Id);
+                AddFolderPickItems(combo, folderIds, folder.Id, depth + 1, movingFolder);
+            }
+        }
+
+        private void ToggleFavoriteFolder(FavoriteFolder folder)
+        {
+            if (!_expandedFavoriteFolders.Remove(folder.Id))
+                _expandedFavoriteFolders.Add(folder.Id);
+            RefreshFavorites();
+        }
+
+        private async Task DeleteFolderWithConfirmAsync(FavoriteFolder folder)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "删除文件夹",
+                Content = $"将删除“{folder.Name}”及其中的所有子文件夹和书签，是否继续？",
+                PrimaryButtonText = "删除",
+                CloseButtonText = "取消"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+            await FavoritesManager.Instance.DeleteFolderAsync(folder);
+            _expandedFavoriteFolders.Remove(folder.Id);
+            RefreshFavorites();
         }
 
         // ---- 多选管理模式 ----
@@ -484,9 +706,14 @@ namespace EdgeRebuild.Controls
 
         private async void ManageDeleteBtn_Click(object sender, RoutedEventArgs e)
         {
-            var selected = FavListView.SelectedItems.Cast<FavoriteItem>().ToList();
-            foreach (var fav in selected)
-                await FavoritesManager.Instance.RemoveAsync(fav);
+            var selected = FavListView.SelectedItems.OfType<FavoriteRow>().ToList();
+            foreach (var row in selected)
+            {
+                if (row.IsFolder)
+                    await FavoritesManager.Instance.DeleteFolderAsync(row.Folder);
+                else
+                    await FavoritesManager.Instance.RemoveAsync(row.Item);
+            }
             ToggleManageBtn_Click(null, null);
             RefreshFavorites();
         }
@@ -522,22 +749,77 @@ namespace EdgeRebuild.Controls
         private void FavListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
         {
             if (args.InRecycleQueue) return;
-            var fav = args.Item as FavoriteItem;
-            if (fav == null) return;
-            args.ItemContainer.DataContext = fav;
+            var row = args.Item as FavoriteRow;
+            if (row == null) return;
+            args.ItemContainer.DataContext = row;
 
             var root = args.ItemContainer.ContentTemplateRoot as Grid;
             if (root == null) return;
+            var chevron = root.FindName("ChevronText") as TextBlock;
+            var icon = root.FindName("FavIcon") as FontIcon;
             var titleText = root.FindName("TitleText") as TextBlock;
             var urlText = root.FindName("UrlText") as TextBlock;
             var dateText = root.FindName("DateText") as TextBlock;
 
-            if (titleText != null) { titleText.Text = fav.Title ?? ""; titleText.Foreground = ForegroundBrush; }
-            if (urlText != null) { urlText.Text = fav.Url ?? ""; urlText.Foreground = MutedForegroundBrush; }
-            if (dateText != null)
+            root.Padding = new Thickness(12 + row.Depth * 16, 8, 12, 8);
+            if (chevron != null) chevron.Foreground = MutedForegroundBrush;
+
+            if (row.IsFolder)
             {
-                dateText.Text = fav.AddedDate != DateTime.MinValue ? fav.AddedDate.ToString("yyyy-MM-dd HH:mm") : "";
-                dateText.Foreground = MutedForegroundBrush;
+                var folder = row.Folder;
+                int childCount = row.ChildCount;
+                bool hasChildren = childCount > 0;
+
+                if (chevron != null)
+                {
+                    chevron.Visibility = hasChildren ? Visibility.Visible : Visibility.Collapsed;
+                    chevron.Text = row.IsExpanded ? "\uE70D" : "\uE76C";
+                }
+                if (icon != null)
+                {
+                    icon.Glyph = "\uE8B7";
+                    icon.Foreground = ForegroundBrush;
+                }
+                if (titleText != null)
+                {
+                    titleText.Text = folder.Name ?? "";
+                    titleText.Foreground = ForegroundBrush;
+                }
+                if (urlText != null)
+                {
+                    urlText.Text = hasChildren ? $"{childCount} 项" : "空文件夹";
+                    urlText.Foreground = MutedForegroundBrush;
+                }
+                if (dateText != null) dateText.Text = "";
+            }
+            else
+            {
+                var fav = row.Item;
+                if (chevron != null) chevron.Visibility = Visibility.Collapsed;
+                if (icon != null)
+                {
+                    icon.Glyph = "\uE735";
+                    icon.Foreground = _favoriteGoldBrush;
+                }
+                if (titleText != null)
+                {
+                    titleText.Text = fav.Title ?? "";
+                    titleText.Foreground = ForegroundBrush;
+                }
+                if (urlText != null)
+                {
+                    urlText.Text = fav.Url ?? "";
+                    urlText.Foreground = MutedForegroundBrush;
+                }
+                if (dateText != null)
+                {
+                    dateText.Text = !string.IsNullOrEmpty(row.SearchPath)
+                        ? "位于 " + row.SearchPath
+                        : (fav.AddedDate != DateTime.MinValue
+                            ? fav.AddedDate.ToString("yyyy-MM-dd HH:mm")
+                            : "");
+                    dateText.Foreground = MutedForegroundBrush;
+                }
             }
             args.Handled = true;
         }
@@ -659,8 +941,13 @@ namespace EdgeRebuild.Controls
 
         private void FavListView_ItemClick(object sender, ItemClickEventArgs e)
         {
-            if (e.ClickedItem is FavoriteItem fav)
-                NavigateRequested?.Invoke(fav.Url);
+            if (e.ClickedItem is FavoriteRow row)
+            {
+                if (row.IsFolder)
+                    ToggleFavoriteFolder(row.Folder);
+                else
+                    NavigateRequested?.Invoke(row.Item.Url);
+            }
         }
 
         private void HistoryListView_ItemClick(object sender, ItemClickEventArgs e)

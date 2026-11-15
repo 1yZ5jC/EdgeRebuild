@@ -152,6 +152,52 @@
                         Click="AddFavBtn_Click">
                     <FontIcon x:Name="AddFavGlyph" Glyph="&#xE734;"
                               FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                    <FlyoutBase.AttachedFlyout>
+                        <Flyout x:Name="FavoriteEditFlyout" Placement="Bottom"
+                                Opened="FavoriteEditFlyout_Opened">
+                            <StackPanel Width="300" Spacing="8">
+                                <TextBlock x:Name="FavoriteEditTitleText" Text="添加收藏"
+                                           FontSize="16" FontWeight="SemiBold"/>
+                                <TextBox x:Name="FavoriteNameBox" Header="名称"
+                                         PlaceholderText="收藏名称"
+                                         KeyDown="FavoriteNameBox_KeyDown"/>
+                                <ComboBox x:Name="FavoriteFolderCombo" Header="位置"
+                                          HorizontalAlignment="Stretch"
+                                          SelectionChanged="FavoriteFolderCombo_SelectionChanged"/>
+                                <HyperlinkButton x:Name="NewFavoriteFolderBtn" Content="+ 新建文件夹"
+                                                 Padding="0" FontSize="12"
+                                                 HorizontalAlignment="Left"
+                                                 Click="NewFavoriteFolderBtn_Click"/>
+                                <StackPanel x:Name="NewFavoriteFolderPanel" Spacing="6"
+                                            Visibility="Collapsed">
+                                    <TextBox x:Name="NewFavoriteFolderNameBox"
+                                             PlaceholderText="文件夹名称"
+                                             KeyDown="NewFavoriteFolderNameBox_KeyDown"/>
+                                    <TextBlock x:Name="NewFavoriteFolderParentText"
+                                               FontSize="12" Opacity="0.7"
+                                               TextWrapping="Wrap"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button x:Name="CreateFavoriteFolderBtn" Content="创建"
+                                                Click="CreateFavoriteFolderBtn_Click"/>
+                                        <Button Content="取消"
+                                                Click="CancelNewFavoriteFolderBtn_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Grid Margin="0,4,0,0">
+                                    <Button x:Name="FavoriteDeleteBtn" Content="删除收藏"
+                                            HorizontalAlignment="Left"
+                                            Visibility="Collapsed"
+                                            Click="FavoriteDeleteBtn_Click"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                                HorizontalAlignment="Right">
+                                        <Button Content="取消" Click="FavoriteCancelBtn_Click"/>
+                                        <Button x:Name="FavoriteSaveBtn" Content="添加"
+                                                Click="FavoriteSaveBtn_Click"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Flyout>
+                    </FlyoutBase.AttachedFlyout>
                 </Button>
             </Grid>
 
