@@ -29,6 +29,7 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Media.Imaging;
+using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
 using ProgressRing = Windows.UI.Xaml.Controls.ProgressRing;
@@ -40,6 +41,7 @@ namespace EdgeRebuild
         // ---- 字段 ----
         private bool _isLoaded;
         private string _pendingUrl;
+        private List<string> _pendingUrls;
         private EngineType? _pendingEngine;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
         private double _zoomFactor = 1.0;
@@ -450,9 +452,17 @@ namespace EdgeRebuild
                         if (_tabManager.TabCount == 0)
                             await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);   // 空槽兜底
                     }
+                    else if (_pendingUrls != null && _pendingUrls.Count > 0)
+                    {
+                        foreach (var url in _pendingUrls)
+                            await _tabManager.CreateTabAsync(_defaultEngine, url);
+                        _pendingUrls = null;
+                        _pendingUrl = null;
+                    }
                     else if (!string.IsNullOrEmpty(_pendingUrl))
                     {
                         await _tabManager.CreateTabAsync(_defaultEngine, _pendingUrl);
+                        _pendingUrl = null;
                     }
                     else
                     {
@@ -2709,7 +2719,10 @@ namespace EdgeRebuild
         private void ToolbarControl_AddFavoriteClicked()
         {
             if (_tabManager.CurrentTab == null || string.IsNullOrEmpty(_tabManager.CurrentTab.CurrentUrl)) return;
-            toolbarControl.ShowFavoriteEditor(_tabManager.CurrentTab.Title, _tabManager.CurrentTab.CurrentUrl);
+            toolbarControl.ShowFavoriteEditor(
+                _tabManager.CurrentTab.Title,
+                _tabManager.CurrentTab.CurrentUrl,
+                _tabManager.CurrentTab.FaviconUri);
         }
 
         private async void ToolbarControl_CaptureClicked()
@@ -2986,10 +2999,20 @@ namespace EdgeRebuild
             FavoritesBarEmpty.Visibility = rootFolders.Count == 0 && rootItems.Count == 0
                 ? Visibility.Visible
                 : Visibility.Collapsed;
+
+            UpdateFavoritesBarScrollButtons();
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Low, UpdateFavoritesBarScrollButtons);
         }
 
         private Button CreateFavoriteBarButton(FavoriteItem fav)
         {
+            var iconHost = new Grid
+            {
+                Width = 16,
+                Height = 16,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
             var star = new FontIcon
             {
                 Glyph = "\uE734",
@@ -2997,8 +3020,24 @@ namespace EdgeRebuild
                 FontSize = 12,
                 Foreground = new SolidColorBrush(Colors.Gold),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 6, 0)
+                HorizontalAlignment = HorizontalAlignment.Center
             };
+            var favicon = new Image
+            {
+                Width = 16,
+                Height = 16,
+                Stretch = Stretch.UniformToFill,
+                Visibility = Visibility.Collapsed
+            };
+            favicon.ImageFailed += (s, args) =>
+            {
+                favicon.Visibility = Visibility.Collapsed;
+                star.Visibility = Visibility.Visible;
+            };
+            iconHost.Children.Add(star);
+            iconHost.Children.Add(favicon);
+            ApplyFavicon(fav.FaviconUrl, star, favicon);
+
             var title = new TextBlock
             {
                 Text = fav.Title ?? fav.Url,
@@ -3009,7 +3048,7 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center
             };
             var stack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-            stack.Children.Add(star);
+            stack.Children.Add(iconHost);
             stack.Children.Add(title);
             var btn = new Button
             {
@@ -3024,15 +3063,119 @@ namespace EdgeRebuild
             btn.RightTapped += (s, args) =>
             {
                 var menu = new MenuFlyout();
+
                 var openItem = new MenuFlyoutItem { Text = "打开" };
                 openItem.Click += (_, _) => NavigateFromFavoritesBar(fav.Url);
                 menu.Items.Add(openItem);
+
+                var openNewTabItem = new MenuFlyoutItem { Text = "在新标签页中打开" };
+                openNewTabItem.Click += (_, _) => _ = _tabManager.CreateTabAsync(_defaultEngine, fav.Url);
+                menu.Items.Add(openNewTabItem);
+
+                var copyItem = new MenuFlyoutItem { Text = "复制链接" };
+                copyItem.Click += (_, _) => CopyFavoriteLink(fav.Url);
+                menu.Items.Add(copyItem);
+
+                menu.Items.Add(new MenuFlyoutSeparator());
+
+                var renameItem = new MenuFlyoutItem { Text = "重命名" };
+                renameItem.Click += async (_, _) =>
+                {
+                    string name = await PromptFavoriteTextAsync("重命名书签", "名称", fav.Title);
+                    if (name != null) await FavoritesManager.Instance.RenameAsync(fav, name);
+                };
+                menu.Items.Add(renameItem);
+
+                var moveMenu = new MenuFlyoutSubItem { Text = "移动到文件夹" };
+                PopulateFavoriteMoveMenu(moveMenu, folderId => _ = FavoritesManager.Instance.MoveItemAsync(fav, folderId));
+                menu.Items.Add(moveMenu);
+
+                menu.Items.Add(new MenuFlyoutSeparator());
+
+                var manager = FavoritesManager.Instance;
+                var moveUp = new MenuFlyoutItem { Text = "上移", IsEnabled = manager.CanReorderItem(fav, -1) };
+                moveUp.Click += async (_, _) => await manager.ReorderItemAsync(fav, -1);
+                menu.Items.Add(moveUp);
+
+                var moveDown = new MenuFlyoutItem { Text = "下移", IsEnabled = manager.CanReorderItem(fav, 1) };
+                moveDown.Click += async (_, _) => await manager.ReorderItemAsync(fav, 1);
+                menu.Items.Add(moveDown);
+
+                menu.Items.Add(new MenuFlyoutSeparator());
+
                 var removeItem = new MenuFlyoutItem { Text = "从收藏夹移除" };
                 removeItem.Click += (_, _) => _ = FavoritesManager.Instance.RemoveAsync(fav);
                 menu.Items.Add(removeItem);
+
                 menu.ShowAt(btn, args.GetPosition(btn));
+                args.Handled = true;
             };
             return btn;
+        }
+
+        private static void ApplyFavicon(string faviconUrl, FontIcon fallback, Image target)
+        {
+            if (string.IsNullOrWhiteSpace(faviconUrl)) return;
+            try
+            {
+                target.Source = new BitmapImage(new Uri(faviconUrl));
+                target.Visibility = Visibility.Visible;
+                fallback.Visibility = Visibility.Collapsed;
+            }
+            catch
+            {
+                target.Visibility = Visibility.Collapsed;
+                fallback.Visibility = Visibility.Visible;
+            }
+        }
+
+        private static void CopyFavoriteLink(string url)
+        {
+            if (string.IsNullOrEmpty(url)) return;
+            var dataPackage = new DataPackage();
+            dataPackage.SetText(url);
+            Clipboard.SetContent(dataPackage);
+        }
+
+        private async Task<string> PromptFavoriteTextAsync(string title, string label, string initial)
+        {
+            var box = new TextBox { Text = initial ?? "", Header = label };
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = box,
+                PrimaryButtonText = "确定",
+                CloseButtonText = "取消"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
+            string text = box.Text?.Trim();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+
+        private void PopulateFavoriteMoveMenu(MenuFlyoutSubItem moveMenu, Action<int?> onMove,
+            FavoriteFolder movingFolder = null)
+        {
+            var manager = FavoritesManager.Instance;
+            var rootItem = new MenuFlyoutItem { Text = "收藏夹（根目录）" };
+            rootItem.Click += (_, _) => onMove(null);
+            moveMenu.Items.Add(rootItem);
+
+            var folders = manager.Folders
+                .Where(f => movingFolder == null || manager.CanMoveFolder(movingFolder, f.Id))
+                .OrderBy(f => manager.GetFolderPath(f.Id), StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+            if (folders.Count == 0) return;
+
+            moveMenu.Items.Add(new MenuFlyoutSeparator());
+            foreach (var folder in folders)
+            {
+                int id = folder.Id;
+                string path = manager.GetFolderPath(id);
+                var item = new MenuFlyoutItem { Text = string.IsNullOrEmpty(path) ? folder.Name : path };
+                item.Click += (_, _) => onMove(id);
+                moveMenu.Items.Add(item);
+            }
         }
 
         private Button CreateFavoriteFolderBarButton(FavoriteFolder folder)
@@ -3080,12 +3223,41 @@ namespace EdgeRebuild
             };
 
             var flyout = new MenuFlyout();
+            AddFavoriteFolderOpenAllItems(flyout.Items, folder.Id);
+            flyout.Items.Add(new MenuFlyoutSeparator());
             PopulateFavoriteFolderFlyout(flyout.Items, folder.Id);
             btn.Flyout = flyout;
 
             btn.RightTapped += async (s, args) =>
             {
                 var menu = new MenuFlyout();
+                AddFavoriteFolderOpenAllItems(menu.Items, folder.Id);
+                menu.Items.Add(new MenuFlyoutSeparator());
+
+                var renameItem = new MenuFlyoutItem { Text = "重命名" };
+                renameItem.Click += async (_, _) =>
+                {
+                    string name = await PromptFavoriteTextAsync("重命名文件夹", "名称", folder.Name);
+                    if (name != null) await FavoritesManager.Instance.RenameFolderAsync(folder, name);
+                };
+                menu.Items.Add(renameItem);
+
+                var moveMenu = new MenuFlyoutSubItem { Text = "移动到文件夹" };
+                PopulateFavoriteMoveMenu(moveMenu,
+                    parentId => _ = FavoritesManager.Instance.MoveFolderAsync(folder, parentId), folder);
+                menu.Items.Add(moveMenu);
+
+                var manager = FavoritesManager.Instance;
+                var moveUp = new MenuFlyoutItem { Text = "上移", IsEnabled = manager.CanReorderFolder(folder, -1) };
+                moveUp.Click += async (_, _) => await manager.ReorderFolderAsync(folder, -1);
+                menu.Items.Add(moveUp);
+
+                var moveDown = new MenuFlyoutItem { Text = "下移", IsEnabled = manager.CanReorderFolder(folder, 1) };
+                moveDown.Click += async (_, _) => await manager.ReorderFolderAsync(folder, 1);
+                menu.Items.Add(moveDown);
+
+                menu.Items.Add(new MenuFlyoutSeparator());
+
                 var deleteItem = new MenuFlyoutItem { Text = "删除文件夹" };
                 deleteItem.Click += async (_, _) =>
                 {
@@ -3101,10 +3273,23 @@ namespace EdgeRebuild
                         await FavoritesManager.Instance.DeleteFolderAsync(folder);
                 };
                 menu.Items.Add(deleteItem);
+
                 menu.ShowAt(btn, args.GetPosition(btn));
+                args.Handled = true;
             };
 
             return btn;
+        }
+
+        private void AddFavoriteFolderOpenAllItems(IList<MenuFlyoutItemBase> items, int folderId)
+        {
+            var openAll = new MenuFlyoutItem { Text = "打开全部" };
+            openAll.Click += async (_, _) => await OpenFavoriteFolderInTabsAsync(folderId);
+            items.Add(openAll);
+
+            var openAllNew = new MenuFlyoutItem { Text = "在新窗口打开全部" };
+            openAllNew.Click += async (_, _) => await OpenFavoriteFolderInNewWindowAsync(folderId);
+            items.Add(openAllNew);
         }
 
         private void PopulateFavoriteFolderFlyout(IList<MenuFlyoutItemBase> items, int? parentId)
@@ -3122,6 +3307,8 @@ namespace EdgeRebuild
             foreach (var sub in folders)
             {
                 var subItem = new MenuFlyoutSubItem { Text = sub.Name };
+                AddFavoriteFolderOpenAllItems(subItem.Items, sub.Id);
+                subItem.Items.Add(new MenuFlyoutSeparator());
                 PopulateFavoriteFolderFlyout(subItem.Items, sub.Id);
                 items.Add(subItem);
             }
@@ -3131,6 +3318,102 @@ namespace EdgeRebuild
                 item.Click += (_, _) => NavigateFromFavoritesBar(fav.Url);
                 items.Add(item);
             }
+        }
+
+        private List<string> GetFavoriteFolderUrls(int folderId)
+            => FavoritesManager.Instance.GetItemsRecursive(folderId)
+                .Select(f => f.Url)
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .ToList();
+
+        private Task OpenFavoriteFolderInTabsAsync(int folderId)
+            => OpenUrlsInTabsAsync(GetFavoriteFolderUrls(folderId));
+
+        private Task OpenFavoriteFolderInNewWindowAsync(int folderId)
+            => OpenUrlsInNewWindowAsync(GetFavoriteFolderUrls(folderId));
+
+        private async Task OpenUrlsInTabsAsync(IList<string> urls)
+        {
+            if (urls == null || urls.Count == 0)
+            {
+                NotificationService.ShowToast("打开全部", "该文件夹中没有可打开的网页");
+                return;
+            }
+            if (!await ConfirmOpenManyAsync(urls.Count)) return;
+
+            HubSplitView.IsPaneOpen = false;
+            foreach (var url in urls)
+                await _tabManager.CreateTabAsync(_defaultEngine, url);
+        }
+
+        private async Task OpenUrlsInNewWindowAsync(IList<string> urls)
+        {
+            if (urls == null || urls.Count == 0)
+            {
+                NotificationService.ShowToast("打开全部", "该文件夹中没有可打开的网页");
+                return;
+            }
+            if (!await ConfirmOpenManyAsync(urls.Count)) return;
+
+            HubSplitView.IsPaneOpen = false;
+            bool opened = await WindowManager.OpenNewWindowWithUrlsAsync(_defaultEngine, urls);
+            if (!opened)
+                NotificationService.ShowToast("打开全部", "无法创建新窗口");
+        }
+
+        private async Task<bool> ConfirmOpenManyAsync(int count)
+        {
+            if (count <= 10) return true;
+            var dialog = new ContentDialog
+            {
+                Title = "打开全部",
+                Content = $"将打开 {count} 个标签页，是否继续？",
+                PrimaryButtonText = "打开",
+                CloseButtonText = "取消"
+            };
+            PlatformCompat.SetDialogRoot(dialog, this);
+            return await dialog.ShowAsync() == ContentDialogResult.Primary;
+        }
+
+        // ---- 收藏栏溢出滚动 ----
+
+        private void FavoritesBarScrollLeftBtn_Click(object sender, RoutedEventArgs e)
+            => ScrollFavoritesBar(-1);
+
+        private void FavoritesBarScrollRightBtn_Click(object sender, RoutedEventArgs e)
+            => ScrollFavoritesBar(1);
+
+        private void ScrollFavoritesBar(int direction)
+        {
+            if (FavoritesBarScrollViewer == null) return;
+            double step = Math.Max(160, FavoritesBarScrollViewer.ViewportWidth * 0.75);
+            double target = FavoritesBarScrollViewer.HorizontalOffset + direction * step;
+            FavoritesBarScrollViewer.ChangeView(target, null, null, false);
+        }
+
+        private void FavoritesBarScrollViewer_ViewChanged(object sender, ScrollViewerViewChangedEventArgs e)
+            => UpdateFavoritesBarScrollButtons();
+
+        private void FavoritesBarScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateFavoritesBarScrollButtons();
+
+        private void FavoritesBarPanel_SizeChanged(object sender, SizeChangedEventArgs e)
+            => UpdateFavoritesBarScrollButtons();
+
+        private void UpdateFavoritesBarScrollButtons()
+        {
+            if (FavoritesBarScrollViewer == null ||
+                FavoritesBarScrollLeftBtn == null || FavoritesBarScrollRightBtn == null)
+                return;
+
+            double scrollable = FavoritesBarScrollViewer.ScrollableWidth;
+            double offset = FavoritesBarScrollViewer.HorizontalOffset;
+            bool hasOverflow = scrollable > 1;
+
+            FavoritesBarScrollLeftBtn.Visibility = hasOverflow && offset > 1
+                ? Visibility.Visible : Visibility.Collapsed;
+            FavoritesBarScrollRightBtn.Visibility = hasOverflow && offset < scrollable - 1
+                ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void NavigateFromFavoritesBar(string url)
@@ -3484,7 +3767,8 @@ namespace EdgeRebuild
                 string url = item.Tab.CurrentUrl;
                 if (!string.IsNullOrEmpty(url) && url != "about:blank" && !FavoritesManager.Instance.ContainsUrl(url))
                 {
-                    await FavoritesManager.Instance.AddAsync(string.IsNullOrEmpty(item.Tab.Title) ? url : item.Tab.Title, url);
+                    await FavoritesManager.Instance.AddAsync(
+                        string.IsNullOrEmpty(item.Tab.Title) ? url : item.Tab.Title, url, null, item.Tab.FaviconUri);
                     count++;
                 }
             }
@@ -3565,6 +3849,12 @@ namespace EdgeRebuild
             HubSplitView.IsPaneOpen = false;
         }
 
+        private async void HubPane_OpenAllRequested(IList<string> urls)
+            => await OpenUrlsInTabsAsync(urls);
+
+        private async void HubPane_OpenAllInNewWindowRequested(IList<string> urls)
+            => await OpenUrlsInNewWindowAsync(urls);
+
         private void HubPane_CloseRequested()
         {
             HubSplitView.IsPaneOpen = false;
@@ -3581,6 +3871,7 @@ namespace EdgeRebuild
             if (e.Parameter is NewWindowArgs args)
             {
                 _pendingUrl = args.Url;
+                _pendingUrls = args.Urls;
                 _pendingEngine = args.Engine;
                 _defaultEngine = args.Engine;
                 _appWindow = args.AppWindow;

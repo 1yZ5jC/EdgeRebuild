@@ -44,6 +44,7 @@ namespace EdgeRebuild.Controls
         // ---- 收藏编辑面板 ----
         private string _favoriteEditorUrl = "";
         private string _favoriteEditorFallbackTitle = "";
+        private string _favoriteEditorFaviconUrl = "";
         private bool _favoriteEditorBusy;
         private readonly List<int?> _favoriteFolderChoiceIds = new List<int?>();
 
@@ -403,11 +404,12 @@ namespace EdgeRebuild.Controls
         // ---- 收藏编辑面板 ----
 
         /// <summary>在收藏按钮下方打开编辑面板；已收藏时预填名称与位置。</summary>
-        public void ShowFavoriteEditor(string title, string url)
+        public void ShowFavoriteEditor(string title, string url, string faviconUrl = null)
         {
             if (string.IsNullOrWhiteSpace(url) || FavoriteEditFlyout.IsOpen) return;
 
             _favoriteEditorUrl = url;
+            _favoriteEditorFaviconUrl = faviconUrl ?? "";
             var existing = FavoritesManager.Instance.FindByUrl(url);
             _favoriteEditorFallbackTitle = !string.IsNullOrWhiteSpace(existing?.Title)
                 ? existing.Title
@@ -463,7 +465,7 @@ namespace EdgeRebuild.Controls
                 var existing = manager.FindByUrl(_favoriteEditorUrl);
                 if (existing == null)
                 {
-                    await manager.AddAsync(title, _favoriteEditorUrl, folderId);
+                    await manager.AddAsync(title, _favoriteEditorUrl, folderId, _favoriteEditorFaviconUrl);
                 }
                 else
                 {
@@ -471,6 +473,8 @@ namespace EdgeRebuild.Controls
                         await manager.RenameAsync(existing, title);
                     if (existing.FolderId != folderId)
                         await manager.MoveItemAsync(existing, folderId);
+                    if (string.IsNullOrEmpty(existing.FaviconUrl) && !string.IsNullOrEmpty(_favoriteEditorFaviconUrl))
+                        await manager.UpdateFaviconAsync(existing, _favoriteEditorFaviconUrl);
                 }
                 FavoriteEditFlyout.Hide();
             }

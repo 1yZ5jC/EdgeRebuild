@@ -588,7 +588,7 @@ namespace EdgeRebuild.Metro
                 NotificationService.ShowToast("添加到收藏夹", "该网址已在收藏夹中");
                 return;
             }
-            await FavoritesManager.Instance.AddAsync(tab.Title ?? url, url);
+            await FavoritesManager.Instance.AddAsync(tab.Title ?? url, url, null, tab.FaviconUri);
             NotificationService.ShowToast("已添加到收藏夹", tab.Title ?? url);
         }
 

@@ -64,6 +64,14 @@ namespace EdgeRebuild.Core
         public static async Task<bool> OpenNewWindowAsync(EngineType engine, string url)
             => await OpenCoreAsync(engine, url, typeof(MainPage), false, false);
 
+        /// <summary>打开新窗口，并在窗口启动后批量创建标签页。</summary>
+        public static async Task<bool> OpenNewWindowWithUrlsAsync(EngineType engine, IList<string> urls)
+        {
+            var list = urls?.Where(u => !string.IsNullOrWhiteSpace(u)).ToList() ?? new List<string>();
+            string first = list.Count > 0 ? list[0] : "";
+            return await OpenCoreAsync(engine, first, typeof(MainPage), false, false, urls: list);
+        }
+
         public static async Task<bool> OpenInPrivateWindowAsync(EngineType engine, string url)
             => await OpenCoreAsync(engine, url, typeof(MainPage), false, true);
 
@@ -79,7 +87,8 @@ namespace EdgeRebuild.Core
         // ================================================================
 
         private static async Task<bool> OpenCoreAsync(
-            EngineType engine, string url, Type pageType, bool isMetro, bool isInPrivate, int restoreSlot = -1)
+            EngineType engine, string url, Type pageType, bool isMetro, bool isInPrivate, int restoreSlot = -1,
+            IList<string> urls = null)
         {
             try
             {
@@ -90,10 +99,12 @@ namespace EdgeRebuild.Core
                 bool needSlot = participates || pageType == typeof(DemoPage);
                 int slot = (restoreSlot >= 1) ? restoreSlot : AllocateSlot(needSlot);
 
+                var urlList = urls?.Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
                 var args = new NewWindowArgs
                 {
                     Engine = engine,
-                    Url = url,
+                    Url = urlList != null && urlList.Count > 0 ? urlList[0] : url,
+                    Urls = urlList,
                     IsMetro = isMetro,
                     IsInPrivate = isInPrivate,
                     SessionSlot = slot,

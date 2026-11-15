@@ -8,6 +8,9 @@ namespace EdgeRebuild.Core
         public EngineType Engine { get; set; }
         public string Url { get; set; }
 
+        /// <summary>批量打开：新窗口启动时依次建标签的 URL 列表（可为空）。</summary>
+        public System.Collections.Generic.List<string> Urls { get; set; }
+
         /// <summary>
         /// AppWindow 回退模式的句柄（18362+）。类型刻意声明为 object，
         /// 避免 17763 加载本类型时因 AppWindow 不存在而失败；
@@ -57,6 +60,10 @@ namespace EdgeRebuild.Core
 
         public static Task<bool> OpenNewWindowAsync(EngineType engine, string url)
             => NativeWindowManager.OpenNewWindowAsync(engine, url);
+
+        /// <summary>打开新窗口并在其中批量创建标签页。</summary>
+        public static Task<bool> OpenNewWindowWithUrlsAsync(EngineType engine, System.Collections.Generic.IList<string> urls)
+            => NativeWindowManager.OpenNewWindowWithUrlsAsync(engine, urls);
 
         public static Task<bool> OpenInPrivateWindowAsync(EngineType engine, string url)
             => NativeWindowManager.OpenInPrivateWindowAsync(engine, url);

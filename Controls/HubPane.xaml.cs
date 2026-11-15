@@ -15,6 +15,7 @@ using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Imaging;
 
 namespace EdgeRebuild.Controls
 {
@@ -54,6 +55,12 @@ namespace EdgeRebuild.Controls
     public sealed partial class HubPane : UserControl
     {
         public event Action<string> NavigateRequested;
+
+        /// <summary>“打开全部”：由宿主在当前窗口批量创建标签页。</summary>
+        public event Action<IList<string>> OpenAllRequested;
+
+        /// <summary>“在新窗口打开全部”：由宿主创建新窗口并批量建标签。</summary>
+        public event Action<IList<string>> OpenAllInNewWindowRequested;
 
         /// <summary>空状态里的“开始浏览”：由宿主关闭 Hub 并把焦点交回地址栏。</summary>
         public event Action CloseRequested;
@@ -466,6 +473,19 @@ namespace EdgeRebuild.Controls
             RefreshHistory();
         }
 
+        private void FaviconImage_ImageFailed(object sender, ExceptionRoutedEventArgs e)
+        {
+            if (sender is Image image)
+            {
+                image.Visibility = Visibility.Collapsed;
+                if (image.Parent is Grid host)
+                {
+                    var icon = host.Children.OfType<FontIcon>().FirstOrDefault();
+                    if (icon != null) icon.Visibility = Visibility.Visible;
+                }
+            }
+        }
+
         private void FavItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
             var grid = sender as Grid;
@@ -517,6 +537,26 @@ namespace EdgeRebuild.Controls
             };
             menu.Items.Add(copyLinkItem);
 
+            if (string.IsNullOrEmpty(_favoritesSearchFilter))
+            {
+                menu.Items.Add(new MenuFlyoutSeparator());
+                var manager = FavoritesManager.Instance;
+                var moveUpItem = new MenuFlyoutItem { Text = "上移", IsEnabled = manager.CanReorderItem(fav, -1) };
+                moveUpItem.Click += async (s, args) =>
+                {
+                    if (await manager.ReorderItemAsync(fav, -1)) RefreshFavorites();
+                };
+                menu.Items.Add(moveUpItem);
+
+                var moveDownItem = new MenuFlyoutItem { Text = "下移", IsEnabled = manager.CanReorderItem(fav, 1) };
+                moveDownItem.Click += async (s, args) =>
+                {
+                    if (await manager.ReorderItemAsync(fav, 1)) RefreshFavorites();
+                };
+                menu.Items.Add(moveDownItem);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
             var deleteItem = new MenuFlyoutItem { Text = "删除" };
             deleteItem.Click += async (s, args) =>
             {
@@ -528,8 +568,25 @@ namespace EdgeRebuild.Controls
 
         private void BuildFolderMenu(MenuFlyout menu, FavoriteFolder folder)
         {
-            bool hasChildren = FavoritesManager.Instance.GetFolders(folder.Id).Any() ||
-                               FavoritesManager.Instance.GetItems(folder.Id).Any();
+            var manager = FavoritesManager.Instance;
+            var folderUrls = manager.GetItemsRecursive(folder.Id)
+                .Select(f => f.Url)
+                .Where(u => !string.IsNullOrWhiteSpace(u))
+                .ToList();
+            if (folderUrls.Count > 0)
+            {
+                var openAllItem = new MenuFlyoutItem { Text = "打开全部" };
+                openAllItem.Click += (s, args) => OpenAllRequested?.Invoke(folderUrls);
+                menu.Items.Add(openAllItem);
+
+                var openAllNewWindowItem = new MenuFlyoutItem { Text = "在新窗口打开全部" };
+                openAllNewWindowItem.Click += (s, args) => OpenAllInNewWindowRequested?.Invoke(folderUrls);
+                menu.Items.Add(openAllNewWindowItem);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
+
+            bool hasChildren = manager.GetFolders(folder.Id).Any() ||
+                               manager.GetItems(folder.Id).Any();
             if (hasChildren)
             {
                 var toggleItem = new MenuFlyoutItem
@@ -564,6 +621,25 @@ namespace EdgeRebuild.Controls
                     RefreshFavorites();
             };
             menu.Items.Add(moveItem);
+
+            if (string.IsNullOrEmpty(_favoritesSearchFilter))
+            {
+                menu.Items.Add(new MenuFlyoutSeparator());
+                var moveUpItem = new MenuFlyoutItem { Text = "上移", IsEnabled = manager.CanReorderFolder(folder, -1) };
+                moveUpItem.Click += async (s, args) =>
+                {
+                    if (await manager.ReorderFolderAsync(folder, -1)) RefreshFavorites();
+                };
+                menu.Items.Add(moveUpItem);
+
+                var moveDownItem = new MenuFlyoutItem { Text = "下移", IsEnabled = manager.CanReorderFolder(folder, 1) };
+                moveDownItem.Click += async (s, args) =>
+                {
+                    if (await manager.ReorderFolderAsync(folder, 1)) RefreshFavorites();
+                };
+                menu.Items.Add(moveDownItem);
+                menu.Items.Add(new MenuFlyoutSeparator());
+            }
 
             var deleteItem = new MenuFlyoutItem { Text = "删除文件夹" };
             deleteItem.Click += async (s, args) => await DeleteFolderWithConfirmAsync(folder);
@@ -702,6 +778,33 @@ namespace EdgeRebuild.Controls
             int count = FavListView.SelectedItems.Count;
             ManageCountText.Text = count + " 项已选择";
             ManageDeleteBtn.IsEnabled = count > 0;
+            if (ManageMoveBtn != null) ManageMoveBtn.IsEnabled = count > 0;
+        }
+
+        private async void ManageMoveBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var selected = FavListView.SelectedItems.OfType<FavoriteRow>().ToList();
+            if (selected.Count == 0) return;
+
+            int target = await PickFolderAsync("移动所选项目到");
+            if (target < 0) return;
+            int? folderId = target == 0 ? (int?)null : target;
+
+            var items = selected.Where(r => !r.IsFolder).Select(r => r.Item).ToList();
+            var folders = selected.Where(r => r.IsFolder).Select(r => r.Folder).ToList();
+            int moved = 0;
+            if (items.Count > 0)
+                moved += await FavoritesManager.Instance.MoveItemsAsync(items, folderId);
+            if (folders.Count > 0)
+                moved += await FavoritesManager.Instance.MoveFoldersAsync(folders, folderId);
+
+            if (moved == 0)
+                NotificationService.ShowToast("移动收藏", "所选项目无法移动到该位置");
+            else if (folderId.HasValue)
+                _expandedFavoriteFolders.Add(folderId.Value);
+
+            ToggleManageBtn_Click(null, null);
+            RefreshFavorites();
         }
 
         private async void ManageDeleteBtn_Click(object sender, RoutedEventArgs e)
@@ -757,6 +860,7 @@ namespace EdgeRebuild.Controls
             if (root == null) return;
             var chevron = root.FindName("ChevronText") as TextBlock;
             var icon = root.FindName("FavIcon") as FontIcon;
+            var faviconImage = root.FindName("FaviconImage") as Image;
             var titleText = root.FindName("TitleText") as TextBlock;
             var urlText = root.FindName("UrlText") as TextBlock;
             var dateText = root.FindName("DateText") as TextBlock;
@@ -779,6 +883,12 @@ namespace EdgeRebuild.Controls
                 {
                     icon.Glyph = "\uE8B7";
                     icon.Foreground = ForegroundBrush;
+                    icon.Visibility = Visibility.Visible;
+                }
+                if (faviconImage != null)
+                {
+                    faviconImage.Source = null;
+                    faviconImage.Visibility = Visibility.Collapsed;
                 }
                 if (titleText != null)
                 {
@@ -800,6 +910,26 @@ namespace EdgeRebuild.Controls
                 {
                     icon.Glyph = "\uE735";
                     icon.Foreground = _favoriteGoldBrush;
+                    icon.Visibility = Visibility.Visible;
+                }
+                if (faviconImage != null)
+                {
+                    faviconImage.Source = null;
+                    faviconImage.Visibility = Visibility.Collapsed;
+                    if (!string.IsNullOrWhiteSpace(fav.FaviconUrl))
+                    {
+                        try
+                        {
+                            faviconImage.Source = new BitmapImage(new Uri(fav.FaviconUrl));
+                            faviconImage.Visibility = Visibility.Visible;
+                            if (icon != null) icon.Visibility = Visibility.Collapsed;
+                        }
+                        catch
+                        {
+                            faviconImage.Visibility = Visibility.Collapsed;
+                            if (icon != null) icon.Visibility = Visibility.Visible;
+                        }
+                    }
                 }
                 if (titleText != null)
                 {

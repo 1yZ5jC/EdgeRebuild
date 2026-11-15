@@ -278,13 +278,17 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock x:Name="ManageCountText" Text="0 项已选择" FontSize="12"
                                            VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" x:Name="ManageDeleteBtn" Content="删除"
+                                <Button Grid.Column="1" x:Name="ManageMoveBtn" Content="移动到…"
+                                        IsEnabled="False" Click="ManageMoveBtn_Click"
+                                        Margin="0,0,8,0" Padding="10,4" FontSize="12"/>
+                                <Button Grid.Column="2" x:Name="ManageDeleteBtn" Content="删除"
                                         IsEnabled="False" Click="ManageDeleteBtn_Click"
                                         Margin="0,0,8,0" Padding="10,4" FontSize="12"/>
-                                <Button Grid.Column="2" x:Name="ManageCancelBtn" Content="取消"
+                                <Button Grid.Column="3" x:Name="ManageCancelBtn" Content="取消"
                                         Click="ManageCancelBtn_Click" Padding="10,4" FontSize="12"
                                         Background="Transparent" BorderThickness="1" BorderBrush="LightGray"/>
                             </Grid>
@@ -311,9 +315,16 @@
                                         <TextBlock x:Name="ChevronText" FontFamily="Segoe MDL2 Assets"
                                                    FontSize="10" VerticalAlignment="Center"
                                                    Margin="0,0,8,0" Visibility="Collapsed"/>
-                                        <FontIcon x:Name="FavIcon" Grid.Column="1" Glyph="&#xE735;"
-                                                  FontFamily="Segoe MDL2 Assets" FontSize="16"
-                                                  Foreground="Gold" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                        <Grid Grid.Column="1" Width="16" Height="16"
+                                              Margin="0,0,10,0" VerticalAlignment="Center">
+                                            <FontIcon x:Name="FavIcon" Glyph="&#xE735;"
+                                                      FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                                      Foreground="Gold" HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                            <Image x:Name="FaviconImage" Width="16" Height="16"
+                                                   Stretch="UniformToFill" Visibility="Collapsed"
+                                                   ImageFailed="FaviconImage_ImageFailed"/>
+                                        </Grid>
                                         <StackPanel Grid.Column="2" Spacing="3" VerticalAlignment="Center">
                                             <TextBlock x:Name="TitleText" FontWeight="Normal" FontSize="14"
                                                        TextTrimming="CharacterEllipsis"/>

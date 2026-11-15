@@ -77,6 +77,33 @@ namespace EdgeRebuild.Core
                         .ThenBy(f => f.AddedDate)
                         .ToList();
 
+        /// <summary>递归取文件夹子树内的全部书签（先子文件夹、后当前文件夹，与树形顺序一致）。</summary>
+        public List<FavoriteItem> GetItemsRecursive(int? folderId)
+        {
+            var result = new List<FavoriteItem>();
+            CollectItemsRecursive(folderId, result);
+            return result;
+        }
+
+        private void CollectItemsRecursive(int? folderId, List<FavoriteItem> result)
+        {
+            foreach (var folder in GetFolders(folderId))
+                CollectItemsRecursive(folder.Id, result);
+            result.AddRange(GetItems(folderId));
+        }
+
+        private List<FavoriteItem> GetOrderedItems(int? folderId)
+            => Favorites.Where(f => f.FolderId == folderId)
+                        .OrderBy(f => f.SortOrder)
+                        .ThenBy(f => f.AddedDate)
+                        .ToList();
+
+        private List<FavoriteFolder> GetOrderedFolders(int? parentId)
+            => Folders.Where(f => f.ParentId == parentId)
+                      .OrderBy(f => f.SortOrder)
+                      .ThenBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase)
+                      .ToList();
+
         public string GetFolderPath(int? folderId)
             => FavoriteFolderTree.GetPath(BuildNodes(), folderId);
 
@@ -109,13 +136,13 @@ namespace EdgeRebuild.Core
 
         // ---- 书签 CRUD ----
 
-        public async Task AddAsync(string title, string url, int? folderId = null)
+        public async Task AddAsync(string title, string url, int? folderId = null, string faviconUrl = null)
         {
-            await AddItemInternalAsync(title, url, folderId);
+            await AddItemInternalAsync(title, url, folderId, faviconUrl);
             RaiseChanged();
         }
 
-        private async Task<FavoriteItem> AddItemInternalAsync(string title, string url, int? folderId)
+        private async Task<FavoriteItem> AddItemInternalAsync(string title, string url, int? folderId, string faviconUrl = null)
         {
             if (folderId.HasValue && !Folders.Any(f => f.Id == folderId.Value)) folderId = null;
             var item = new FavoriteItem
@@ -124,7 +151,8 @@ namespace EdgeRebuild.Core
                 Url = url,
                 AddedDate = DateTime.Now,
                 FolderId = folderId,
-                SortOrder = NextItemSortOrder(folderId)
+                SortOrder = NextItemSortOrder(folderId),
+                FaviconUrl = faviconUrl
             };
             await Services.DatabaseService.Database.InsertAsync(item);
             lock (_collSync)
@@ -161,6 +189,67 @@ namespace EdgeRebuild.Core
             item.FolderId = folderId;
             item.SortOrder = NextItemSortOrder(folderId);
             await Services.DatabaseService.Database.UpdateAsync(item);
+            RaiseChanged();
+            return true;
+        }
+
+        /// <summary>批量把书签移动到指定文件夹，返回实际移动数。</summary>
+        public async Task<int> MoveItemsAsync(IEnumerable<FavoriteItem> items, int? folderId)
+        {
+            if (folderId.HasValue && !Folders.Any(f => f.Id == folderId.Value)) return 0;
+
+            int moved = 0;
+            foreach (var item in items?.Distinct().ToList() ?? new List<FavoriteItem>())
+            {
+                if (item == null || item.FolderId == folderId) continue;
+                item.FolderId = folderId;
+                item.SortOrder = NextItemSortOrder(folderId);
+                await Services.DatabaseService.Database.UpdateAsync(item);
+                moved++;
+            }
+            if (moved > 0) RaiseChanged();
+            return moved;
+        }
+
+        /// <summary>更新书签的站点图标；仅在图标实际变化时触发 Changed。</summary>
+        public async Task UpdateFaviconAsync(FavoriteItem item, string faviconUrl)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(faviconUrl)) return;
+            if (string.Equals(item.FaviconUrl, faviconUrl, StringComparison.Ordinal)) return;
+            item.FaviconUrl = faviconUrl;
+            await Services.DatabaseService.Database.UpdateAsync(item);
+            RaiseChanged();
+        }
+
+        /// <summary>同级书签能否上移（delta=-1）或下移（delta=1）。</summary>
+        public bool CanReorderItem(FavoriteItem item, int delta)
+        {
+            if (item == null || (delta != -1 && delta != 1)) return false;
+            var siblings = GetOrderedItems(item.FolderId);
+            int index = siblings.IndexOf(item);
+            if (index < 0) return false;
+            int target = index + delta;
+            return target >= 0 && target < siblings.Count;
+        }
+
+        /// <summary>同级书签上移/下移一格，并顺带把同级 SortOrder 规范化为 0..n-1。</summary>
+        public async Task<bool> ReorderItemAsync(FavoriteItem item, int delta)
+        {
+            if (!CanReorderItem(item, delta)) return false;
+
+            var siblings = GetOrderedItems(item.FolderId);
+            int index = siblings.IndexOf(item);
+            int target = index + delta;
+            var other = siblings[target];
+            siblings[index] = other;
+            siblings[target] = item;
+
+            for (int i = 0; i < siblings.Count; i++)
+            {
+                if (siblings[i].SortOrder == i) continue;
+                siblings[i].SortOrder = i;
+                await Services.DatabaseService.Database.UpdateAsync(siblings[i]);
+            }
             RaiseChanged();
             return true;
         }
@@ -211,6 +300,58 @@ namespace EdgeRebuild.Core
             folder.ParentId = newParentId;
             folder.SortOrder = NextFolderSortOrder(newParentId);
             await Services.DatabaseService.Database.UpdateAsync(folder);
+            RaiseChanged();
+            return true;
+        }
+
+        /// <summary>批量移动文件夹；目标位于任一被移动文件夹子树内时跳过该项。</summary>
+        public async Task<int> MoveFoldersAsync(IEnumerable<FavoriteFolder> folders, int? newParentId)
+        {
+            if (newParentId.HasValue && !Folders.Any(f => f.Id == newParentId.Value)) return 0;
+
+            int moved = 0;
+            foreach (var folder in folders?.Distinct().ToList() ?? new List<FavoriteFolder>())
+            {
+                if (folder == null || folder.ParentId == newParentId) continue;
+                if (!CanMoveFolder(folder, newParentId)) continue;
+                folder.ParentId = newParentId;
+                folder.SortOrder = NextFolderSortOrder(newParentId);
+                await Services.DatabaseService.Database.UpdateAsync(folder);
+                moved++;
+            }
+            if (moved > 0) RaiseChanged();
+            return moved;
+        }
+
+        /// <summary>同级文件夹能否上移（delta=-1）或下移（delta=1）。</summary>
+        public bool CanReorderFolder(FavoriteFolder folder, int delta)
+        {
+            if (folder == null || (delta != -1 && delta != 1)) return false;
+            var siblings = GetOrderedFolders(folder.ParentId);
+            int index = siblings.IndexOf(folder);
+            if (index < 0) return false;
+            int target = index + delta;
+            return target >= 0 && target < siblings.Count;
+        }
+
+        /// <summary>同级文件夹上移/下移一格，并顺带把同级 SortOrder 规范化为 0..n-1。</summary>
+        public async Task<bool> ReorderFolderAsync(FavoriteFolder folder, int delta)
+        {
+            if (!CanReorderFolder(folder, delta)) return false;
+
+            var siblings = GetOrderedFolders(folder.ParentId);
+            int index = siblings.IndexOf(folder);
+            int target = index + delta;
+            var other = siblings[target];
+            siblings[index] = other;
+            siblings[target] = folder;
+
+            for (int i = 0; i < siblings.Count; i++)
+            {
+                if (siblings[i].SortOrder == i) continue;
+                siblings[i].SortOrder = i;
+                await Services.DatabaseService.Database.UpdateAsync(siblings[i]);
+            }
             RaiseChanged();
             return true;
         }

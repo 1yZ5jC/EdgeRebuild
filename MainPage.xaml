@@ -414,13 +414,40 @@
         <Border x:Name="FavoritesBar" Grid.Row="3" Grid.Column="1" Visibility="Collapsed"
                 Background="{StaticResource ToolbarAcrylicBrush}" Height="44">
             <Grid>
-                <ScrollViewer HorizontalScrollBarVisibility="Hidden"
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="FavoritesBarScrollLeftBtn" Grid.Column="0"
+                        Content="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        Background="Transparent" BorderThickness="0" Padding="4,0" Width="24"
+                        VerticalAlignment="Stretch" Visibility="Collapsed"
+                        ToolTipService.ToolTip="向左滚动"
+                        AutomationProperties.Name="向左滚动收藏夹栏"
+                        Click="FavoritesBarScrollLeftBtn_Click"/>
+
+                <ScrollViewer x:Name="FavoritesBarScrollViewer" Grid.Column="1"
+                              HorizontalScrollBarVisibility="Hidden"
                               VerticalScrollBarVisibility="Disabled"
                               HorizontalScrollMode="Enabled"
-                              VerticalAlignment="Center">
-                    <StackPanel x:Name="FavoritesBarPanel" Orientation="Horizontal" Margin="12,0"/>
+                              VerticalAlignment="Center"
+                              ViewChanged="FavoritesBarScrollViewer_ViewChanged"
+                              SizeChanged="FavoritesBarScrollViewer_SizeChanged">
+                    <StackPanel x:Name="FavoritesBarPanel" Orientation="Horizontal" Margin="12,0"
+                                SizeChanged="FavoritesBarPanel_SizeChanged"/>
                 </ScrollViewer>
-                <TextBlock x:Name="FavoritesBarEmpty" Text="将网页加入收藏后即可在此栏快速访问"
+
+                <Button x:Name="FavoritesBarScrollRightBtn" Grid.Column="2"
+                        Content="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                        Background="Transparent" BorderThickness="0" Padding="4,0" Width="24"
+                        VerticalAlignment="Stretch" Visibility="Collapsed"
+                        ToolTipService.ToolTip="向右滚动"
+                        AutomationProperties.Name="向右滚动收藏夹栏"
+                        Click="FavoritesBarScrollRightBtn_Click"/>
+
+                <TextBlock x:Name="FavoritesBarEmpty" Grid.Column="1" Text="将网页加入收藏后即可在此栏快速访问"
                            FontSize="12" VerticalAlignment="Center" Margin="14,0"
                            Foreground="{StaticResource MutedForegroundBrush}"
                            IsHitTestVisible="False"/>
@@ -437,6 +464,8 @@
                 <SplitView.Pane>
                     <controls:HubPane x:Name="hubPane"
                                       NavigateRequested="HubPane_NavigateRequested"
+                                      OpenAllRequested="HubPane_OpenAllRequested"
+                                      OpenAllInNewWindowRequested="HubPane_OpenAllInNewWindowRequested"
                                       CloseRequested="HubPane_CloseRequested"
                                       HorizontalAlignment="Stretch"
                                       VerticalAlignment="Stretch"/>
