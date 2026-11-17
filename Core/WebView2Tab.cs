@@ -69,6 +69,7 @@ namespace EdgeRebuild.Core
             + " if (!c && !s && k===27) { send('esc'); return; }"
             + " if (c && s && k===77) { send('hm'); e.preventDefault(); return; }"
             + " if (c && s && k===83) { send('cs'); e.preventDefault(); return; }"
+            + " if (c && s && k===65) { send('qa'); e.preventDefault(); return; }"
             + " if (c && !s && k===84) { send('ct'); e.preventDefault(); return; }"
             + " if (c && !s && k===87) { send('cw'); e.preventDefault(); return; }"
             + " if (c && !s && k===76) { send('cl'); e.preventDefault(); return; }"

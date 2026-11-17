@@ -1,69 +1,108 @@
 ﻿# EdgeRebuild
 
-EdgeRebuild是一个**Vibe Coding**的浏览器外壳项目，旨在提供旧版Edge的风味。
+EdgeRebuild 是一个 **Vibe Coding** 的浏览器外壳项目，目标是复刻旧版 Edge（EdgeHTML / Spartan）与 Metro IE 的风味，同时保留现代 Chromium 内核的可用性。
 
+当前里程碑：**7.8 · R5-1 标签页快速切换**（2026-11-17）
 
-### 我们要做什么
+## 项目概览
 
-构建一个基于 UWP 的双内核浏览器外壳，支持 EdgeHTML（怀旧模式）和 WebView2（现代 Chromium 内核），并提供经典 Edge（Spartan）风格界面。项目目标包括多皮肤、完整复刻经典功能（Hub 中心、阅读视图、Web 笔记等），并逐步实现现代浏览器的常用交互。
+- **平台**：UWP + WinUI 2（Microsoft.UI.Xaml），最低 Windows 10 1809（10.0.17763），目标 SDK 10.0.26100
+- **语言 / 运行时**：C# / .NET 9，Release 使用 NativeAOT 发布
+- **渲染内核**：EdgeHTML（系统旧版 `WebView`）与 WebView2（Chromium）双内核，可在运行时切换
+- **数据**：SQLite（sqlite-net-pcl），保存收藏、历史、会话、下载、稍后读、集锦、搁置标签与设置
 
-### 已经做了什么
+## 功能
 
-#### 核心架构
+### 双内核与标签页
 
-- **双引擎抽象**：定义了 `IBrowserTab` 接口，实现了 `EdgeHtmlTab`（封装 `WebView`）和 `WebView2Tab`（封装 `WebView2`），支持异步导航、事件通知、引擎切换。
-- **引擎切换**：可在运行时切换当前标签的渲染引擎，保留 URL 并重新加载。
-- **标签管理**：完整的标签页系统，包括新建、关闭、拖拽排序、拖出窗口（独立窗口）、右键菜单（新建/刷新/关闭/关闭其他/关闭右侧/移动到新窗口）。
-- **Hub 面板**：右侧滑出面板，包含收藏夹、历史记录、下载管理（WebView2 下载监听）。
-- **地址栏与导航**：输入 URL 自动补全 `https://`，支持前进/后退/刷新。
+- 运行时切换 EdgeHTML / WebView2；地址、前进后退、缩放、查找、阅读模式在双引擎下保持一致。
+- 标签新建 / 关闭 / 重开（Ctrl+Shift+T）、拖拽排序、拖出独立窗口、固定标签、中键关闭；右键菜单支持关闭其他 / 关闭右侧、移动到新窗口、搁置、固定等。
+- 标签悬停缩略图预览、可展开的标签预览带（缩略图行）、垂直标签侧栏。
+- **标签页快速切换**：Ctrl+Shift+A 搜索当前窗口标签的标题 / URL，↑↓ 选择、Enter 跳转、Esc 或点击面板外关闭；焦点在网页内同样可用。
+- 会话恢复：实时快照 + 启动懒加载，只为当前标签初始化引擎，后台标签首次激活时才加载；崩溃后也能恢复。
+- 多窗口：拖出标签 / 菜单新建独立窗口（独立 UI 线程），快捷键带焦点窗口守卫；副窗口不参与主会话快照。
+- InPrivate：独立窗口或当前窗口切换，不记录历史、不保存会话、不提供 Tab Sweep。
+- Tab Sweep（标签中心）：把暂时不看的标签搁置到独立抽屉，按时间分组，可单个 / 全部还原；固定标签、最后一个标签与 InPrivate 不参与；清除浏览数据时一并清空。
 
-#### 交互与菜单
+### 经典 Edge 体验
 
-- **双引擎架构**：运行时切换 EdgeHTML 与 WebView2，支持引擎切换。
-- **完整标签栏**：自定义标签栏，支持新建、关闭（带非线性动画）、拖拽排序（幽灵拖拽）、拖出独立窗口、右键菜单。
-- **Hub 中心**：收藏夹（导入/导出 HTML 书签）、历史记录、下载管理（进度显示、暂停/继续/取消/重试），数据持久化到 SQLite。
-- **工具栏**：地址栏（搜索建议、中/英文域名支持、自动搜索）、导航按钮、收藏按钮、引擎切换。
-- **皮肤系统**：经典 Edge（Spartan）和 Modern IE 双皮肤，动态切换。
-- **设置面板**：外观、下载、引擎、隐私、性能（后台标签挂起开关）、关于。
-- **后台标签挂起**：WebView2 支持自动挂起后台标签以节省内存。
-- **下载管理**：隐蔽下载器统一下载路径，进度实时更新，失败重试，文件删除检测，通知推送。
-- **新窗口拦截**：WebView2 和 EdgeHTML 均拦截 `window.open`/`target="_blank"` 并在新标签页打开。
-- **会话恢复**：标签列表实时快照（防抖写入 SQLite），启动时可选恢复上次会话，崩溃后也能恢复。
-- **真正的多窗口**：拖出标签/菜单"新建窗口"使用 `CoreApplication.CreateNewView` 创建独立窗口（独立 UI 线程），快捷键带窗口守卫，多窗口互不干扰。
-- **阅读模式**：注入 Readability.js 提取正文，双引擎均可进入/退出，经典阅读视图排版。
-- **地址栏搜索建议**：按向下键弹出建议列表，基于历史记录和收藏夹匹配，支持中文域名转 Punycode、自动搜索、HTTPS 降级。
-- **右键菜单**：地址栏右键菜单（复制/粘贴/粘贴并转到/全选/清除），网页内右键菜单，标签右键菜单。
-- **优化细节**：
-  - 地址栏聚焦边框使用系统主题色。
-  - Hub 面板列表项选中样式淡化。
-  - 标签关闭非线性动画。
-  - Fluent Reveal 按钮效果（部分按钮）。
-  - 新建标签后自动聚焦地址栏。
-  - 列表项标题细体、副标题和日期显示。
-  - 地址栏输入法兼容处理（防抖、向下键手动触发建议）。
-  - 拖拽幽灵实现（最终采用延迟提交方案，无闪烁）。
-  - HTTPS 降级：WebView2 和 EdgeHTML 均支持 HTTPS 失败时自动尝试 HTTP。
+- **Hub 中心**：收藏夹、历史记录、稍后读、下载、集锦五个分区，分区内搜索与空状态引导。
+- **收藏夹**：无限层级文件夹、重命名 / 移动 / 递归删除、上移 / 下移、导入 / 导出 Netscape HTML、根级文件夹收藏栏菜单、打开全部 / 在新窗口打开全部；同一 URL 全局唯一，新收藏默认进根目录。
+- 收藏编辑面板（地址栏星标 / Ctrl+D）：改名、选择文件夹、新建子文件夹、删除收藏。
+- **新标签页**：Classic 与 Metro 磁贴两套主页；搜索建议来自历史与收藏；支持收藏磁贴种子。
+- **Metro IE 窗口**：无标签条、标签缩略图网格、磁贴主页，复刻 Win8 / 8.1 IE。
+- 工具栏：地址栏自动补全与搜索、中文域名 / Punycode、HTTPS 失败自动降级、安全状态、引擎切换、缩放、查找栏、网页捕获（截图批注）、大声朗读（TTS）、打印。
+- 皮肤：Spartan / Modern IE 双皮肤，跟随系统浅色 / 深色；动画尊重系统“显示动画”设置，启动与会话恢复阶段不播放。
+- 启动性能：设置一次性缓存、Hub / 设置按需加载、`crash.log` 记录启动计时。
 
-#### 状态与稳定性
+### 阅读与文档
 
-- 所有功能已编译通过并测试可用。
-- 缩放通过 JavaScript 实现，兼容双引擎，避免了 UWP WebView2 缺少 `ZoomFactor` 属性的问题。
-- 清除数据调用 `CookieManager.DeleteAllCookies()`，符合最新 API。
-- EdgeHTML 的自定义右键菜单因 `ScriptNotify` 机制问题最终放弃，采用原生菜单，稳定可靠。
+- **阅读模式**：Readability.js 提取正文，双引擎进入 / 退出，经典阅读排版。
+- **EPUB 阅读器**：EdgeHTML 下通过 `ms-local-stream` 同源加载，目录 / 书签 / 搜索 / 进度 / 状态栏；WebView2 下同样可用。
+- **PDF 阅读器**：WebView2 + pdf.js，单双页 / 连续滚动、适合页面 / 适合宽度、工具栏锁定 / 自动隐藏、紫色批注强调；PDF 始终使用 WebView2。
+- 本地文档：菜单 / 拖放 / 地址栏 `file:///` 或 Windows 路径打开 EPUB / PDF；复制到 `LocalState\contentcache`，重启后可恢复。
+- 阅读会话恢复、EPUB 书签、PDF 批注记忆。
 
-### 马上要做什么
+### 数据与隐私
 
-- 标签固定（Pin Tab）、中键关闭、双击新建标签。
-- 标签关闭按钮预留空间防跳动。
-- 键盘快捷键支持（Ctrl+W、Ctrl+Tab 等）。
-- 窗口最小宽度限制。
-- 动态获取系统按钮宽度替代硬编码右侧预留。
-- Modern IE 皮肤下按钮 Hover 适配。
-- 下载完成 Toast 通知。
-- 地址栏搜索建议的精确匹配优化（收藏/历史权重排序）。
-- MVVM 架构重构，代码解耦。
-- 标签预览缩略图、垂直标签栏模式。
-- 扩展系统（WebExtension 支持）
+- SQLite 持久化：Favorites / FavoriteFolders、History、SessionTabs、SweptTabGroups / SweptTabs、ReadingList、Collections、Downloads、Settings。
+- 清除浏览数据：Cookie / 历史 / 缓存等，并清空 Tab Sweep 分组。
+- Do Not Track 开关：对已初始化的 WebView2 生效，新标签在初始化时统一应用。
+- 后台标签挂起（WebView2）以节省内存与 CPU。
 
+## 技术结构
 
-该项目还处在极早期开发阶段，如有需要可以自行编译。
+```text
+Core/       双引擎标签抽象、TabManager、拖拽 / 右键 / 会话 / 收藏 / 集锦 / 搁置等管理器
+Services/   设置、主题与皮肤、下载、快捷键、平台兼容（1809 / 18362+）、Web 捕获等
+Controls/   工具栏、Hub、设置面板、查找栏、收藏栏等自定义控件
+Metro/      Metro IE 窗口与磁贴主页
+Assets/     新标签页、EPUB / PDF 阅读器、错误页、图标字体与注入脚本
+Themes/     Spartan / Modern IE 皮肤资源
+Tests/      纯逻辑单元测试（xUnit，源码链接共享）
+docs/       路线图、旧版 Edge 设计分析、问题记录
+```
+
+## 构建与运行
+
+### 环境要求
+
+- Windows 10 1809（10.0.17763）或更高
+- Visual Studio（UWP 工作负载 + Windows SDK 10.0.26100）
+- .NET 9 SDK
+- Microsoft Edge WebView2 Runtime（WebView2 内核需要）
+
+### 编译与测试
+
+```powershell
+msbuild EdgeRebuild.csproj /t:Build /p:Configuration=Debug /p:Platform=x86
+dotnet test Tests\EdgeRebuild.CoreTests\EdgeRebuild.CoreTests.csproj
+```
+
+也可以用 Visual Studio 打开 `EdgeRebuild.sln`，选择 `Debug|x86` 部署到本机。项目使用临时测试证书（`EdgeRebuild_TemporaryKey.pfx`），仅供本地调试。
+
+### 发布
+
+Release|x86 使用 NativeAOT（`PublishAot=true`）发布，产物约 11 MB（视依赖与 SDK 版本而定）。不要手动固定 `Microsoft.DotNet.ILCompiler` 或 `RuntimeFrameworkVersion`，版本交给 SDK 成套解析；详见 `docs/roadmap.md` R2-4。
+
+## 已知限制
+
+- EdgeHTML 为系统旧内核，部分现代网站不兼容；可在工具栏切换到 WebView2。
+- PDF 查看器依赖 WebView2 / pdf.js，EdgeHTML 标签会自动使用 WebView2 打开 PDF。
+- 真实 Windows 10 1809 设备回归仍在进行（代码最低目标为 17763）。
+- Tab Sweep 缩略图复用预览缓存；重启后未命中缓存的卡片显示骨架图。
+- 会话快照为单份，副窗口不写入主会话。
+- 双击标签栏空白处新建标签尚未实现。
+
+## 路线图
+
+近期工作与状态见 `docs/roadmap.md`。近期计划：
+
+- R5-4 质量项：图标按钮无障碍名称、Hub 键盘导航、nullable 警告清理、真实 1809 回归复验。
+- R1-1 / R1-2：多窗口回归清单与关闭链观察。
+
+暂缓：PDF 朗读、Sweep 整组重命名 / 共享、经典皮肤、扩展体系、独立 PDF 进程（见 R4-4）。
+
+## 许可
+
+见 `LICENSE.txt`。

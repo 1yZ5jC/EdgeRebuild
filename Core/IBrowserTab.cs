@@ -9,7 +9,7 @@ namespace EdgeRebuild.Core
     public enum PageShortcutKey
     {
         Find, FindNext, FindPrevious, CloseFind, HighlightMark, WebCapture,
-        NewTab, CloseTab, FocusUrl, ToggleFullscreen   // 浏览器级快捷键（Metro/主窗口共用桥）
+        NewTab, CloseTab, FocusUrl, ToggleFullscreen, QuickSwitch   // 浏览器级快捷键（Metro/主窗口共用桥）
     }
 
     /// <summary>
@@ -33,6 +33,7 @@ namespace EdgeRebuild.Core
                 case "ct": return PageShortcutKey.NewTab;              // Ctrl+T
                 case "cw": return PageShortcutKey.CloseTab;            // Ctrl+W
                 case "cl": return PageShortcutKey.FocusUrl;            // Ctrl+L
+                case "qa": return PageShortcutKey.QuickSwitch;          // Ctrl+Shift+A
                 case "f11": return PageShortcutKey.ToggleFullscreen;   // F11
                 default: return null;
             }

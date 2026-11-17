@@ -88,7 +88,8 @@ namespace EdgeRebuild
         private Action _shortcutNewTab, _shortcutCloseTab, _shortcutReopenTab, _shortcutFocusAddressBar,
             _shortcutRefresh, _shortcutAddFavorite, _shortcutShowHistory, _shortcutShowDownloads,
             _shortcutFind, _shortcutFindNext, _shortcutFindPrevious, _shortcutCloseFind,
-            _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab, _shortcutHighlightMark, _shortcutWebCapture;
+            _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab, _shortcutHighlightMark, _shortcutWebCapture,
+            _shortcutQuickSwitch;
         private Action<int> _shortcutSwitchToTab;
         private Action<PageShortcutKey> _shortcutPageKey;
 
@@ -219,8 +220,11 @@ namespace EdgeRebuild
             _previewStripRefreshTimer?.Stop();
             _previewStripRefreshQueue.Clear();
             if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
+            _isQuickSwitchOpen = false;
+            if (_quickSwitchPopup != null) _quickSwitchPopup.IsOpen = false;
             ShortcutManager.OnHighlightMark -= _shortcutHighlightMark;
             ShortcutManager.OnWebCapture -= _shortcutWebCapture;
+            ShortcutManager.OnQuickSwitchTabs -= _shortcutQuickSwitch;
             WindowManager.SlotActivated -= OnSlotActivated;
             this.KeyDown -= OnWindowKeyDown;
             this.KeyUp -= OnWindowKeyUp;
@@ -592,6 +596,11 @@ namespace EdgeRebuild
                     if (!IsFocusedWindow()) return;
                     _ = WebCaptureCurrentAsync();
                 };
+                _shortcutQuickSwitch = () =>
+                {
+                    if (!IsFocusedWindow()) return;
+                    OpenQuickSwitch();
+                };
                 _shortcutNextTab = () =>
                 {
                     if (!IsFocusedWindow()) return;
@@ -626,6 +635,7 @@ namespace EdgeRebuild
                 ShortcutManager.OnPrint += _shortcutPrint;
                 ShortcutManager.OnHighlightMark += _shortcutHighlightMark;
                 ShortcutManager.OnWebCapture += _shortcutWebCapture;
+                ShortcutManager.OnQuickSwitchTabs += _shortcutQuickSwitch;
                 ShortcutManager.OnNextTab += _shortcutNextTab;
                 ShortcutManager.OnPreviousTab += _shortcutPreviousTab;
                 ShortcutManager.OnSwitchToTab += _shortcutSwitchToTab;
@@ -748,6 +758,9 @@ namespace EdgeRebuild
                     }
                 case PageShortcutKey.FocusUrl:
                     toolbarControl.FocusAddressBarAndClear();
+                    break;
+                case PageShortcutKey.QuickSwitch:
+                    OpenQuickSwitch();
                     break;
                     // 主窗口无全屏模式，忽略
             }
@@ -1281,6 +1294,8 @@ namespace EdgeRebuild
 
         private void OnTabManagerTabChanged(TabViewItem viewItem)
         {
+            // 快速切换面板打开期间若因快捷键切换了标签（如 Ctrl+Tab），关闭面板避免列表过期
+            if (_isQuickSwitchOpen) CloseQuickSwitch(focusContent: false);
             var tab = viewItem.Tab;
             // 懒恢复标签在首次导航前还没有真实 URL，先用会话兜底地址更新地址栏
             string currentUrl = !string.IsNullOrEmpty(tab.CurrentUrl)
@@ -1485,6 +1500,20 @@ namespace EdgeRebuild
         // 预览带一次最多同时捕获 2 个标签，避免 x86 进程瞬间分配多张全尺寸位图
         private readonly SemaphoreSlim _previewStripCaptureGate = new SemaphoreSlim(2);
 
+        // ---- 标签页快速切换（Ctrl+Shift+A）----
+        private Windows.UI.Xaml.Controls.Primitives.Popup _quickSwitchPopup;
+        private Grid _quickSwitchOverlay;
+        private Border _quickSwitchPanel;
+        private TextBox _quickSwitchBox;
+        private ListView _quickSwitchList;
+        private TextBlock _quickSwitchHint;
+        private TextBlock _quickSwitchEmpty;
+        private FontIcon _quickSwitchGlyph;
+        private Border _quickSwitchSeparator;
+        private bool _isQuickSwitchOpen;
+        private bool _quickSwitchComposing;   // 输入法组词期间不拦截方向键/回车
+        private readonly List<TabViewItem> _quickSwitchMatches = new List<TabViewItem>();
+
         // ---- 标签预览带（常驻展开的缩略图行） ----
         private const double PreviewStripHeight = 120;
         private bool _isPreviewStripOpen;
@@ -1617,6 +1646,9 @@ namespace EdgeRebuild
 
         private async Task ShowTabPreviewAsync()
         {
+            // 快速切换面板打开时不再弹出悬停预览，避免预览卡盖住搜索面板
+            if (_isQuickSwitchOpen) return;
+
             var target = _tabPreviewTarget;
             if (target == null || target.Container == null || !_tabManager.Tabs.Contains(target)) return;
             PlatformCompat.SetPopupRoot(_tabPreviewPopup, this);
@@ -1944,7 +1976,10 @@ namespace EdgeRebuild
         }
 
         private void ContentHost_SizeChanged(object sender, SizeChangedEventArgs e)
-            => UpdateSweptPaneWidth();
+        {
+            UpdateSweptPaneWidth();
+            if (_isQuickSwitchOpen) PositionQuickSwitchOverlay();
+        }
 
         private void UpdateSweptPaneWidth()
         {
@@ -2444,6 +2479,398 @@ namespace EdgeRebuild
                 _ = _tabManager.SwitchToTabAsync(tabs[index]);
         }
 
+        // ---- 标签页快速切换（Ctrl+Shift+A）----
+        /// <summary>
+        /// 弹出居中的搜索面板：按标题/URL 过滤当前窗口标签，↑↓ 选择、Enter 切换、Esc 关闭。
+        /// 使用 Popup 承载，避免 EdgeHTML WebView 的 airspace 覆盖层问题；不新增常驻标签栏 UI。
+        /// </summary>
+        private void OpenQuickSwitch()
+        {
+            if (_tabManager == null || _tabManager.TabCount == 0) return;
+            if (_quickSwitchPopup == null) BuildQuickSwitchPopup();
+
+            if (_isQuickSwitchOpen)
+            {
+                _quickSwitchBox.Focus(FocusState.Programmatic);
+                _quickSwitchBox.SelectAll();
+                return;
+            }
+
+            // 关闭会与弹出层争抢视觉焦点的临时浮层；Hub/设置面板也会挡住切换结果
+            if (_tabPreviewPopup != null) _tabPreviewPopup.IsOpen = false;
+            if (_isSweptPaneOpen) CloseSweptTabsPane();
+            HubSplitView.IsPaneOpen = false;
+            SettingsSplitView.IsPaneOpen = false;
+
+            _isQuickSwitchOpen = true;
+            _quickSwitchComposing = false;
+            PositionQuickSwitchOverlay();
+            _quickSwitchBox.Text = string.Empty;
+            RebuildQuickSwitchList(string.Empty);
+            PlatformCompat.SetPopupRoot(_quickSwitchPopup, this);
+            _quickSwitchPopup.IsOpen = true;
+            AnimateQuickSwitchEntrance();
+
+            _ = Dispatcher.RunAsync(CoreDispatcherPriority.Low, () =>
+            {
+                if (!_isQuickSwitchOpen) return;
+                _quickSwitchBox.Focus(FocusState.Programmatic);
+                _quickSwitchBox.SelectAll();
+                // 初始选中项可能在列表可视区外（当前标签靠后），打开后补一次滚动
+                if (_quickSwitchList.SelectedItem != null)
+                    _quickSwitchList.ScrollIntoView(_quickSwitchList.SelectedItem);
+            });
+        }
+
+        private void CloseQuickSwitch(bool focusContent = true)
+        {
+            if (!_isQuickSwitchOpen) return;
+            _isQuickSwitchOpen = false;
+            _quickSwitchComposing = false;
+            if (_quickSwitchPopup != null) _quickSwitchPopup.IsOpen = false;
+            if (focusContent) SetFocusToCurrentTabContent();
+        }
+
+        private void BuildQuickSwitchPopup()
+        {
+            var colors = ThemeManager.Colors;
+
+            _quickSwitchOverlay = new Grid
+            {
+                Background = new SolidColorBrush(Color.FromArgb(
+                    ThemeManager.IsDarkTheme ? (byte)0x50 : (byte)0x1E, 0, 0, 0))
+            };
+            var dismissLayer = new Windows.UI.Xaml.Shapes.Rectangle
+            {
+                Fill = new SolidColorBrush(Colors.Transparent)
+            };
+            dismissLayer.Tapped += (s, e) =>
+            {
+                CloseQuickSwitch();
+                e.Handled = true;
+            };
+            _quickSwitchOverlay.Children.Add(dismissLayer);
+
+            _quickSwitchPanel = new Border
+            {
+                Width = 560,
+                MaxHeight = 440,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 96, 0, 0),
+                Background = colors?.ToolbarBackground ?? new SolidColorBrush(Colors.White),
+                BorderBrush = colors?.MutedForegroundBrush ?? new SolidColorBrush(Colors.Gray),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(2),
+                Padding = new Thickness(0, 4, 0, 4)
+            };
+
+            var stack = new StackPanel();
+
+            var header = new Grid();
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            _quickSwitchGlyph = new FontIcon
+            {
+                Glyph = "\uE721",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 14,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(14, 0, 6, 0),
+                Foreground = colors?.MutedForegroundBrush ?? new SolidColorBrush(Colors.Gray)
+            };
+            Grid.SetColumn(_quickSwitchGlyph, 0);
+            header.Children.Add(_quickSwitchGlyph);
+
+            _quickSwitchBox = new TextBox
+            {
+                PlaceholderText = "搜索标签页（标题或网址）",
+                BorderThickness = new Thickness(0),
+                Background = new SolidColorBrush(Colors.Transparent),
+                FontSize = 15,
+                Height = 40,
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            _quickSwitchBox.TextChanged += QuickSwitchBox_TextChanged;
+            _quickSwitchBox.KeyDown += QuickSwitchBox_KeyDown;
+            _quickSwitchBox.TextCompositionStarted += (s, e) => _quickSwitchComposing = true;
+            _quickSwitchBox.TextCompositionEnded += (s, e) => _quickSwitchComposing = false;
+            AutomationProperties.SetName(_quickSwitchBox, "搜索标签页");
+            Grid.SetColumn(_quickSwitchBox, 1);
+            header.Children.Add(_quickSwitchBox);
+            stack.Children.Add(header);
+
+            _quickSwitchSeparator = new Border
+            {
+                Height = 1,
+                Background = colors?.SeparatorBrush ?? new SolidColorBrush(Colors.LightGray)
+            };
+            stack.Children.Add(_quickSwitchSeparator);
+
+            _quickSwitchList = new ListView
+            {
+                SelectionMode = ListViewSelectionMode.Single,
+                IsItemClickEnabled = true,
+                MaxHeight = 320,
+                Background = new SolidColorBrush(Colors.Transparent),
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
+                Margin = new Thickness(0, 2, 0, 0)
+            };
+            var itemStyle = new Style(typeof(ListViewItem));
+            itemStyle.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, 46.0));
+            itemStyle.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0)));
+            itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10, 2, 10, 2)));
+            itemStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
+            _quickSwitchList.ItemContainerStyle = itemStyle;
+            _quickSwitchList.ItemClick += QuickSwitchList_ItemClick;
+            _quickSwitchList.KeyDown += QuickSwitchList_KeyDown;
+            AutomationProperties.SetName(_quickSwitchList, "标签页搜索结果");
+            stack.Children.Add(_quickSwitchList);
+
+            _quickSwitchEmpty = new TextBlock
+            {
+                Text = "没有匹配的标签页",
+                FontSize = 12,
+                Margin = new Thickness(14, 14, 14, 14),
+                Foreground = colors?.MutedForegroundBrush ?? new SolidColorBrush(Colors.Gray),
+                Visibility = Visibility.Collapsed
+            };
+            stack.Children.Add(_quickSwitchEmpty);
+
+            _quickSwitchHint = new TextBlock
+            {
+                Text = "↑↓ 选择 · Enter 切换 · Esc 关闭",
+                FontSize = 11,
+                Margin = new Thickness(14, 6, 14, 6),
+                Foreground = colors?.MutedForegroundBrush ?? new SolidColorBrush(Colors.Gray)
+            };
+            stack.Children.Add(_quickSwitchHint);
+
+            _quickSwitchPanel.Child = stack;
+            _quickSwitchOverlay.Children.Add(_quickSwitchPanel);
+
+            _quickSwitchPopup = new Windows.UI.Xaml.Controls.Primitives.Popup
+            {
+                IsLightDismissEnabled = false,
+                Child = _quickSwitchOverlay
+            };
+            PlatformCompat.SetPopupRoot(_quickSwitchPopup, this);
+        }
+
+        private void PositionQuickSwitchOverlay()
+        {
+            if (_quickSwitchOverlay == null || _quickSwitchPanel == null) return;
+            var size = PlatformCompat.GetWindowSize(this);
+            _quickSwitchOverlay.Width = Math.Max(320, size.Width);
+            _quickSwitchOverlay.Height = Math.Max(240, size.Height);
+            _quickSwitchPanel.Width = Math.Min(560, Math.Max(300, size.Width - 80));
+        }
+
+        private void AnimateQuickSwitchEntrance()
+        {
+            if (_quickSwitchPanel == null) return;
+            if (!_uiSettings.AnimationsEnabled)
+            {
+                _quickSwitchPanel.Opacity = 1;
+                return;
+            }
+            var transform = _quickSwitchPanel.RenderTransform as CompositeTransform;
+            if (transform == null)
+            {
+                transform = new CompositeTransform();
+                _quickSwitchPanel.RenderTransform = transform;
+            }
+            _quickSwitchPanel.Opacity = 0;
+            transform.TranslateY = -6;
+
+            var sb = new Storyboard();
+            var fade = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(120),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(fade, _quickSwitchPanel);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+
+            var slide = new DoubleAnimation
+            {
+                From = -6,
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(120),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(slide, transform);
+            Storyboard.SetTargetProperty(slide, "TranslateY");
+
+            sb.Children.Add(fade);
+            sb.Children.Add(slide);
+            sb.Begin();
+        }
+
+        private void QuickSwitchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (!_isQuickSwitchOpen) return;
+            RebuildQuickSwitchList(_quickSwitchBox.Text);
+        }
+
+        private void QuickSwitchBox_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            // 输入法组词时方向键用于选择候选、回车用于上屏，交给 IME 处理
+            if (_quickSwitchComposing) return;
+
+            switch (e.Key)
+            {
+                case VirtualKey.Escape:
+                    CloseQuickSwitch();
+                    e.Handled = true;
+                    break;
+                case VirtualKey.Up:
+                    MoveQuickSwitchSelection(-1);
+                    e.Handled = true;
+                    break;
+                case VirtualKey.Down:
+                    MoveQuickSwitchSelection(1);
+                    e.Handled = true;
+                    break;
+                case VirtualKey.Enter:
+                    _ = ActivateQuickSwitchSelectionAsync();
+                    e.Handled = true;
+                    break;
+            }
+        }
+
+        private void QuickSwitchList_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == VirtualKey.Escape)
+            {
+                CloseQuickSwitch();
+                e.Handled = true;
+            }
+            else if (e.Key == VirtualKey.Enter)
+            {
+                _ = ActivateQuickSwitchSelectionAsync();
+                e.Handled = true;
+            }
+        }
+
+        private void QuickSwitchList_ItemClick(object sender, ItemClickEventArgs e)
+        {
+            var target = (e.ClickedItem as Grid)?.Tag as TabViewItem;
+            _ = ActivateQuickSwitchTabAsync(target);
+        }
+
+        private void MoveQuickSwitchSelection(int delta)
+        {
+            int count = _quickSwitchList?.Items.Count ?? 0;
+            if (count == 0) return;
+            int index = _quickSwitchList.SelectedIndex;
+            index = index < 0 ? 0 : (index + delta + count) % count;
+            _quickSwitchList.SelectedIndex = index;
+            _quickSwitchList.ScrollIntoView(_quickSwitchList.Items[index]);
+        }
+
+        private Task ActivateQuickSwitchSelectionAsync()
+        {
+            var target = (_quickSwitchList?.SelectedItem as Grid)?.Tag as TabViewItem;
+            if (target == null && _quickSwitchMatches.Count > 0)
+                target = _quickSwitchMatches[0];
+            // 无匹配项时回车不关闭面板，避免用户误以为切换成功
+            if (target == null) return Task.CompletedTask;
+            return ActivateQuickSwitchTabAsync(target);
+        }
+
+        private async Task ActivateQuickSwitchTabAsync(TabViewItem target)
+        {
+            CloseQuickSwitch(focusContent: false);
+            if (target == null || _tabManager == null || !_tabManager.Tabs.Contains(target)) return;
+            await _tabManager.SwitchToTabAsync(target);
+            UpdateTabLayout();
+            SetFocusToCurrentTabContent();
+        }
+
+        private void RebuildQuickSwitchList(string query)
+        {
+            if (_quickSwitchList == null || _tabManager == null) return;
+
+            query = (query ?? string.Empty).Trim();
+            var colors = ThemeManager.Colors;
+            var foreground = colors?.ForegroundBrush ?? new SolidColorBrush(Colors.Black);
+            var muted = colors?.MutedForegroundBrush ?? new SolidColorBrush(Colors.Gray);
+
+            _quickSwitchMatches.Clear();
+            _quickSwitchList.Items.Clear();
+
+            foreach (var item in _tabManager.Tabs)
+            {
+                string url = !string.IsNullOrEmpty(item.Tab.CurrentUrl)
+                    ? item.Tab.CurrentUrl
+                    : (item.FallbackUrl ?? "");
+                string title = !string.IsNullOrEmpty(item.Tab.Title)
+                    ? item.Tab.Title
+                    : (!string.IsNullOrEmpty(item.FallbackTitle)
+                        ? item.FallbackTitle
+                        : (string.IsNullOrEmpty(url) ? "新标签页" : url));
+
+                if (query.Length > 0
+                    && title.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0
+                    && url.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                bool isCurrent = item.Tab == _tabManager.CurrentTab;
+                var row = new Grid
+                {
+                    Padding = new Thickness(4, 3, 4, 3),
+                    Tag = item
+                };
+                row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var titleBlock = new TextBlock
+                {
+                    Text = isCurrent ? title + "（当前）" : title,
+                    FontSize = 14,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = foreground
+                };
+                var urlBlock = new TextBlock
+                {
+                    Text = url,
+                    FontSize = 11,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Foreground = muted,
+                    Margin = new Thickness(0, 1, 0, 0)
+                };
+                Grid.SetRow(urlBlock, 1);
+                row.Children.Add(titleBlock);
+                row.Children.Add(urlBlock);
+
+                _quickSwitchMatches.Add(item);
+                _quickSwitchList.Items.Add(row);
+            }
+
+            bool empty = _quickSwitchMatches.Count == 0;
+            _quickSwitchList.Visibility = empty ? Visibility.Collapsed : Visibility.Visible;
+            if (_quickSwitchEmpty != null)
+                _quickSwitchEmpty.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+
+            if (empty)
+            {
+                _quickSwitchList.SelectedIndex = -1;
+                return;
+            }
+
+            int currentIndex = _quickSwitchMatches.FindIndex(t => t.Tab == _tabManager.CurrentTab);
+            _quickSwitchList.SelectedIndex = currentIndex >= 0 ? currentIndex : 0;
+            _quickSwitchList.ScrollIntoView(_quickSwitchList.Items[_quickSwitchList.SelectedIndex]);
+        }
+
         // ---- 布局更新 ----
         private void OnLayoutUpdated()
         {
@@ -2721,6 +3148,22 @@ namespace EdgeRebuild
             FindPrevBtn.Foreground = colors.ForegroundBrush;
             FindNextBtn.Foreground = colors.ForegroundBrush;
             FindCloseBtn.Foreground = colors.ForegroundBrush;
+
+            // 标签页快速切换浮层：与工具栏/查找栏同主题；打开时重建列表以应用新文字色
+            if (_quickSwitchPanel != null)
+            {
+                _quickSwitchPanel.Background = colors.ToolbarBackground;
+                _quickSwitchPanel.BorderBrush = colors.MutedForegroundBrush;
+                _quickSwitchOverlay.Background = new SolidColorBrush(Color.FromArgb(
+                    isDark ? (byte)0x50 : (byte)0x1E, 0, 0, 0));
+                _quickSwitchGlyph.Foreground = colors.MutedForegroundBrush;
+                _quickSwitchBox.Foreground = colors.ForegroundBrush;
+                _quickSwitchSeparator.Background = colors.SeparatorBrush;
+                _quickSwitchHint.Foreground = colors.MutedForegroundBrush;
+                _quickSwitchEmpty.Foreground = colors.MutedForegroundBrush;
+                if (_isQuickSwitchOpen)
+                    RebuildQuickSwitchList(_quickSwitchBox.Text);
+            }
 
             ApplyPreviewStripTheme();
 
