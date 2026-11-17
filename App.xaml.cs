@@ -52,6 +52,10 @@ namespace EdgeRebuild
                 $"HasXamlRoot={PlatformCompat.HasXamlRoot} HasAppWindow={PlatformCompat.HasAppWindow} " +
                 $"调试开关={DebugOptions.ForceLegacyWindowMode} OS={Environment.OSVersion.VersionString}");
 
+            // 启动阶段计时：先量出 DB/设置/数据/主题/导航各占多少，再决定是否上
+            // “会话标签懒加载”这类大改动。日志保留在 crash.log，便于 Release 对比。
+            var startupSw = System.Diagnostics.Stopwatch.StartNew();
+
             // 真·多视图前提：禁用系统视图激活策略。打包应用默认由系统接管视图激活，
             // 此时 TryShowAsStandaloneAsync 的展示请求不会真正上屏（实测：调用挂起、
             // 副视图永不显示）。必须在任何窗口创建之前调用。
@@ -112,6 +116,25 @@ namespace EdgeRebuild
                         Application.Current.Exit();
                         return;
                     }
+                    Services.Diagnostics.Log($"[启动计时] DB初始化={startupSw.ElapsedMilliseconds}ms");
+                    startupSw.Restart();
+
+                    // 设置一次性读入内存：后续 SettingsPane/Toolbar/标签 DoNotTrack 查询
+                    // 全部走缓存，不再逐项访问 SQLite。
+                    try { await SettingsManager.InitializeAsync(); }
+                    catch (Exception ex) { Services.Diagnostics.Log($"[启动] 设置缓存加载失败（已降级）: {ex.Message}"); }
+                    Services.Diagnostics.Log($"[启动计时] 设置缓存={startupSw.ElapsedMilliseconds}ms");
+                    startupSw.Restart();
+
+                    // 下载目录设置必须在首次 LoadDownloadsAsync 之前生效，否则启动时会
+                    // 先按默认目录探测一次，MainPage 再按自定义目录探测一次。
+                    try
+                    {
+                        string downloadPath = SettingsManager.GetCached("DownloadFolder");
+                        if (!string.IsNullOrEmpty(downloadPath))
+                            DownloadManager.SetCustomDownloadPath(downloadPath);
+                    }
+                    catch { }
 
                     // ---- Phase 2：恢复数据源加载（收藏/稍后读/历史/下载/集锦）----
                     // MainPage 未参与启动，但 Demo 页的标签条右键、后续收藏夹栏都要读这些表；
@@ -128,13 +151,20 @@ namespace EdgeRebuild
                         try { await load(); }
                         catch (Exception ex) { Services.Diagnostics.Log($"[启动] {name}加载失败（已降级）: {ex.Message}"); }
                     }
+                    Services.Diagnostics.Log($"[启动计时] 数据加载={startupSw.ElapsedMilliseconds}ms");
+                    startupSw.Restart();
+
                     ThemeManager.Initialize();
+                    Services.Diagnostics.Log($"[启动计时] 主题={startupSw.ElapsedMilliseconds}ms");
+                    startupSw.Restart();
 
                     // 启动页 = 浏览器主窗 MainPage（slot=0）：
                     // OnNavigatedTo 里走主窗口分支 → 恢复 slot=0 会话 →
                     // RestoreSecondaryWindowsAsync 按持久化槽位重建副窗口。
                     // 多窗口测试页 DemoPage 由菜单「打开多窗口测试页」经 WindowManager 进入。
                     rootFrame.Navigate(typeof(MainPage), e.Arguments);
+                    Services.Diagnostics.Log($"[启动计时] MainPage导航={startupSw.ElapsedMilliseconds}ms");
+                    startupSw.Restart();
                 }
                 // 主窗口（slot=0）不经 NativeWindowManager.RegisterWindow，
                 // 关闭时不会有任何 [NativeWM] 窗口关闭 日志——这里补一条，
@@ -142,6 +172,7 @@ namespace EdgeRebuild
                 Window.Current.Closed += (s, a) =>
                     Services.Diagnostics.Log("[App] 主窗口 Closed（slot=0 未注册，进程随后退出属正常）");
                 Window.Current.Activate();
+                Services.Diagnostics.Log($"[启动计时] 激活完成={startupSw.ElapsedMilliseconds}ms");
             }
         }
 

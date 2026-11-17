@@ -61,6 +61,8 @@ namespace EdgeRebuild
 
         // ---- 收藏夹栏状态 ----
         private bool _favoritesBarVisible;
+        private Storyboard _favoritesBarStoryboard;
+        private bool _suppressFavoritesBarAnimation = true;   // 启动时不播放展开动画
 
         // ---- 阅读模式：tab -> 原始 URL ----
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
@@ -78,6 +80,7 @@ namespace EdgeRebuild
         private int _pendingSessionSlot;   // OnNavigatedTo 暂存，OnLoaded 使用
         private int _sessionSlot;    // 本窗口会话槽位（0=主窗口；副窗由 WindowManager 分配）
         private int _restoreSlot = -1;   // >=1：本窗口是启动恢复重建的槽位窗口
+        private bool _isRestoringSession;   // 会话懒恢复中：不自动切换标签、不抢焦点
 
         private void OnSlotActivated(int slot) => _windowActive = (slot == _sessionSlot);
 
@@ -420,8 +423,9 @@ namespace EdgeRebuild
                     DownloadManager.SetCustomDownloadPath(downloadPath);
                 }
 
+                // 自定义路径可能刚变更：先刷新系统目录探测结果，再确保下载记录已加载。
                 await DownloadManager.UpdateSystemDownloadFolderAccessAsync();
-                await DownloadManager.LoadDownloadsAsync();
+                await DownloadManager.EnsureLoadedAsync();
 
                 DownloadManager.DownloadProgressChanged += OnDownloadProgress;
                 DownloadManager.DownloadStatusChanged += OnDownloadStatusChanged;
@@ -432,10 +436,12 @@ namespace EdgeRebuild
                 // ---- 收藏夹栏(参考规范 §6.1:工具栏下方常驻行)----
                 string favBarSetting = await SettingsManager.GetAsync("ShowFavoritesBar") ?? "False";
                 ShowFavoritesBar(favBarSetting == "True" || favBarSetting == "true");
+                _suppressFavoritesBarAnimation = false;
                 FavoritesManager.Instance.Changed += OnFavoritesChanged;
-                RefreshFavoritesBar();
+                // 收藏栏内容已由 ApplyTheme() 中的 RefreshFavoritesBar() 建好，这里不再重复构建。
 
                 // ---- 创建首页标签 / 恢复会话 ----
+                var restoreSw = System.Diagnostics.Stopwatch.StartNew();
                 string homeUrl = await SettingsManager.GetAsync("HomePage") ?? "about:blank";
                 if (_tabManager.TabCount == 0)
                 {
@@ -443,12 +449,7 @@ namespace EdgeRebuild
                     {
                         // 启动恢复重建的副窗口：读取本槽位记录，不落主页兜底
                         var slotTabs = await SessionManager.LoadTabsAsync(_restoreSlot);
-                        foreach (var rec in slotTabs)
-                        {
-                            if (string.IsNullOrEmpty(rec.Url)) continue;
-                            EngineType engine = (rec.Engine == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
-                            await _tabManager.CreateTabAsync(engine, rec.Url, rec.IsPinned);
-                        }
+                        await RestoreSessionTabsAsync(slotTabs);
                         if (_tabManager.TabCount == 0)
                             await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);   // 空槽兜底
                     }
@@ -472,24 +473,18 @@ namespace EdgeRebuild
                         var sessionTabs = _isInPrivate ? new List<SessionTabRecord>() : await SessionManager.LoadTabsAsync(0);
 
                         if (restoreSession && sessionTabs.Count > 0)
-                        {
-                            foreach (var rec in sessionTabs)
-                            {
-                                if (string.IsNullOrEmpty(rec.Url)) continue;
-                                EngineType engine = (rec.Engine == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
-                                await _tabManager.CreateTabAsync(engine, rec.Url, rec.IsPinned);
-                            }
-                        }
-                        else
-                        {
+                            await RestoreSessionTabsAsync(sessionTabs);
+
+                        if (_tabManager.TabCount == 0)
                             await _tabManager.CreateTabAsync(_defaultEngine, homeUrl);
-                        }
 
                         // 主窗口标签恢复完毕 → 按持久化槽位重建上次的副主窗口
                         if (!_isInPrivate && restoreSession && !_isNewWindow)
                             _ = WindowManager.RestoreSecondaryWindowsAsync();
                     }
                 }
+                Services.Diagnostics.Log(
+                    $"[启动计时] 会话标签恢复 slot={_sessionSlot} 标签数={_tabManager.TabCount} 耗时={restoreSw.ElapsedMilliseconds}ms");
 
                 // ---- 恢复垂直标签栏状态 ----
                 try
@@ -536,7 +531,7 @@ namespace EdgeRebuild
                 _shortcutRefresh = () =>
                 {
                     if (!IsFocusedWindow()) return;
-                    _ = _tabManager.CurrentTab?.RefreshAsync();
+                    _ = ReloadCurrentTabAsync();
                 };
                 _shortcutAddFavorite = () =>
                 {
@@ -671,6 +666,45 @@ namespace EdgeRebuild
             }
             UpdatePaneWidths();
             if (_isNewWindow) Services.Diagnostics.Log("[窗口] OnLoaded 完成");
+        }
+
+        /// <summary>
+        /// 会话标签懒恢复：先只建标签条，页面在首次激活时才加载。
+        /// 恢复期间不自动切换、不逐次写会话；完成后统一选中最后创建的标签并保存一次。
+        /// </summary>
+        private async Task RestoreSessionTabsAsync(IReadOnlyList<SessionTabRecord> records)
+        {
+            if (records == null || records.Count == 0) return;
+
+            _isRestoringSession = true;
+            _tabManager.SuppressCreationAnimation = true;
+            _tabManager.SuppressAutoSwitch = true;
+            _tabManager.SuppressSessionSave = true;
+            TabViewItem lastCreated = null;
+            try
+            {
+                foreach (var rec in records)
+                {
+                    if (string.IsNullOrEmpty(rec.Url)) continue;
+                    EngineType engine = (rec.Engine == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
+                    lastCreated = await _tabManager.CreateTabAsync(
+                        engine, rec.Url, rec.IsPinned, deferNavigation: true, pendingTitle: rec.Title);
+                }
+            }
+            finally
+            {
+                _isRestoringSession = false;
+                _tabManager.SuppressCreationAnimation = false;
+                _tabManager.SuppressAutoSwitch = false;
+                _tabManager.SuppressSessionSave = false;
+            }
+
+            if (lastCreated != null)
+            {
+                await _tabManager.SwitchToTabAsync(lastCreated);
+                UpdateTabLayout();
+                _tabManager.ScheduleSessionSave();
+            }
         }
 
         // ---- 页面内快捷键的统一处理（CoreWindow 钩子、WebView2 消息、EdgeHTML marker 轮询共用） ----
@@ -1237,6 +1271,8 @@ namespace EdgeRebuild
                     VerticalTabPanel.Children.Add(border);
                 }
             }
+            // 会话懒恢复：只建标签条，不切换、不抢焦点；恢复完统一选中最后一个标签
+            if (_isRestoringSession) return;
             // 切换到新标签
             await _tabManager.SwitchToTabAsync(viewItem);
             UpdateTabLayout();
@@ -1246,7 +1282,10 @@ namespace EdgeRebuild
         private void OnTabManagerTabChanged(TabViewItem viewItem)
         {
             var tab = viewItem.Tab;
-            string currentUrl = tab.CurrentUrl ?? "";
+            // 懒恢复标签在首次导航前还没有真实 URL，先用会话兜底地址更新地址栏
+            string currentUrl = !string.IsNullOrEmpty(tab.CurrentUrl)
+                ? tab.CurrentUrl
+                : (viewItem.FallbackUrl ?? "");
             SyncPageKeyPolling();   // R2-2：活动引擎变化 → 轮询启停
             toolbarControl.SetEngine(tab.Engine);
             toolbarControl.UpdateNavState(tab.CanGoBack, tab.CanGoForward, currentUrl);
@@ -1262,7 +1301,7 @@ namespace EdgeRebuild
             // 副窗口（AppWindow）用 AppWindow.Title 同步标题；主窗口标题随系统
             if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
-                AppWindowCompat.SetTitle(_appWindow, tab.Title ?? "新标签页");
+                AppWindowCompat.SetTitle(_appWindow, tab.Title ?? viewItem.FallbackTitle ?? "新标签页");
             }
 
             if (_isPreviewStripOpen)
@@ -1394,7 +1433,9 @@ namespace EdgeRebuild
         private async void OnDragDetachRequested(TabViewItem item)
         {
             // 保留原标签的 URL（空白标签直接传 about:blank，与应用新建标签约定一致，不替换为搜索引擎）
-            string url = item.Tab.CurrentUrl;
+            string url = !string.IsNullOrEmpty(item.Tab.CurrentUrl)
+                ? item.Tab.CurrentUrl
+                : (item.FallbackUrl ?? "");
             EngineType engine = item.Tab.Engine;
 
             Services.Diagnostics.Log($"[拖拽] 脱离请求 url={url} engine={engine}");
@@ -1607,7 +1648,9 @@ namespace EdgeRebuild
                 }
             }
             catch { }
-            _tabPreviewTitle.Text = target.Tab.Title ?? "";
+            _tabPreviewTitle.Text = !string.IsNullOrEmpty(target.Tab.Title)
+                ? target.Tab.Title
+                : (target.FallbackTitle ?? "");
             _tabPreviewRing.Visibility = Visibility.Visible;
             _tabPreviewImage.Source = null;
             _tabPreviewPopup.IsOpen = true;
@@ -1894,7 +1937,11 @@ namespace EdgeRebuild
             => CloseSweptTabsPane(false);
 
         private void SettingsSplitView_PaneOpening(object sender, object args)
-            => CloseSweptTabsPane(false);
+        {
+            CloseSweptTabsPane(false);
+            // 设置面板首次打开时才读设置（启动时隐藏，避免约 20 次查询与下载目录探测）。
+            _ = SettingsPaneControl.EnsureLoadedAsync();
+        }
 
         private void ContentHost_SizeChanged(object sender, SizeChangedEventArgs e)
             => UpdateSweptPaneWidth();
@@ -2357,7 +2404,10 @@ namespace EdgeRebuild
         {
             if (_tabManager.CurrentTab != null)
             {
-                var url = _tabManager.CurrentTab.CurrentUrl;
+                var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
+                var url = !string.IsNullOrEmpty(_tabManager.CurrentTab.CurrentUrl)
+                    ? _tabManager.CurrentTab.CurrentUrl
+                    : (viewItem?.FallbackUrl ?? "");
                 if (!string.IsNullOrEmpty(url) && url != "about:blank")
                 {
                     var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
@@ -2714,7 +2764,17 @@ namespace EdgeRebuild
 
         private async void ToolbarControl_BackRequested() { if (_tabManager.CurrentTab?.CanGoBack == true) { await _tabManager.CurrentTab.GoBackAsync(); SetFocusToCurrentTabContent(); } }
         private async void ToolbarControl_ForwardRequested() { if (_tabManager.CurrentTab?.CanGoForward == true) { await _tabManager.CurrentTab.GoForwardAsync(); SetFocusToCurrentTabContent(); } }
-        private async void ToolbarControl_RefreshRequested() { if (_tabManager.CurrentTab != null) { await _tabManager.CurrentTab.RefreshAsync(); SetFocusToCurrentTabContent(); } }
+        private async void ToolbarControl_RefreshRequested() { await ReloadCurrentTabAsync(); SetFocusToCurrentTabContent(); }
+
+        /// <summary>刷新当前标签；懒恢复标签尚未导航时直接加载其会话地址。</summary>
+        private async Task ReloadCurrentTabAsync()
+        {
+            var current = _tabManager.CurrentTab;
+            if (current == null) return;
+            var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == current);
+            if (viewItem != null) await _tabManager.ReloadTabAsync(viewItem);
+            else await current.RefreshAsync();
+        }
 
         private void ToolbarControl_AddFavoriteClicked()
         {
@@ -2735,7 +2795,7 @@ namespace EdgeRebuild
         {
             SetTabPreviewStripOpen(false);
             HubSplitView.IsPaneOpen = !HubSplitView.IsPaneOpen;
-            if (HubSplitView.IsPaneOpen) hubPane.RefreshAll();
+            if (HubSplitView.IsPaneOpen) hubPane.RefreshCurrentSection();
         }
 
         private void ToolbarControl_MenuClicked()
@@ -2872,10 +2932,22 @@ namespace EdgeRebuild
             await _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
         }
 
-        private void UpdateStarButton()
+        private void UpdateStarButton() => UpdateStarButton(false);
+
+        /// <summary>
+        /// allowPop 仅在收藏集合发生变化时传 true：导航到已收藏页面只更新星标，
+        /// 不应播放“收藏成功”的弹跳。
+        /// </summary>
+        private void UpdateStarButton(bool allowPop)
         {
             if (_tabManager.CurrentTab != null)
-                toolbarControl.UpdateFavoriteButton(FavoritesManager.Instance.ContainsUrl(_tabManager.CurrentTab.CurrentUrl));
+            {
+                var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
+                string url = !string.IsNullOrEmpty(_tabManager.CurrentTab.CurrentUrl)
+                    ? _tabManager.CurrentTab.CurrentUrl
+                    : (viewItem?.FallbackUrl ?? "");
+                toolbarControl.UpdateFavoriteButton(FavoritesManager.Instance.ContainsUrl(url), allowPop);
+            }
         }
 
         // ---- 引擎切换 ----
@@ -2888,7 +2960,9 @@ namespace EdgeRebuild
                 var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == _tabManager.CurrentTab);
                 if (viewItem == null) return;
 
-                string currentUrl = _tabManager.CurrentTab.CurrentUrl;
+                string currentUrl = !string.IsNullOrEmpty(_tabManager.CurrentTab.CurrentUrl)
+                    ? _tabManager.CurrentTab.CurrentUrl
+                    : (viewItem.FallbackUrl ?? "");
 
                 // 新标签页地址是引擎特有的（EdgeHTML 用 ms-appx-web，WebView2 用
                 // contentcache.local）：切换引擎时重置为 about:blank，由新引擎加载自己的主页
@@ -2943,25 +3017,19 @@ namespace EdgeRebuild
                         ShowFavoritesBar(newValue == "True" || newValue == "true");
                         break;
                     case "DoNotTrack":
-                        foreach (var item in _tabManager.Tabs)
                         {
-                            if (item.Tab is WebView2Tab wv2)
+                            bool dnt = newValue == "True" || newValue == "true";
+                            // 只更新已初始化的 WebView2；懒恢复标签保持未初始化，
+                            // 首次激活时 EnsureInitializedAsync 会读取当前设置。
+                            foreach (var item in _tabManager.Tabs)
                             {
-                                await wv2.EnsureInitializedAsync();
-                                if (newValue == "True" || newValue == "true")
-                                    wv2.CoreWebView2.WebResourceRequested += OnWebResourceRequestedForDNT;
-                                else
-                                    wv2.CoreWebView2.WebResourceRequested -= OnWebResourceRequestedForDNT;
+                                if (item.Tab is WebView2Tab wv2)
+                                    wv2.SetDoNotTrack(dnt);
                             }
                         }
                         break;
                 }
             });
-        }
-
-        private void OnWebResourceRequestedForDNT(object sender, CoreWebView2WebResourceRequestedEventArgs e)
-        {
-            e.Request.Headers.SetHeader("DNT", "1");
         }
 
         // ---- 收藏夹栏(参考规范 §6.1)----
@@ -2970,7 +3038,7 @@ namespace EdgeRebuild
             _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
                 RefreshFavoritesBar();
-                UpdateStarButton();
+                UpdateStarButton(true);
                 if (HubSplitView.IsPaneOpen) hubPane.RefreshFavorites();
             });
         }
@@ -2979,7 +3047,90 @@ namespace EdgeRebuild
         {
             _favoritesBarVisible = visible;
             if (FavoritesBar == null) return;
-            FavoritesBar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
+            // 启动阶段直接到位；之后用户切换设置时播放高度 + 淡入淡出。
+            if (_suppressFavoritesBarAnimation)
+            {
+                FavoritesBar.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+                FavoritesBar.Height = 44;
+                FavoritesBar.Opacity = 1;
+                return;
+            }
+            AnimateFavoritesBar(visible);
+        }
+
+        /// <summary>
+        /// 收藏夹栏展开/收起：高度 0↔44 + 透明度，180ms。
+        /// 快速连点时以当前实际高度为新基准，避免跳回旧值。
+        /// </summary>
+        private void AnimateFavoritesBar(bool show)
+        {
+            bool wasVisible = FavoritesBar.Visibility == Visibility.Visible;
+            double current = wasVisible ? FavoritesBar.ActualHeight : 0;
+            double currentOpacity = wasVisible ? FavoritesBar.Opacity : 0;
+
+            FavoritesBar.Height = current;
+            var previous = _favoritesBarStoryboard;
+            _favoritesBarStoryboard = null;
+            previous?.Stop();
+
+            if (show && !wasVisible)
+            {
+                FavoritesBar.Visibility = Visibility.Visible;
+                FavoritesBar.Height = 0;
+                current = 0;
+                currentOpacity = 0;
+            }
+
+            double target = show ? 44 : 0;
+            if (!_uiSettings.AnimationsEnabled || Math.Abs(current - target) < 0.5)
+            {
+                FinishFavoritesBarAnimation(show);
+                return;
+            }
+
+            var sb = new Storyboard();
+            var height = new DoubleAnimation
+            {
+                From = current,
+                To = target,
+                Duration = TimeSpan.FromMilliseconds(show ? 180 : 140),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+                EnableDependentAnimation = true
+            };
+            Storyboard.SetTarget(height, FavoritesBar);
+            Storyboard.SetTargetProperty(height, "Height");
+
+            var fade = new DoubleAnimation
+            {
+                From = currentOpacity,
+                To = show ? 1 : 0,
+                Duration = TimeSpan.FromMilliseconds(show ? 180 : 120),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Storyboard.SetTarget(fade, FavoritesBar);
+            Storyboard.SetTargetProperty(fade, "Opacity");
+
+            sb.Children.Add(height);
+            sb.Children.Add(fade);
+            sb.Completed += (s, e) =>
+            {
+                // 旧动画的 Completed 不能把新动画的状态收掉
+                if (!ReferenceEquals(_favoritesBarStoryboard, sb)) return;
+                FinishFavoritesBarAnimation(show);
+            };
+            _favoritesBarStoryboard = sb;
+
+            try { sb.Begin(); }
+            catch { FinishFavoritesBarAnimation(show); }
+        }
+
+        private void FinishFavoritesBarAnimation(bool show)
+        {
+            _favoritesBarStoryboard = null;
+            FavoritesBar.Height = 44;
+            FavoritesBar.Opacity = 1;
+            FavoritesBar.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void RefreshFavoritesBar()
@@ -3764,11 +3915,15 @@ namespace EdgeRebuild
             int count = 0;
             foreach (var item in _tabManager.Tabs)
             {
-                string url = item.Tab.CurrentUrl;
+                string url = !string.IsNullOrEmpty(item.Tab.CurrentUrl)
+                    ? item.Tab.CurrentUrl
+                    : (item.FallbackUrl ?? "");
                 if (!string.IsNullOrEmpty(url) && url != "about:blank" && !FavoritesManager.Instance.ContainsUrl(url))
                 {
-                    await FavoritesManager.Instance.AddAsync(
-                        string.IsNullOrEmpty(item.Tab.Title) ? url : item.Tab.Title, url, null, item.Tab.FaviconUri);
+                    string title = !string.IsNullOrEmpty(item.Tab.Title)
+                        ? item.Tab.Title
+                        : (!string.IsNullOrEmpty(item.FallbackTitle) ? item.FallbackTitle : url);
+                    await FavoritesManager.Instance.AddAsync(title, url, null, item.Tab.FaviconUri);
                     count++;
                 }
             }

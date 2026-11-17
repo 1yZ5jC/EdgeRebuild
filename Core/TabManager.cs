@@ -6,9 +6,11 @@ using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Media.Imaging;
 
 namespace EdgeRebuild.Core
@@ -24,6 +26,24 @@ namespace EdgeRebuild.Core
         private const int SuspendDelaySeconds = 120;
         private bool _enableTabSuspend = true;
         private string[] _suspendExclusions = Array.Empty<string>();   // 挂起排除关键词（URL 包含即跳过）
+        private readonly UISettings _uiSettings = new UISettings();
+
+        /// <summary>
+        /// 会话恢复期间批量建标签时置 true，避免几十个标签同时播放创建动画。
+        /// </summary>
+        public bool SuppressCreationAnimation { get; set; }
+
+        /// <summary>
+        /// 会话懒恢复期间置 true：CreateTabAsync 不自动激活第一个标签，
+        /// 由恢复方在标签条建好后统一选中。
+        /// </summary>
+        public bool SuppressAutoSwitch { get; set; }
+
+        /// <summary>
+        /// 会话懒恢复期间置 true：批量建标签/固定标签不逐次写会话，
+        /// 避免防抖写入只保存了半截标签列表；恢复完由调用方统一保存一次。
+        /// </summary>
+        public bool SuppressSessionSave { get; set; }
 
         private StackPanel _tabBarPanel;
         private Panel _contentContainer;
@@ -106,7 +126,9 @@ namespace EdgeRebuild.Core
         private readonly Dictionary<IBrowserTab, (string Url, HistoryItem Item)> _pendingHistoryTitles
             = new Dictionary<IBrowserTab, (string, HistoryItem)>();
 
-        public async Task<TabViewItem> CreateTabAsync(EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false)
+        public async Task<TabViewItem> CreateTabAsync(
+            EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false,
+            bool deferNavigation = false, string pendingTitle = null)
         {
             // PDF 需要 pdf.js（WebView2）：即使调用方指定 EdgeHTML（如地址栏直接输入
             // 本地 PDF 路径），也自动改用 WebView2，避免 EdgeHTML 下载/空白页。
@@ -121,16 +143,6 @@ namespace EdgeRebuild.Core
             if (isMetroHome) tab.SetMetroHome();
             if (IsInPrivateWindow) tab.SetInPrivate();
 
-            if (tab is WebView2Tab wv2Tab)
-            {
-                string doNotTrack = await SettingsManager.GetAsync("DoNotTrack") ?? "False";
-                if (doNotTrack == "True" || doNotTrack == "true")
-                {
-                    await wv2Tab.EnsureInitializedAsync();
-                    wv2Tab.CoreWebView2.WebResourceRequested += OnWebResourceRequestedForDNT;
-                }
-            }
-
             var viewItem = new TabViewItem
             {
                 Tab = tab,
@@ -139,35 +151,93 @@ namespace EdgeRebuild.Core
                 OriginalTitle = null
             };
 
+            // 会话懒恢复：只建标签条与内容宿主，不初始化引擎、不导航；
+            // 首次 SwitchToTabAsync 时才真正加载页面。
+            bool isLazy = deferNavigation && !string.IsNullOrEmpty(url);
+            if (isLazy)
+            {
+                viewItem.LazyUrl = url;
+                viewItem.FallbackUrl = url;
+                viewItem.FallbackTitle = pendingTitle;
+            }
+
             BuildTabUI(viewItem);
             BindTabEvents(viewItem);
+            if (isLazy) ApplyLazyTabVisual(viewItem, pendingTitle, url);
 
             _tabs.Add(viewItem);
             TabCreated?.Invoke(viewItem);
 
-            if (!string.IsNullOrEmpty(url))
+            if (!isLazy)
             {
-                // 阅读器标签恢复 / 本地 PDF·EPUB / 网络文档：统一走文档打开流程，
-                // 不能把 ms-local-stream / pdfviewer.local 旧地址直接 Navigate。
-                if (!await DocumentOpenService.TryNavigateAsync(tab, url))
-                    await tab.NavigateAsync(url);
-            }
-            else
-            {
-                await tab.NavigateAsync("about:blank");
+                if (!string.IsNullOrEmpty(url))
+                {
+                    // 阅读器标签恢复 / 本地 PDF·EPUB / 网络文档：统一走文档打开流程，
+                    // 不能把 ms-local-stream / pdfviewer.local 旧地址直接 Navigate。
+                    if (!await DocumentOpenService.TryNavigateAsync(tab, url))
+                        await tab.NavigateAsync(url);
+                }
+                else
+                {
+                    await tab.NavigateAsync("about:blank");
+                }
             }
 
             TabCountChanged?.Invoke(_tabs.Count);
 
-            if (_currentTab == null)
+            if (_currentTab == null && !SuppressAutoSwitch)
                 await SwitchToTabAsync(viewItem);
 
             if (isPinned && !viewItem.IsPinned)
                 await TogglePinTabAsync(viewItem);
 
-            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
+            if (CanPersistSession && !SuppressSessionSave) SessionManager.ScheduleSave(SessionSlot, _tabs);
 
             return viewItem;
+        }
+
+        /// <summary>
+        /// 懒标签在页面加载前先显示上次标题（旧会话没有标题时显示 URL）。
+        /// </summary>
+        private static void ApplyLazyTabVisual(TabViewItem viewItem, string title, string url)
+        {
+            if (viewItem.TitleText == null) return;
+            string display = title;
+            if (string.IsNullOrWhiteSpace(display))
+            {
+                try
+                {
+                    var uri = new Uri(url);
+                    display = string.IsNullOrEmpty(uri.Host) ? url : uri.Host + uri.PathAndQuery;
+                }
+                catch { display = url; }
+            }
+            viewItem.TitleText.Text = display;
+            ToolTipService.SetToolTip(viewItem.TitleText, url);
+        }
+
+        /// <summary>
+        /// 首次激活懒标签：走与普通建标签相同的文档打开流程。
+        /// 不阻塞切换（页面在后台继续加载），LoadingChanged 会驱动加载环。
+        /// </summary>
+        private async Task LoadDeferredTabAsync(TabViewItem viewItem, string url)
+        {
+            try
+            {
+                if (!await DocumentOpenService.TryNavigateAsync(viewItem.Tab, url))
+                    await viewItem.Tab.NavigateAsync(url);
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[会话恢复] 懒加载失败 url={url}: {ex.Message}");
+                // 保留待加载地址：之后再次切回或点刷新可重试，而不是永久空白。
+                if (string.IsNullOrEmpty(viewItem.LazyUrl)) viewItem.LazyUrl = url;
+                RunOnUiThread(() =>
+                {
+                    if (viewItem.LoadingRing != null)
+                        viewItem.LoadingRing.Visibility = Visibility.Collapsed;
+                });
+            }
         }
 
         private void BuildTabUI(TabViewItem viewItem)
@@ -320,6 +390,7 @@ namespace EdgeRebuild.Core
                 tabBorder.Child = tabRoot;
 
                 _tabBarPanel.Children.Add(tabBorder);
+                AnimateTabCreation(tabBorder);
 
                 viewItem.Container = tabBorder;
                 viewItem.TitleText = titleText;
@@ -346,6 +417,71 @@ namespace EdgeRebuild.Core
             };
             _contentContainer.Children.Add(contentBorder);
             viewItem.ContentContainer = contentBorder;
+        }
+
+        /// <summary>
+        /// 新建标签：淡入 + 轻微缩放（120ms）。会话恢复期间由
+        /// SuppressCreationAnimation 关闭，避免批量标签同时动画。
+        /// </summary>
+        private void AnimateTabCreation(FrameworkElement container)
+        {
+            if (SuppressCreationAnimation || !_uiSettings.AnimationsEnabled) return;
+            try
+            {
+                container.Opacity = 0;
+                var scale = new ScaleTransform { ScaleX = 0.92, ScaleY = 0.92 };
+                container.RenderTransform = scale;
+                container.RenderTransformOrigin = new Point(0.5, 0.5);
+
+                var sb = new Storyboard();
+                var fade = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(120),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(fade, container);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+
+                var scaleX = new DoubleAnimation
+                {
+                    From = 0.92,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(120),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(scaleX, scale);
+                Storyboard.SetTargetProperty(scaleX, "ScaleX");
+
+                var scaleY = new DoubleAnimation
+                {
+                    From = 0.92,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(120),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(scaleY, scale);
+                Storyboard.SetTargetProperty(scaleY, "ScaleY");
+
+                sb.Children.Add(fade);
+                sb.Children.Add(scaleX);
+                sb.Children.Add(scaleY);
+                sb.Completed += (s, e) =>
+                {
+                    if (ReferenceEquals(container.RenderTransform, scale))
+                    {
+                        container.RenderTransform = null;
+                        container.Opacity = 1;
+                    }
+                };
+                sb.Begin();
+            }
+            catch
+            {
+                container.Opacity = 1;
+                container.RenderTransform = null;
+            }
         }
 
         private static void RunOnUiThread(Action action)
@@ -395,6 +531,9 @@ namespace EdgeRebuild.Core
 
             tab.UrlChanged += (url) =>
             {
+                // 真实 URL 已到达：清掉懒恢复兜底，后续显示/保存都以引擎为准。
+                viewItem.FallbackUrl = null;
+                viewItem.FallbackTitle = null;
                 TabUrlChanged?.Invoke(tab, url);
                 if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
                 // 历史统一在此记录（主窗口地址栏提交处不再重复添加）；NTP/磁贴主页不入库
@@ -515,6 +654,11 @@ namespace EdgeRebuild.Core
             if (_currentTab.IsSuspended)
                 await _currentTab.ResumeAsync();
 
+            // 会话懒恢复：首次切到该标签时才加载页面。切换本身不等待加载完成。
+            // 先记录待加载地址，等内容容器变为可见后再启动导航（WebView2 初始化要求控件已加载）。
+            string lazyUrl = viewItem.LazyUrl;
+            viewItem.LazyUrl = null;
+
             var colors = GetColors();
             if (colors != null)
             {
@@ -537,6 +681,13 @@ namespace EdgeRebuild.Core
                 }
             }
 
+            if (!string.IsNullOrEmpty(lazyUrl))
+            {
+                if (viewItem.LoadingRing != null)
+                    viewItem.LoadingRing.Visibility = Visibility.Visible;
+                _ = LoadDeferredTabAsync(viewItem, lazyUrl);
+            }
+
             if (_enableTabSuspend && previousTab != null && previousTab != _currentTab)
                 await SuspendTabAsync(previousTab);
 
@@ -550,10 +701,12 @@ namespace EdgeRebuild.Core
             // 修复：只在需要保存到关闭列表时获取 URL
             if (addToClosed)
             {
-                string url = viewItem.Tab.CurrentUrl;
+                string url = !string.IsNullOrEmpty(viewItem.Tab.CurrentUrl)
+                    ? viewItem.Tab.CurrentUrl
+                    : (viewItem.FallbackUrl ?? "");
                 if (!string.IsNullOrEmpty(url) && url != "about:blank")
                 {
-                    _closedTabs.Push((url, viewItem.Tab.Title ?? url, viewItem.Tab.Engine));
+                    _closedTabs.Push((url, viewItem.Tab.Title ?? viewItem.FallbackTitle ?? url, viewItem.Tab.Engine));
                     while (_closedTabs.Count > MaxClosedTabs)
                         _closedTabs.Pop();
                 }
@@ -600,6 +753,34 @@ namespace EdgeRebuild.Core
         }
 
         public void ClearClosedTabs() => _closedTabs.Clear();
+
+        /// <summary>
+        /// 立即调度一次会话保存（懒恢复完成后统一调用，避免批量建标签期间写入半截快照）。
+        /// </summary>
+        public void ScheduleSessionSave()
+        {
+            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
+        }
+
+        /// <summary>
+        /// 重新加载标签页。懒恢复标签尚未导航时直接加载其会话地址，
+        /// 否则调用引擎自身的刷新（后台懒标签的 Refresh 会是空操作）。
+        /// </summary>
+        public Task ReloadTabAsync(TabViewItem viewItem)
+        {
+            if (viewItem == null) return Task.CompletedTask;
+
+            if (!string.IsNullOrEmpty(viewItem.LazyUrl))
+            {
+                string url = viewItem.LazyUrl;
+                viewItem.LazyUrl = null;
+                if (viewItem.LoadingRing != null)
+                    viewItem.LoadingRing.Visibility = Visibility.Visible;
+                return LoadDeferredTabAsync(viewItem, url);
+            }
+
+            return viewItem.Tab?.RefreshAsync() ?? Task.CompletedTask;
+        }
 
         private async Task SuspendTabAsync(IBrowserTab tab)
         {
@@ -661,11 +842,6 @@ namespace EdgeRebuild.Core
                 _suspendTimers[tab].Stop();
                 _suspendTimers.Remove(tab);
             }
-        }
-
-        private void OnWebResourceRequestedForDNT(object sender, Microsoft.Web.WebView2.Core.CoreWebView2WebResourceRequestedEventArgs e)
-        {
-            e.Request.Headers.SetHeader("DNT", "1");
         }
 
         public void UpdateTheme(SkinManager.SkinColors colors)
@@ -753,7 +929,9 @@ namespace EdgeRebuild.Core
                 viewItem.FaviconImage.Visibility = Visibility.Visible;
                 viewItem.FaviconPlaceholder.Visibility = Visibility.Collapsed;
 
-                string displayTitle = viewItem.Tab.Title ?? "新标签页";
+                string displayTitle = !string.IsNullOrEmpty(viewItem.Tab.Title)
+                    ? viewItem.Tab.Title
+                    : (viewItem.FallbackTitle ?? "新标签页");
                 if (viewItem.Tab.IsSuspended)
                     displayTitle = "[已挂起] " + displayTitle;
                 viewItem.TitleText.Text = displayTitle;
@@ -762,7 +940,7 @@ namespace EdgeRebuild.Core
 
             TabOrderChanged?.Invoke();
             TabCountChanged?.Invoke(_tabs.Count);
-            if (CanPersistSession) SessionManager.ScheduleSave(SessionSlot, _tabs);
+            if (CanPersistSession && !SuppressSessionSave) SessionManager.ScheduleSave(SessionSlot, _tabs);
         }
 
         private void ReorderTabToPinnedSection(TabViewItem viewItem)

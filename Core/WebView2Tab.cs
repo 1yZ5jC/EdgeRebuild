@@ -23,6 +23,7 @@ namespace EdgeRebuild.Core
         private bool _disposed = false;
         private bool _metroHome = false;
         private bool _inPrivate = false;
+        private bool _dntRegistered = false;
         private string _currentDocSource = null;
 
         public string Id { get; } = Guid.NewGuid().ToString();
@@ -139,11 +140,42 @@ namespace EdgeRebuild.Core
                 // 禁用浏览器加速键以免 Ctrl+F 弹出原生查找条；
                 // Ctrl+F/Ctrl+P/Ctrl+R 由应用层快捷键接管，F5 已在 ShortcutManager 注册。
                 _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
+                // DoNotTrack 在引擎初始化时统一应用：懒恢复的标签首次激活也会经过这里，
+                // 不需要在 CreateTabAsync 里提前初始化 WebView2。
+                try
+                {
+                    string doNotTrack = await SettingsManager.GetAsync("DoNotTrack") ?? "False";
+                    SetDoNotTrack(doNotTrack == "True" || doNotTrack == "true");
+                }
+                catch { }
                 SetupLocalViewerHosts();
                 CheckNavigationState();
             }
             finally { _initLock.Release(); }
         }
+
+        /// <summary>
+        /// 运行时切换 DoNotTrack：只作用于已初始化的 WebView2；
+        /// 懒恢复标签未初始化时无需处理，首次 EnsureInitializedAsync 会读取当前设置。
+        /// </summary>
+        public void SetDoNotTrack(bool enabled)
+        {
+            var core = _webView?.CoreWebView2;
+            if (core == null) return;
+            if (enabled && !_dntRegistered)
+            {
+                core.WebResourceRequested += OnWebResourceRequestedForDNT;
+                _dntRegistered = true;
+            }
+            else if (!enabled && _dntRegistered)
+            {
+                core.WebResourceRequested -= OnWebResourceRequestedForDNT;
+                _dntRegistered = false;
+            }
+        }
+
+        private void OnWebResourceRequestedForDNT(object sender, CoreWebView2WebResourceRequestedEventArgs e)
+            => e.Request.Headers.SetHeader("DNT", "1");
 
         private void OnNewWindowRequested(object sender, CoreWebView2NewWindowRequestedEventArgs e)
         {

@@ -13,6 +13,8 @@ namespace EdgeRebuild.Services
         [PrimaryKey, AutoIncrement]
         public int Id { get; set; }
         public string Url { get; set; }
+        // 会话懒恢复：标签条在页面加载前就能显示上次标题（旧数据为空时回退到 URL）
+        public string Title { get; set; }
         public string Engine { get; set; }
         public bool IsPinned { get; set; }
         public int Position { get; set; }
@@ -47,7 +49,9 @@ namespace EdgeRebuild.Services
             {
                 _pendingSnapshots[slot] = tabs.Select((t, i) => new SessionTabRecord
                 {
-                    Url = t.Tab.CurrentUrl ?? "",
+                    // 懒标签尚未导航时用恢复地址兜底，避免恢复期间把会话 URL 写空。
+                    Url = !string.IsNullOrEmpty(t.Tab.CurrentUrl) ? t.Tab.CurrentUrl : (t.FallbackUrl ?? ""),
+                    Title = !string.IsNullOrEmpty(t.Tab.Title) ? t.Tab.Title : (t.FallbackTitle ?? ""),
                     Engine = t.Tab.Engine == EngineType.WebView2 ? "WebView2" : "EdgeHtml",
                     IsPinned = t.IsPinned,
                     Position = i,

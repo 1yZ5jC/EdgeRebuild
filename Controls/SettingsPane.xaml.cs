@@ -1,9 +1,11 @@
 ﻿using EdgeRebuild.Services;
 using System;
 using Windows.Storage.Pickers;
+using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 
 namespace EdgeRebuild.Controls
 {
@@ -11,6 +13,7 @@ namespace EdgeRebuild.Controls
     {
         public event EventHandler CloseRequested;
         private UIElement[] _panels;
+        private readonly UISettings _uiSettings = new UISettings();
         private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
         private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle, _systemTitleBarToggle;
         private ToggleSwitch _forceLegacyToggle;
@@ -30,13 +33,34 @@ namespace EdgeRebuild.Controls
             this.InitializeComponent();
             BuildContentPanels();
             SettingsNavView.SelectedItem = SettingsNavView.MenuItems[0];
-            this.Loaded += OnSettingsPaneLoaded;
         }
 
-        private async void OnSettingsPaneLoaded(object sender, RoutedEventArgs e)
+        private bool _settingsLoaded;
+        private System.Threading.Tasks.Task _settingsLoading;
+
+        /// <summary>
+        /// 设置面板在启动时是隐藏的，没必要首帧前查询约 20 个设置项并探测下载目录。
+        /// 由宿主在首次打开设置面板时调用；重复调用直接复用同一轮加载。
+        /// </summary>
+        public System.Threading.Tasks.Task EnsureLoadedAsync()
         {
-            this.Loaded -= OnSettingsPaneLoaded;
-            await LoadSettingsAsync();
+            if (_settingsLoaded) return System.Threading.Tasks.Task.CompletedTask;
+            if (_settingsLoading != null) return _settingsLoading;
+            _settingsLoading = LoadSettingsOnceAsync();
+            return _settingsLoading;
+        }
+
+        private async System.Threading.Tasks.Task LoadSettingsOnceAsync()
+        {
+            try
+            {
+                await LoadSettingsAsync();
+                _settingsLoaded = true;
+            }
+            finally
+            {
+                _settingsLoading = null;
+            }
         }
 
         public void ApplySkinColors(Brush backgroundBrush)
@@ -398,7 +422,60 @@ namespace EdgeRebuild.Controls
                     "Debug" => 7,
                     _ => 0
                 };
-                if (index < _panels.Length) ContentArea.Content = _panels[index];
+                if (index < _panels.Length)
+                {
+                    ContentArea.Content = _panels[index];
+                    AnimateSectionEntrance(ContentArea);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 设置分区切换：内容淡入 + 上移 8px（160ms），与 Hub 保持一致。
+        /// 构造阶段的默认选中发生在加载前（IsLoaded=false），不会播放。
+        /// </summary>
+        private void AnimateSectionEntrance(FrameworkElement target)
+        {
+            if (target == null || !IsLoaded || !_uiSettings.AnimationsEnabled) return;
+            try
+            {
+                var transform = target.RenderTransform as CompositeTransform;
+                if (transform == null)
+                {
+                    transform = new CompositeTransform();
+                    target.RenderTransform = transform;
+                }
+                transform.TranslateY = 8;
+                target.Opacity = 0;
+
+                var sb = new Storyboard();
+                var fade = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(fade, target);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+
+                var slide = new DoubleAnimation
+                {
+                    From = 8,
+                    To = 0,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(slide, transform);
+                Storyboard.SetTargetProperty(slide, "TranslateY");
+
+                sb.Children.Add(fade);
+                sb.Children.Add(slide);
+                sb.Begin();
+            }
+            catch
+            {
+                target.Opacity = 1;
             }
         }
 

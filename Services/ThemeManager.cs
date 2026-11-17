@@ -27,7 +27,8 @@ namespace EdgeRebuild.Services
         public static void Initialize()
         {
             _isDarkTheme = Application.Current.RequestedTheme == ApplicationTheme.Dark;
-            _currentSkin = Task.Run(async () => await SettingsManager.GetAsync("Skin") ?? "Spartan").Result;
+            // 设置已在启动时整体缓存；这里同步取值，避免 UI 线程 .Result 等待 SQLite。
+            _currentSkin = SettingsManager.GetCached("Skin") ?? "Spartan";
             ApplyTheme();
 
             SettingsManager.SettingChanged += OnSettingChanged;

@@ -151,7 +151,12 @@
                         Background="Transparent" BorderThickness="0"
                         Click="AddFavBtn_Click">
                     <FontIcon x:Name="AddFavGlyph" Glyph="&#xE734;"
-                              FontFamily="Segoe MDL2 Assets" FontSize="14"/>
+                              FontFamily="Segoe MDL2 Assets" FontSize="14"
+                              RenderTransformOrigin="0.5,0.5">
+                        <FontIcon.RenderTransform>
+                            <ScaleTransform x:Name="AddFavScale" ScaleX="1" ScaleY="1"/>
+                        </FontIcon.RenderTransform>
+                    </FontIcon>
                     <FlyoutBase.AttachedFlyout>
                         <Flyout x:Name="FavoriteEditFlyout" Placement="Bottom"
                                 Opened="FavoriteEditFlyout_Opened">

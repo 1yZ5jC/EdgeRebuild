@@ -11,10 +11,12 @@ using Windows.Storage.Pickers;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Media.Imaging;
 
 namespace EdgeRebuild.Controls
@@ -91,6 +93,10 @@ namespace EdgeRebuild.Controls
         // 历史项 → 组 映射,供虚拟化容器回收后恢复折叠状态
         private readonly Dictionary<HistoryItem, HistoryGroup> _historyGroupByItem = new Dictionary<HistoryItem, HistoryGroup>();
 
+        private readonly UISettings _uiSettings = new UISettings();
+        private bool _suppressSectionAnimation = true;   // 启动时隐藏面板首次选中不播动画
+        private string _currentSectionTag = "Favorites"; // 当前可见分区，供打开 Hub 时按需刷新
+
         public HubPane()
         {
             this.InitializeComponent();
@@ -99,11 +105,13 @@ namespace EdgeRebuild.Controls
 
         private void OnHubPaneLoaded(object sender, RoutedEventArgs e)
         {
-            RefreshFavorites();
-            RefreshHistory();
-            RefreshReadingList();
-            LoadDownloads();
-            HubNavView.SelectedItem = HubNavView.MenuItems[0];
+            // Hub 是隐藏面板，启动时不应预读全部数据源。收藏夹是默认分区，交给
+            // SelectionChanged 建好；历史/稍后读/下载/集锦首次选中时再加载。
+            if (HubNavView.SelectedItem == null)
+                HubNavView.SelectedItem = HubNavView.MenuItems[0];   // 触发 SelectionChanged
+            else
+                RefreshFavorites();
+            _suppressSectionAnimation = false;
             ApplyResponsiveLayout(ActualWidth);
         }
 
@@ -178,6 +186,32 @@ namespace EdgeRebuild.Controls
             RefreshHistory();
             RefreshReadingList();
             LoadDownloads();
+        }
+
+        /// <summary>
+        /// 打开 Hub 时只刷新当前可见分区，避免把未显示的历史/稍后读/下载一起重读。
+        /// 分区选择在关闭面板后会保留，所以不能固定只刷收藏夹。
+        /// </summary>
+        public void RefreshCurrentSection()
+        {
+            switch (_currentSectionTag)
+            {
+                case "History":
+                    if (!SuppressHistory) RefreshHistory();
+                    break;
+                case "ReadingList":
+                    RefreshReadingList();
+                    break;
+                case "Downloads":
+                    LoadDownloads();
+                    break;
+                case "Collections":
+                    RefreshCollections();
+                    break;
+                default:
+                    RefreshFavorites();
+                    break;
+            }
         }
 
         // ---- 收藏夹搜索 ----
@@ -1408,16 +1442,20 @@ namespace EdgeRebuild.Controls
         {
             if (args.SelectedItem is Windows.UI.Xaml.Controls.NavigationViewItem item && item.Tag is string tag)
             {
+                _currentSectionTag = tag;
                 if (SuppressHistory && tag == "History")
                 {
                     // InPrivate 模式：不加载历史列表，面板内显示提示
                     FavPanel.Visibility = Visibility.Collapsed;
                     HistoryPanel.Visibility = Visibility.Visible;
+                    ReadingPanel.Visibility = Visibility.Collapsed;
                     DownloadsPanel.Visibility = Visibility.Collapsed;
+                    CollectionsPanel.Visibility = Visibility.Collapsed;
                     HistoryToolbar.Visibility = Visibility.Collapsed;
                     HistoryListView.Visibility = Visibility.Collapsed;
                     HistoryEmptyState.Visibility = Visibility.Collapsed;
                     InPrivateNotice.Visibility = Visibility.Visible;
+                    AnimateSectionEntrance(HistoryPanel);
                     return;
                 }
                 FavPanel.Visibility = tag == "Favorites" ? Visibility.Visible : Visibility.Collapsed;
@@ -1430,6 +1468,64 @@ namespace EdgeRebuild.Controls
                 if (tag == "ReadingList") RefreshReadingList();
                 if (tag == "Downloads") LoadDownloads();
                 if (tag == "Collections") RefreshCollections();
+
+                AnimateSectionEntrance(tag switch
+                {
+                    "Favorites" => FavPanel,
+                    "History" => HistoryPanel,
+                    "ReadingList" => ReadingPanel,
+                    "Downloads" => DownloadsPanel,
+                    "Collections" => CollectionsPanel,
+                    _ => null
+                });
+            }
+        }
+
+        /// <summary>
+        /// Hub 分区切换：内容淡入 + 上移 8px（160ms）。只动应用壳层，不对网页内容做动画。
+        /// </summary>
+        private void AnimateSectionEntrance(FrameworkElement panel)
+        {
+            if (panel == null || _suppressSectionAnimation || !_uiSettings.AnimationsEnabled) return;
+            try
+            {
+                var transform = panel.RenderTransform as CompositeTransform;
+                if (transform == null)
+                {
+                    transform = new CompositeTransform();
+                    panel.RenderTransform = transform;
+                }
+                transform.TranslateY = 8;
+                panel.Opacity = 0;
+
+                var sb = new Storyboard();
+                var fade = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(fade, panel);
+                Storyboard.SetTargetProperty(fade, "Opacity");
+
+                var slide = new DoubleAnimation
+                {
+                    From = 8,
+                    To = 0,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                Storyboard.SetTarget(slide, transform);
+                Storyboard.SetTargetProperty(slide, "TranslateY");
+
+                sb.Children.Add(fade);
+                sb.Children.Add(slide);
+                sb.Begin();
+            }
+            catch
+            {
+                panel.Opacity = 1;
             }
         }
 

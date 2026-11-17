@@ -69,7 +69,7 @@ namespace EdgeRebuild.Core
 
             // ---- 重新加载 ----
             var reloadItem = new MenuFlyoutItem { Text = "重新加载" };
-            reloadItem.Click += (_, _) => viewItem.Tab?.RefreshAsync();
+            reloadItem.Click += async (_, _) => await _tabManager.ReloadTabAsync(viewItem);
             menu.Items.Add(reloadItem);
 
             // ---- 关闭标签页 ----
@@ -129,15 +129,16 @@ namespace EdgeRebuild.Core
                 groupItem.Click += async (_, _) =>
                 {
                     var tab = viewItem.Tab;
-                    if (tab == null || string.IsNullOrEmpty(tab.CurrentUrl) || tab.CurrentUrl == "about:blank")
+                    string tabUrl = !string.IsNullOrEmpty(tab?.CurrentUrl) ? tab.CurrentUrl : viewItem.FallbackUrl;
+                    if (tab == null || string.IsNullOrEmpty(tabUrl) || tabUrl == "about:blank")
                     {
                         NotificationService.ShowToast("集锦", "当前页面不可添加");
                         return;
                     }
+                    string tabTitle = tab.Title ?? viewItem.FallbackTitle ?? tabUrl;
                     await CollectionManager.Instance.AddItemAsync(
-                        tab.Title ?? tab.CurrentUrl, tab.CurrentUrl,
-                        CollectionItemType.Link, g.Id);
-                    NotificationService.ShowToast("已加入集锦", $"{tab.Title ?? tab.CurrentUrl} → {g.Name}");
+                        tabTitle, tabUrl, CollectionItemType.Link, g.Id);
+                    NotificationService.ShowToast("已加入集锦", $"{tabTitle} → {g.Name}");
                 };
                 addColSubMenu.Items.Add(groupItem);
             }

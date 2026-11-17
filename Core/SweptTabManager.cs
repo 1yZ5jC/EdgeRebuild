@@ -89,13 +89,19 @@ namespace EdgeRebuild.Core
                 for (int i = 0; i < sweep.Count; i++)
                 {
                     var item = sweep[i];
+                    string url = !string.IsNullOrEmpty(item.Tab?.CurrentUrl)
+                        ? item.Tab.CurrentUrl
+                        : (item.FallbackUrl ?? "");
+                    string title = !string.IsNullOrWhiteSpace(item.Tab?.Title)
+                        ? item.Tab.Title
+                        : (!string.IsNullOrWhiteSpace(item.FallbackTitle)
+                            ? item.FallbackTitle
+                            : (string.IsNullOrEmpty(url) ? "新标签页" : url));
                     records.Add(new SweptTab
                     {
                         GroupId = group.Id,
-                        Url = item.Tab?.CurrentUrl ?? "",
-                        Title = string.IsNullOrWhiteSpace(item.Tab?.Title)
-                            ? (item.Tab?.CurrentUrl ?? "新标签页")
-                            : item.Tab.Title,
+                        Url = url,
+                        Title = title,
                         Engine = item.Tab?.Engine == EngineType.WebView2 ? "WebView2" : "EdgeHtml",
                         Position = i,
                         IsPinned = item.IsPinned

@@ -7,11 +7,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.UI;
+using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 
 namespace EdgeRebuild.Controls
 {
@@ -39,6 +41,8 @@ namespace EdgeRebuild.Controls
         private bool _isSecure = false;
         private bool _isLocalInterface = false;
         private bool _isFavorite = false;
+        private bool _favoriteVisualInitialized;   // 首次设置星标状态时不播放弹跳
+        private readonly UISettings _uiSettings = new UISettings();
         private string _currentHost = "";
 
         // ---- 收藏编辑面板 ----
@@ -262,10 +266,63 @@ namespace EdgeRebuild.Controls
             EngineCombo.SelectedIndex = engine == EngineType.EdgeHtml ? 0 : 1;
         }
 
-        public void UpdateFavoriteButton(bool isFavorite)
+        public void UpdateFavoriteButton(bool isFavorite, bool allowPop = false)
         {
+            bool shouldPop = allowPop && isFavorite && !_isFavorite && _favoriteVisualInitialized;
             _isFavorite = isFavorite;
             ApplyFavoriteVisual();
+            _favoriteVisualInitialized = true;
+            if (shouldPop) PlayFavoritePop();
+        }
+
+        /// <summary>
+        /// 收藏成功时星标轻弹：0.8 → 1.15 → 1.0（220ms）。
+        /// </summary>
+        private void PlayFavoritePop()
+        {
+            if (!_uiSettings.AnimationsEnabled) return;
+            try
+            {
+                var sb = new Storyboard();
+                var scaleX = new DoubleAnimationUsingKeyFrames();
+                scaleX.KeyFrames.Add(new EasingDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 0.8 });
+                scaleX.KeyFrames.Add(new EasingDoubleKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)),
+                    Value = 1.15,
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                });
+                scaleX.KeyFrames.Add(new EasingDoubleKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220)),
+                    Value = 1.0,
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+                });
+                Storyboard.SetTarget(scaleX, AddFavScale);
+                Storyboard.SetTargetProperty(scaleX, "ScaleX");
+
+                var scaleY = new DoubleAnimationUsingKeyFrames();
+                scaleY.KeyFrames.Add(new EasingDoubleKeyFrame { KeyTime = KeyTime.FromTimeSpan(TimeSpan.Zero), Value = 0.8 });
+                scaleY.KeyFrames.Add(new EasingDoubleKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(110)),
+                    Value = 1.15,
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                });
+                scaleY.KeyFrames.Add(new EasingDoubleKeyFrame
+                {
+                    KeyTime = KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(220)),
+                    Value = 1.0,
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+                });
+                Storyboard.SetTarget(scaleY, AddFavScale);
+                Storyboard.SetTargetProperty(scaleY, "ScaleY");
+
+                sb.Children.Add(scaleX);
+                sb.Children.Add(scaleY);
+                sb.Begin();
+            }
+            catch { }
         }
 
         private void ApplyFavoriteVisual()

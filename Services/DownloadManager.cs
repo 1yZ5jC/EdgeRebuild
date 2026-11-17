@@ -140,13 +140,23 @@ namespace EdgeRebuild.Services
         private static readonly SQLiteAsyncConnection _db = DatabaseService.Database;
         private static string _customDownloadPath;
         private static string _downloadFolderToken;
+        private static StorageFolder _resolvedDownloadFolder;
 
         public static string SystemDownloadFolderPath { get; private set; }
 
         public static void SetCustomDownloadPath(string path, string token = null)
         {
+            // 启动时 App 与 MainPage 会各设置一次；路径未变就不要让缓存失效，
+            // 否则会重复探测下载目录（StorageFolder / 注册表 / 探针文件）。
+            if (string.Equals(_customDownloadPath, path, StringComparison.Ordinal)
+                && string.Equals(_downloadFolderToken, token, StringComparison.Ordinal))
+                return;
+
             _customDownloadPath = path;
             _downloadFolderToken = token;
+            // 目录变更后重新探测；否则下一次 GetDownloadFolderAsync 会命中旧缓存。
+            _resolvedDownloadFolder = null;
+            _checkedSystemFolder = false;
         }
 
         public static async Task<StorageFolder> GetDownloadFolderAsync()
@@ -155,19 +165,28 @@ namespace EdgeRebuild.Services
             // 「预检优先」，避免已知会抛的调用（陈旧 FAL token / 失效路径 /
             // OneDrive KFM 重定向的 E_INVALIDARG）产生调试器首轮中断噪音。
             // 每个分支的 catch 落日志：若仍有异常，crash.log 直接给出分支与原因。
+            if (_resolvedDownloadFolder != null) return _resolvedDownloadFolder;
+
             if (!string.IsNullOrEmpty(_downloadFolderToken))
             {
                 try
                 {
                     var fal = StorageApplicationPermissions.FutureAccessList;
                     if (fal.ContainsItem(_downloadFolderToken))
-                        return await fal.GetFolderAsync(_downloadFolderToken);
+                    {
+                        _resolvedDownloadFolder = await fal.GetFolderAsync(_downloadFolderToken);
+                        return _resolvedDownloadFolder;
+                    }
                 }
                 catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] FAL token 分支失败: {ex.Message}"); }
             }
             if (!string.IsNullOrEmpty(_customDownloadPath) && System.IO.Directory.Exists(_customDownloadPath))
             {
-                try { return await StorageFolder.GetFolderFromPathAsync(_customDownloadPath); }
+                try
+                {
+                    _resolvedDownloadFolder = await StorageFolder.GetFolderFromPathAsync(_customDownloadPath);
+                    return _resolvedDownloadFolder;
+                }
                 catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] 自定义路径失败 ({_customDownloadPath}): {ex.Message}"); }
             }
             // DownloadsFolder API 在 OneDrive 已知文件夹重定向（KFM）下会抛“参数错误”（E_INVALIDARG），
@@ -178,7 +197,10 @@ namespace EdgeRebuild.Services
             {
                 string realPath = UserDataPaths.GetDefault().Downloads;
                 if (!string.IsNullOrEmpty(realPath) && System.IO.Directory.Exists(realPath))
-                    return await StorageFolder.GetFolderFromPathAsync(realPath);
+                {
+                    _resolvedDownloadFolder = await StorageFolder.GetFolderFromPathAsync(realPath);
+                    return _resolvedDownloadFolder;
+                }
                 Services.Diagnostics.Log($"[下载目录] UserDataPaths 结果为空或不存在: '{realPath}'");
             }
             catch (Exception ex) { Services.Diagnostics.Log($"[下载目录] UserDataPaths 失败: {ex.Message}"); }
@@ -197,7 +219,8 @@ namespace EdgeRebuild.Services
                     if (System.IO.Directory.Exists(expanded))
                     {
                         Services.Diagnostics.Log($"[下载目录] 注册表解析下载目录: {expanded}");
-                        return await StorageFolder.GetFolderFromPathAsync(expanded);
+                        _resolvedDownloadFolder = await StorageFolder.GetFolderFromPathAsync(expanded);
+                        return _resolvedDownloadFolder;
                     }
                     Services.Diagnostics.Log($"[下载目录] 注册表路径不存在: '{expanded}'");
                 }
@@ -211,7 +234,8 @@ namespace EdgeRebuild.Services
                 try { ShowToastOnUIThread("系统下载目录不可用，文件将保存到应用数据目录"); } catch { }
             }
             Services.Diagnostics.Log("[下载目录] 回退应用私有目录 Downloads");
-            return await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
+            _resolvedDownloadFolder = await ApplicationData.Current.LocalFolder.CreateFolderAsync("Downloads", CreationCollisionOption.OpenIfExists);
+            return _resolvedDownloadFolder;
         }
 
         private static bool _fallbackToastShown;
@@ -234,10 +258,23 @@ namespace EdgeRebuild.Services
 
         public static bool CanUseSystemDownloadFolder => _checkedSystemFolder && _canUseSystemFolder;
 
+        private static bool _downloadsLoaded;
+
+        /// <summary>
+        /// 首次访问下载列表时才读库；启动阶段 App.xaml.cs 已调用过 LoadDownloadsAsync，
+        /// MainPage 这里再调会重复清空/重加集合（隐藏的 Hub 面板也会触发）。
+        /// </summary>
+        public static async Task EnsureLoadedAsync()
+        {
+            if (_downloadsLoaded) return;
+            await LoadDownloadsAsync();
+        }
+
         public static async Task LoadDownloadsAsync()
         {
             await UpdateSystemDownloadFolderAccessAsync();
             var records = await _db.Table<DownloadRecord>().ToListAsync();
+            _downloadsLoaded = true;
             Downloads.Clear();
             foreach (var rec in records)
             {
