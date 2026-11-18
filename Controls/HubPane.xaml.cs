@@ -226,6 +226,10 @@ namespace EdgeRebuild.Controls
         public void RefreshFavorites()
         {
             if (FavListView == null) return;
+            // 列表项即将整体重建，旧选择集必须失效。若仍处于管理模式，
+            // 先退出并清空选择，避免 Items 与 SelectedItems 短暂不一致。
+            if (FavListView.SelectionMode != ListViewSelectionMode.None)
+                ToggleManageBtn_Click(null, null);
             FavListView.Items.Clear();
 
             if (!string.IsNullOrEmpty(_favoritesSearchFilter))
@@ -818,10 +822,20 @@ namespace EdgeRebuild.Controls
         private void ToggleManageBtn_Click(object? sender, RoutedEventArgs? e)
         {
             bool managing = FavListView.SelectionMode == ListViewSelectionMode.None;
+            // 先清空选择再切换模式：删除/移动收藏后数据源已变，
+            // SelectedItems 可能仍引用已移除的项，此时 Clear() 会抛
+            // COMException 0x8000FFFF（E_UNEXPECTED），这里做防御。
+            try
+            {
+                FavListView.SelectedItems.Clear();
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[Hub] 清空管理选择失败: {ex.GetType().Name}: {ex.Message}");
+            }
             FavListView.SelectionMode = managing ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
             FavListView.IsItemClickEnabled = !managing;
             ManageBar.Visibility = managing ? Visibility.Visible : Visibility.Collapsed;
-            FavListView.SelectedItems.Clear();
             UpdateManageCount();
         }
 
@@ -849,6 +863,10 @@ namespace EdgeRebuild.Controls
             if (target < 0) return;
             int? folderId = target == 0 ? (int?)null : target;
 
+            // 先退出管理模式，再改数据源：移动会触发 Changed → RefreshFavorites，
+            // 旧选择集不能跨越数据变更，否则 Clear() 可能抛 0x8000FFFF。
+            ToggleManageBtn_Click(null, null);
+
             var items = selected.Where(r => !r.IsFolder).Select(r => r.Item).ToList();
             var folders = selected.Where(r => r.IsFolder).Select(r => r.Folder).ToList();
             int moved = 0;
@@ -862,13 +880,18 @@ namespace EdgeRebuild.Controls
             else if (folderId.HasValue)
                 _expandedFavoriteFolders.Add(folderId.Value);
 
-            ToggleManageBtn_Click(null, null);
             RefreshFavorites();
         }
 
         private async void ManageDeleteBtn_Click(object sender, RoutedEventArgs e)
         {
             var selected = FavListView.SelectedItems.OfType<FavoriteRow>().ToList();
+            if (selected.Count == 0) return;
+
+            // 先退出管理模式，再删除数据：删除过程中 Changed 会触发 Hub 刷新，
+            // 若选择集仍存活，SelectedItems.Clear() 可能抛 COMException 0x8000FFFF。
+            ToggleManageBtn_Click(null, null);
+
             foreach (var row in selected)
             {
                 if (row.IsFolder)
@@ -876,7 +899,6 @@ namespace EdgeRebuild.Controls
                 else
                     await FavoritesManager.Instance.RemoveAsync(row.Item);
             }
-            ToggleManageBtn_Click(null, null);
             RefreshFavorites();
         }
 

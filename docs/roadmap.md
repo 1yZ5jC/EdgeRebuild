@@ -112,7 +112,9 @@
       上移/下移；Hub 管理模式增加“移动到…”，支持书签与文件夹混合批量移动；收藏项上移/下移排序
       会把同级 `SortOrder` 规范化为 0..n-1，兼容旧数据全 0；`FavoriteItem.FaviconUrl` 接通收藏栏
       与 Hub 图标显示，加载失败回退星形/文件夹图标。未引入拖拽排序。Debug|x86 构建通过，数据层
-      单测 50 项通过，UI 待用户实测。
+      单测 50 项通过，UI 待用户实测。2026-11-18 修复管理模式批量删除/移动收藏后的崩溃
+      （0x8000FFFF）：先退出管理模式并清空选择，再修改数据源；`RefreshFavorites` 重建列表前
+      也会退出管理模式，避免 `SelectedItems` 引用已移除项。
 - [x] R4-9 启动性能清理 + 首批动画（2026-11-16）：
       设置改为启动时一次性读入内存（`SettingsManager.InitializeAsync/GetCached`），主题初始化不再
       阻塞 `.Result`；`DownloadManager` 缓存下载目录解析结果并增加 `EnsureLoadedAsync`，去掉
