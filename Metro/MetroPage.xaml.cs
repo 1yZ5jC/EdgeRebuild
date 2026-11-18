@@ -30,13 +30,15 @@ namespace EdgeRebuild.Metro
         private bool _gridOpen;
         private bool _commandBarOpen;
         private bool _settingsOpen;
+        private bool _favoritesOpen;
         private bool _isFullscreen;
         private bool _isReadingAloud;
         private double _zoomFactor = 1.0;
         private uint? _edgeSwipePointerId;   // A3 底缘上滑手势跟踪
         private double _edgeSwipeStartY;
         private bool _bottomBarHidden;
-        private double _bottomBarFullHeight = 88;
+        private bool _alwaysShowChrome = true;
+        private double _bottomBarFullHeight = 82;   // 32px 标签条 + 50px 地址栏
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
@@ -75,6 +77,7 @@ namespace EdgeRebuild.Metro
         public MetroPage()
         {
             InitializeComponent();
+            _ = LoadChromeSettingAsync();
             // 兜底：若 Unloaded 事件仍会触发（部分销毁路径），幂等标志保证清理只跑一次；
             // 主路径是 WindowManager.Closed → Shutdown()（窗口销毁后 Unloaded 不可靠）
             this.Unloaded += (s, e) => Shutdown();
@@ -104,6 +107,17 @@ namespace EdgeRebuild.Metro
         {
             _stripRefreshTimer.Stop();
             _stripRefreshTimer.Start();
+        }
+
+        // IE11「始终显示地址栏和标签」：启动时读取；面板内切换时由事件即时更新
+        private async Task LoadChromeSettingAsync()
+        {
+            try
+            {
+                string? value = await SettingsManager.GetAsync("MetroAlwaysShowChrome");
+                _alwaysShowChrome = value != "False";
+            }
+            catch { _alwaysShowChrome = true; }
         }
 
         private void AttachStripRefresh(TabViewItem viewItem)
@@ -139,7 +153,10 @@ namespace EdgeRebuild.Metro
             _tabManager.TabUrlChanged += (tab, tabUrl) =>
             {
                 if (tab == _tabManager.CurrentTab)
+                {
                     AddressBar.SetUrl(tabUrl);
+                    UpdateFavoriteState();
+                }
             };
             _tabManager.ContextMenuRequested += OnTabContextMenuRequested;
             _tabManager.NtpSearchRequested += OnNtpSearchRequested;   // 经典 NTP 搜索（WebView2 postMessage 通道）
@@ -152,7 +169,7 @@ namespace EdgeRebuild.Metro
             {
                 if (_appWindow != null && PlatformCompat.HasAppWindow)
                 {
-                    var metroBg = Windows.UI.Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
+                    var metroBg = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
                     AppWindowCompat.SetTitle(_appWindow, "Metro IE");
                     AppWindowCompat.ApplyTitleBarColors(
                         _appWindow,
@@ -185,6 +202,7 @@ namespace EdgeRebuild.Metro
             SyncCtxPolling();   // R2-2：活动引擎变化 → 轮询启停
             AddressBar.SetUrl(tab.CurrentUrl);
             AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
+            UpdateFavoriteState();
             TopBarTitle.Text = tab.Title ?? "Metro IE";
             ShowBottomBar();   // 切标签恢复底栏，避免新标签在无 chrome 状态下迷失
             if (_appWindow != null && PlatformCompat.HasAppWindow)
@@ -284,6 +302,7 @@ namespace EdgeRebuild.Metro
         private void OpenSettingsPanel()
         {
             if (_settingsOpen) return;
+            if (_favoritesOpen) CloseFavoritesPanel();
             _settingsOpen = true;
             ShowBottomBar();
             SettingsPanel.UpdateZoomPercent((int)Math.Round(_zoomFactor * 100));
@@ -329,9 +348,64 @@ namespace EdgeRebuild.Metro
         }
 
         private void SettingsPanel_CloseRequested() => CloseSettingsPanel();
-        private void SettingsPanel_ZoomInRequested() => ApplyZoom(_zoomFactor + 0.25);
-        private void SettingsPanel_ZoomOutRequested() => ApplyZoom(_zoomFactor - 0.25);
-        private void SettingsPanel_ZoomResetRequested() => ApplyZoom(1.0);
+        private void SettingsPanel_ZoomChanged(double factor) => ApplyZoom(factor);
+
+        // ---- 收藏夹面板 ----
+        private void ToggleFavoritesPanel()
+        {
+            if (_favoritesOpen) CloseFavoritesPanel();
+            else OpenFavoritesPanel();
+        }
+
+        private void OpenFavoritesPanel()
+        {
+            if (_favoritesOpen) return;
+            if (_settingsOpen) CloseSettingsPanel();
+            _favoritesOpen = true;
+            ShowBottomBar();
+            FavoritesPanel.ResetToRoot();
+            UpdateFavoriteState();
+            FavoritesPanel.Refresh();
+            FavoritesPanel.Visibility = Visibility.Visible;
+        }
+
+        private void CloseFavoritesPanel()
+        {
+            if (!_favoritesOpen) return;
+            _favoritesOpen = false;
+            FavoritesPanel.Visibility = Visibility.Collapsed;
+        }
+
+        private void FavoritesPanel_CloseRequested() => CloseFavoritesPanel();
+        private void FavoritesPanel_AddCurrentRequested() => AddCurrentToFavorites();
+
+        private void FavoritesPanel_FavoriteSelected(string url)
+        {
+            CloseFavoritesPanel();
+            ShowBottomBar();
+            if (!string.IsNullOrWhiteSpace(url))
+                _ = _tabManager.CurrentTab?.NavigateAsync(url);
+        }
+
+        /// <summary>同步星标实心状态与面板「添加当前页」可用性。</summary>
+        private void UpdateFavoriteState()
+        {
+            var tab = _tabManager?.CurrentTab;
+            bool hasPage = tab != null
+                && !string.IsNullOrEmpty(tab.CurrentUrl)
+                && tab.CurrentUrl != "about:blank";
+            bool exists = hasPage && FavoritesManager.Instance.ContainsUrl(tab.CurrentUrl);
+
+            AddressBar.SetFavoriteState(exists);
+            if (_favoritesOpen)
+                FavoritesPanel.SetAddEnabled(hasPage && !exists);
+        }
+
+        private void SettingsPanel_AlwaysShowChromeChanged(bool on)
+        {
+            _alwaysShowChrome = on;
+            if (on) ShowBottomBar();
+        }
 
         // P2-13：Metro 窗口 InPrivate——TabManager.IsInPrivateWindow 驱动
         // （新标签 SetInPrivate：不写历史、隐身主页；会话本就不参与）
@@ -360,8 +434,12 @@ namespace EdgeRebuild.Metro
         private void AddressBar_BackRequested() => _ = _tabManager.CurrentTab?.GoBackAsync();
         private void AddressBar_ForwardRequested() => _ = _tabManager.CurrentTab?.GoForwardAsync();
         private void AddressBar_RefreshRequested() => _ = _tabManager.CurrentTab?.RefreshAsync();
-        private void AddressBar_HomeRequested() => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
-        private void AddressBar_FullscreenRequested() => ToggleFullscreen();
+        private void AddressBar_FavoriteRequested() => ToggleFavoritesPanel();
+        private void AddressBar_MoreRequested()
+        {
+            var menu = BuildMoreMenu();
+            menu.ShowAt(AddressBar);
+        }
         private async void AddressBar_UrlSubmitted(string input)
         {
             if (string.IsNullOrWhiteSpace(input)) return;
@@ -391,6 +469,55 @@ namespace EdgeRebuild.Metro
         private void TabStrip_TabCloseRequested(TabViewItem viewItem) => _ = _tabManager.CloseTabAsync(viewItem);
         private void TabStrip_NewTabRequested() => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
 
+        // 标签条右端“…”：标签视图 / 关闭所有标签 / 新建窗口 / 设置
+        private void TabStrip_MoreRequested()
+        {
+            var menu = new MenuFlyout();
+
+            var tabsItem = new MenuFlyoutItem
+            {
+                Text = "标签视图",
+                Icon = new FontIcon { Glyph = "\xE78C", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            tabsItem.Click += (s, a) => ToggleGrid();
+            menu.Items.Add(tabsItem);
+
+            var closeAllItem = new MenuFlyoutItem
+            {
+                Text = "关闭所有标签",
+                Icon = new FontIcon { Glyph = "\xE711", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            closeAllItem.Click += async (s, a) => await CloseAllTabsAsync();
+            menu.Items.Add(closeAllItem);
+
+            var newWindowItem = new MenuFlyoutItem
+            {
+                Text = "新建窗口",
+                Icon = new FontIcon { Glyph = "\xE8A7", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            newWindowItem.Click += (s, a) => _ = WindowManager.OpenMetroWindowAsync(_defaultEngine, "about:blank");
+            menu.Items.Add(newWindowItem);
+
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            var settingsItem = new MenuFlyoutItem
+            {
+                Text = "设置",
+                Icon = new FontIcon { Glyph = "\xE713", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            settingsItem.Click += (s, a) => OpenSettingsPanel();
+            menu.Items.Add(settingsItem);
+
+            menu.ShowAt(TabStrip);
+        }
+
+        private async Task CloseAllTabsAsync()
+        {
+            var items = new List<TabViewItem>(_tabManager.Tabs);
+            foreach (var item in items)
+                await _tabManager.CloseTabAsync(item, addToClosed: false);
+        }
+
         // ---- 命令栏按钮 ----
         private void CommandBar_NewTabClicked()
         {
@@ -415,13 +542,19 @@ namespace EdgeRebuild.Metro
         private void CommandBar_SettingsClicked()
         {
             CloseCommandBar();
-            OpenSettingsPanel();
+            if (_settingsOpen) CloseSettingsPanel();
+            else OpenSettingsPanel();
         }
 
         // ---- 「更多」菜单：主界面功能补全（阅读模式/朗读/打印/收藏/复制网址） ----
         private void CommandBar_MoreClicked()
         {
             CloseCommandBar();
+            BuildMoreMenu().ShowAt(this, new Point(ActualWidth / 2, ActualHeight - 40));
+        }
+
+        private MenuFlyout BuildMoreMenu()
+        {
             var menu = new MenuFlyout();
             var tab = _tabManager?.CurrentTab;
 
@@ -467,6 +600,14 @@ namespace EdgeRebuild.Metro
             favItem.Click += (s, a) => AddCurrentToFavorites();
             menu.Items.Add(favItem);
 
+            var favoritesItem = new MenuFlyoutItem
+            {
+                Text = "收藏夹",
+                Icon = new FontIcon { Glyph = "\xE735", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            favoritesItem.Click += (s, a) => OpenFavoritesPanel();
+            menu.Items.Add(favoritesItem);
+
             var readLaterItem = new MenuFlyoutItem
             {
                 Text = "添加到稍后读",
@@ -491,7 +632,25 @@ namespace EdgeRebuild.Metro
             copyItem.Click += (s, a) => CopyCurrentUrl();
             menu.Items.Add(copyItem);
 
-            menu.ShowAt(this, new Point(ActualWidth / 2, ActualHeight - 40));
+            menu.Items.Add(new MenuFlyoutSeparator());
+
+            var homeItem = new MenuFlyoutItem
+            {
+                Text = "主页",
+                Icon = new FontIcon { Glyph = "\xE80F", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            homeItem.Click += (s, a) => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+            menu.Items.Add(homeItem);
+
+            var fullscreenItem = new MenuFlyoutItem
+            {
+                Text = _isFullscreen ? "退出全屏" : "全屏",
+                Icon = new FontIcon { Glyph = "\xE740", FontFamily = new FontFamily("Segoe MDL2 Assets") }
+            };
+            fullscreenItem.Click += (s, a) => ToggleFullscreen();
+            menu.Items.Add(fullscreenItem);
+
+            return menu;
         }
 
         // ---- 阅读模式（与主窗口同机制：ReaderService 注入阅读视图，可再点退出） ----
@@ -587,10 +746,13 @@ namespace EdgeRebuild.Metro
             if (FavoritesManager.Instance.ContainsUrl(url))
             {
                 NotificationService.ShowToast("添加到收藏夹", "该网址已在收藏夹中");
+                UpdateFavoriteState();
                 return;
             }
             await FavoritesManager.Instance.AddAsync(tab.Title ?? url, url, null, tab.FaviconUri);
             NotificationService.ShowToast("已添加到收藏夹", tab.Title ?? url);
+            UpdateFavoriteState();
+            if (_favoritesOpen) FavoritesPanel.Refresh();
         }
 
         private void CopyCurrentUrl()
@@ -743,6 +905,11 @@ namespace EdgeRebuild.Metro
         private void OnTabScrolled(IBrowserTab tab, string info)
         {
             if (tab != _tabManager?.CurrentTab) return;
+            if (_alwaysShowChrome)
+            {
+                ShowBottomBar();
+                return;
+            }
             var parts = (info ?? "").Split('|');
             string dir = parts.Length > 0 ? parts[0] : "";
             double y = (parts.Length > 1 && double.TryParse(parts[1], out double v)) ? v : 0;
@@ -791,7 +958,8 @@ namespace EdgeRebuild.Metro
         // ---- 右键：设置面板/网格开着则先收面板，否则切换命令栏 ----
         private void Root_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
-            if (_settingsOpen) CloseSettingsPanel();
+            if (_favoritesOpen) CloseFavoritesPanel();
+            else if (_settingsOpen) CloseSettingsPanel();
             else if (!_gridOpen) ToggleCommandBar();   // 网格覆盖全屏，命令栏开在其下不可见
             e.Handled = true;
         }
@@ -930,6 +1098,9 @@ namespace EdgeRebuild.Metro
                 case PageShortcutKey.ToggleFullscreen:
                     ToggleFullscreen();
                     break;
+                case PageShortcutKey.ReaderMode:
+                    ToggleReaderMode();
+                    break;
             }
         }
 
@@ -1044,6 +1215,7 @@ namespace EdgeRebuild.Metro
         private void OpenGrid()
         {
             MetroDebug($"OpenGrid: 标签数={_tabManager.Tabs.Count} 当前={(_tabManager.CurrentTab == null ? "null" : _tabManager.CurrentTab.Title)}");
+            if (_favoritesOpen) CloseFavoritesPanel();
             _gridOpen = true;
             ShowBottomBar();   // 网格覆盖全屏时保持 chrome 一致
             // 覆盖层始终 Visible(构造即可见,窗口显示时完成首次布局——延迟可见化的
@@ -1197,7 +1369,8 @@ namespace EdgeRebuild.Metro
                         break;
                     case VirtualKey.R:
                         e.Handled = true;
-                        _ = _tabManager.CurrentTab?.RefreshAsync();
+                        if (shift) ToggleReaderMode();   // Ctrl+Shift+R：进入/退出阅读模式
+                        else _ = _tabManager.CurrentTab?.RefreshAsync();
                         break;
                     case VirtualKey.F:
                         e.Handled = true;
@@ -1224,6 +1397,11 @@ namespace EdgeRebuild.Metro
                     e.Handled = true;
                     CloseSettingsPanel();
                 }
+                else if (_favoritesOpen)
+                {
+                    e.Handled = true;
+                    CloseFavoritesPanel();
+                }
                 else if (_commandBarOpen)
                 {
                     e.Handled = true;
@@ -1233,6 +1411,11 @@ namespace EdgeRebuild.Metro
                 {
                     e.Handled = true;
                     CloseGrid();
+                }
+                else if (_tabManager?.CurrentTab is IBrowserTab readerTab && _readerModeUrls.ContainsKey(readerTab))
+                {
+                    e.Handled = true;
+                    ToggleReaderMode();
                 }
                 else if (_isFullscreen)
                 {

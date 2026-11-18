@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:metro="using:EdgeRebuild.Metro"
-    Background="#FF2D2D30"
+    Background="#FF000000"
     RequestedTheme="Dark"
     KeyDown="Page_KeyDown" KeyUp="Page_KeyUp">
 
@@ -22,7 +22,7 @@
         </Grid.RowDefinitions>
 
         <!-- 标题栏：显示当前页标题，整条可拖动（ExtendsContentIntoTitleBar 下默认全标题栏区域可拖）；全屏时隐藏 -->
-        <Grid x:Name="TopBar" Grid.Row="0" Height="32" Background="#FF2D2D30">
+        <Grid x:Name="TopBar" Grid.Row="0" Height="32" Background="#FF000000">
             <TextBlock x:Name="TopBarTitle" Text="Metro IE" FontFamily="Segoe UI" FontSize="12"
                        Foreground="#FF8E8E8E" VerticalAlignment="Center" Margin="12,0,140,0"
                        TextTrimming="CharacterEllipsis"/>
@@ -42,15 +42,16 @@
             <metro:MetroTabStripControl x:Name="TabStrip" Grid.Row="0"
                 TabSelected="TabStrip_TabSelected"
                 TabCloseRequested="TabStrip_TabCloseRequested"
-                NewTabRequested="TabStrip_NewTabRequested"/>
+                NewTabRequested="TabStrip_NewTabRequested"
+                MoreRequested="TabStrip_MoreRequested"/>
 
             <!-- 底部地址栏 -->
             <metro:MetroAddressBarControl x:Name="AddressBar" Grid.Row="1"
                 BackRequested="AddressBar_BackRequested"
                 ForwardRequested="AddressBar_ForwardRequested"
                 RefreshRequested="AddressBar_RefreshRequested"
-                HomeRequested="AddressBar_HomeRequested"
-                FullscreenRequested="AddressBar_FullscreenRequested"
+                FavoriteRequested="AddressBar_FavoriteRequested"
+                MoreRequested="AddressBar_MoreRequested"
                 UrlSubmitted="AddressBar_UrlSubmitted"
                 ContentAreaFocusRequested="AddressBar_ContentAreaFocusRequested"/>
         </Grid>
@@ -75,11 +76,17 @@
         <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="3"
             HorizontalAlignment="Right" VerticalAlignment="Stretch" Visibility="Collapsed"
             CloseRequested="SettingsPanel_CloseRequested"
-            ZoomInRequested="SettingsPanel_ZoomInRequested"
-            ZoomOutRequested="SettingsPanel_ZoomOutRequested"
-            ZoomResetRequested="SettingsPanel_ZoomResetRequested"
+            ZoomChanged="SettingsPanel_ZoomChanged"
             ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"
-            InPrivateToggled="SettingsPanel_InPrivateToggled"/>
+            InPrivateToggled="SettingsPanel_InPrivateToggled"
+            AlwaysShowChromeChanged="SettingsPanel_AlwaysShowChromeChanged"/>
+
+        <!-- 收藏夹面板覆盖层（黑色 IE 面板；星标打开，点击遮罩/Esc 关闭） -->
+        <metro:MetroFavoritesPanelControl x:Name="FavoritesPanel" Grid.RowSpan="3"
+            Visibility="Collapsed"
+            CloseRequested="FavoritesPanel_CloseRequested"
+            AddCurrentRequested="FavoritesPanel_AddCurrentRequested"
+            FavoriteSelected="FavoritesPanel_FavoriteSelected"/>
 
         <!-- 全屏缩略图网格覆盖层(常驻可见,Opacity=0+不命中:确保 ScrollViewer 在窗口
              显示时就完成首次真实布局——延迟到打开时才布局会在本 AppWindow 内冻结 UI 线程) -->

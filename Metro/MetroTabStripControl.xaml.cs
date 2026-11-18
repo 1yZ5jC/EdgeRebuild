@@ -2,6 +2,7 @@ using EdgeRebuild.Core;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Automation;
@@ -13,13 +14,17 @@ namespace EdgeRebuild.Metro
 {
     /// <summary>
     /// Metro IE 风格底部标签条：横向滚动的一排标签（favicon + 标题），
-    /// 当前标签蓝底高亮，最左侧“+”新建标签。关闭标签经缩略图网格完成。
+    /// 当前标签深灰底 + 强调色描边；右端固定圆形“+”/“…”按钮。
+    /// 关闭标签经缩略图网格完成。
     /// </summary>
     public sealed partial class MetroTabStripControl : UserControl
     {
         public event Action<TabViewItem>? TabSelected;
         public event Action<TabViewItem>? TabCloseRequested;
         public event Action? NewTabRequested;
+        public event Action? MoreRequested;
+
+        private Button? _currentTabButton;
 
         public MetroTabStripControl()
         {
@@ -29,28 +34,22 @@ namespace EdgeRebuild.Metro
         public void Refresh(IReadOnlyList<TabViewItem>? tabs, TabViewItem? current)
         {
             Host.Children.Clear();
-
-            var newBtn = new Button
-            {
-                Style = (Style)Resources["MetroTabButtonStyle"],
-                Width = 36,
-                Content = new FontIcon
-                {
-                    Glyph = "\xE710",
-                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                    FontSize = 14,
-                    Foreground = new SolidColorBrush(Windows.UI.Colors.White)
-                }
-            };
-            newBtn.Click += (s, e) => NewTabRequested?.Invoke();
-            AutomationProperties.SetName(newBtn, "新建标签页");
-            Host.Children.Add(newBtn);
+            _currentTabButton = null;
 
             foreach (var item in tabs ?? Array.Empty<TabViewItem>())
-                Host.Children.Add(BuildTab(item, item == current));
+            {
+                var btn = BuildTab(item, item == current);
+                Host.Children.Add(btn);
+                if (item == current) _currentTabButton = btn;
+            }
 
+            // 先强制布局，才能拿到标签的实际位置做“滚入视野”。
+            Host.UpdateLayout();
             ScrollCurrentIntoView();
         }
+
+        private void NewTabBtn_Click(object sender, RoutedEventArgs e) => NewTabRequested?.Invoke();
+        private void MoreBtn_Click(object sender, RoutedEventArgs e) => MoreRequested?.Invoke();
 
         private Button BuildTab(TabViewItem item, bool isCurrent)
         {
@@ -58,11 +57,15 @@ namespace EdgeRebuild.Metro
             {
                 Style = (Style)Resources["MetroTabButtonStyle"],
                 Tag = item,
-                MinWidth = 200,
-                MaxWidth = 260,
+                MinWidth = 120,
+                MaxWidth = 180,
                 Background = isCurrent
-                    ? new SolidColorBrush(MetroColorPalette.MetroBlue)
-                    : new SolidColorBrush(Colors.Transparent)
+                    ? new SolidColorBrush(MetroColorPalette.TabActiveColor)
+                    : new SolidColorBrush(Colors.Transparent),
+                BorderBrush = isCurrent
+                    ? new SolidColorBrush(MetroColorPalette.TabActiveBorderColor)
+                    : new SolidColorBrush(Colors.Transparent),
+                BorderThickness = isCurrent ? new Thickness(2) : new Thickness(0)
             };
             ToolTipService.SetToolTip(btn, item.Tab.Title ?? "新标签页");
 
@@ -75,23 +78,23 @@ namespace EdgeRebuild.Metro
             {
                 Glyph = "\xE774",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 13,
+                FontSize = 12,
                 Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 6, 0)
+                Margin = new Thickness(0, 0, 5, 0)
             };
             var faviconImage = new Image
             {
-                Width = 16,
-                Height = 16,
-                Margin = new Thickness(0, 0, 6, 0),
+                Width = 14,
+                Height = 14,
+                Margin = new Thickness(0, 0, 5, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed
             };
             var title = new TextBlock
             {
                 Text = item.Tab.Title ?? "新标签页",
-                FontSize = 13,
+                FontSize = 12,
                 Foreground = new SolidColorBrush(Windows.UI.Colors.White),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
@@ -101,16 +104,16 @@ namespace EdgeRebuild.Metro
             {
                 Content = "\xE711",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 10,
-                Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
+                FontSize = 9,
+                Foreground = new SolidColorBrush(isCurrent ? Colors.White : MetroColorPalette.MutedColor),
                 Background = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                Width = 22,
-                Height = 22,
+                Width = 20,
+                Height = 20,
                 Padding = new Thickness(0),
                 Tag = item,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(6, 0, 0, 0)
+                Margin = new Thickness(4, 0, 0, 0)
             };
             closeBtn.Click += (s, e) =>
             {
@@ -167,10 +170,24 @@ namespace EdgeRebuild.Metro
 
         private void ScrollCurrentIntoView()
         {
-            var hostWidth = Host.ActualWidth;
-            var scrollWidth = StripScroll.ActualWidth;
-            if (hostWidth > scrollWidth && scrollWidth > 0)
-                StripScroll.ChangeView(hostWidth - scrollWidth, null, null, true);
+            if (_currentTabButton == null) return;
+
+            try
+            {
+                double viewport = StripScroll.ViewportWidth;
+                if (viewport <= 0) return;
+
+                var transform = _currentTabButton.TransformToVisual(Host);
+                var rect = transform.TransformBounds(
+                    new Rect(0, 0, _currentTabButton.ActualWidth, _currentTabButton.ActualHeight));
+
+                double offset = StripScroll.HorizontalOffset;
+                if (rect.Left < offset)
+                    StripScroll.ChangeView(rect.Left, null, null, true);
+                else if (rect.Right > offset + viewport)
+                    StripScroll.ChangeView(Math.Max(0, rect.Right - viewport), null, null, true);
+            }
+            catch { }
         }
     }
 }

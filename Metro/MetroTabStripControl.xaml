@@ -4,13 +4,15 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <UserControl.Resources>
-        <!-- 底部标签条按钮：扁平透明，hover 白色 10% 叠加，选中蓝底由代码设 Background -->
+        <!-- 底部标签按钮：紧凑深色，hover 白色 10% 叠加；活动标签由代码设
+             深灰底 + 2px 强调色描边（IE11 形态，不是蓝色填充）。 -->
         <Style x:Key="MetroTabButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Margin" Value="2,0"/>
-            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Margin" Value="1,0"/>
+            <Setter Property="Padding" Value="6,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
@@ -35,9 +37,70 @@
                                     </VisualState>
                                 </VisualStateGroup>
                             </VisualStateManager.VisualStateGroups>
-                            <Border x:Name="Bg" Background="{TemplateBinding Background}"/>
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"/>
                             <Border x:Name="Hover" Background="Transparent"/>
-                            <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalContentAlignment="Center"
+                                              HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 右端固定操作按钮：圆形 + / … -->
+        <Style x:Key="MetroStripActionButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="#B3FFFFFF"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="Root">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#33FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Root" Storyboard.TargetProperty="Opacity"
+                                                             To="0.4" Duration="0"/>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="12">
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Border>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
@@ -45,10 +108,28 @@
         </Style>
     </UserControl.Resources>
 
-    <Border Height="40" Background="#FF2D2D30">
-        <ScrollViewer x:Name="StripScroll" HorizontalScrollBarVisibility="Hidden"
-                      VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Enabled">
-            <StackPanel x:Name="Host" Orientation="Horizontal" VerticalAlignment="Center"/>
-        </ScrollViewer>
+    <Border Height="32" Background="#FF000000">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <ScrollViewer x:Name="StripScroll" Grid.Column="0"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled" HorizontalScrollMode="Enabled">
+                <StackPanel x:Name="Host" Orientation="Horizontal" VerticalAlignment="Center"/>
+            </ScrollViewer>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                        Margin="4,0,6,0">
+                <Button x:Name="NewTabBtn" Style="{StaticResource MetroStripActionButtonStyle}"
+                        Content="&#xE710;" Click="NewTabBtn_Click"
+                        ToolTipService.ToolTip="新建标签页" AutomationProperties.Name="新建标签页"/>
+                <Button x:Name="MoreBtn" Style="{StaticResource MetroStripActionButtonStyle}"
+                        Content="&#xE712;" Click="MoreBtn_Click"
+                        ToolTipService.ToolTip="更多标签操作" AutomationProperties.Name="更多标签操作"/>
+            </StackPanel>
+        </Grid>
     </Border>
 </UserControl>

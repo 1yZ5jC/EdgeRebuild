@@ -763,6 +763,9 @@ namespace EdgeRebuild
                 case PageShortcutKey.QuickSwitch:
                     OpenQuickSwitch();
                     break;
+                case PageShortcutKey.ReaderMode:
+                    ToggleReaderMode();
+                    break;
                     // 主窗口无全屏模式，忽略
             }
         }

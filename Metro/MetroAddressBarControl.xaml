@@ -3,48 +3,119 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Height="48" Background="#FF2D2D30">
+    <UserControl.Resources>
+        <!-- IE11 圆形导航按钮：36×36、2px 半透明白描边；hover/pressed 白色叠加 -->
+        <Style x:Key="MetroCircleButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Margin" Value="3,0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="#B3FFFFFF"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="Root">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal"/>
+                                    <VisualState x:Name="PointerOver">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#1AFFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="Background">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#33FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                    <VisualState x:Name="Disabled">
+                                        <Storyboard>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Content" Storyboard.TargetProperty="Foreground">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#FF555555"/>
+                                            </ObjectAnimationUsingKeyFrames>
+                                        </Storyboard>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="18">
+                                <ContentPresenter x:Name="Content" Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Height="50" Background="#FF000000">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
-        <!-- 后退 / 前进 / 刷新 -->
+        <!-- 后退 / 前进 -->
         <Button x:Name="BackBtn" Grid.Column="0" Content="&#xE72B;"
-                Click="BackBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                Click="BackBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="后退" AutomationProperties.Name="后退"/>
         <Button x:Name="ForwardBtn" Grid.Column="1" Content="&#xE72A;"
-                Click="ForwardBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                Click="ForwardBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="前进" AutomationProperties.Name="前进"/>
-        <Button x:Name="RefreshBtn" Grid.Column="2" Content="&#xE72C;"
-                Click="RefreshBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
-                ToolTipService.ToolTip="刷新" AutomationProperties.Name="刷新"/>
 
-        <!-- 地址栏：聚焦时底部 2px Metro 蓝下划线 -->
-        <Grid Grid.Column="3" VerticalAlignment="Center" Height="44" Margin="8,0">
-            <Border x:Name="FocusLine" Height="2" VerticalAlignment="Bottom"
-                    Background="#FF0078D7" Visibility="Collapsed"/>
-            <TextBox x:Name="UrlBox" FontFamily="Segoe UI" FontSize="16"
+        <!-- 地址栏：未聚焦为深色边框框；聚焦后白底黑字，右侧出现清除 X -->
+        <Grid Grid.Column="2" VerticalAlignment="Center" Height="40" Margin="8,0">
+            <Border x:Name="UrlFrame" Background="#FF1F1F1F" BorderBrush="#99FFFFFF"
+                    BorderThickness="1" CornerRadius="2"/>
+            <TextBox x:Name="UrlBox" FontFamily="Segoe UI" FontSize="17"
                      BorderThickness="0" Background="Transparent" Foreground="White"
                      PlaceholderText="输入网址或搜索"
                      GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
+                     TextChanged="UrlBox_TextChanged"
                      KeyDown="UrlBox_KeyDown" VerticalAlignment="Center"
-                     Padding="4,0,4,4"
+                     VerticalContentAlignment="Center"
+                     Height="38" Padding="10,0,36,0"
                      AutomationProperties.Name="地址栏"/>
+            <Button x:Name="ClearBtn" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
+                    FontSize="13" Foreground="#FF8E8E8E" Background="Transparent"
+                    BorderThickness="0" Width="30" Height="30" MinWidth="0" MinHeight="0"
+                    Padding="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                    Margin="0,0,3,0" Visibility="Collapsed" Click="ClearBtn_Click"
+                    ToolTipService.ToolTip="清除地址" AutomationProperties.Name="清除地址"/>
         </Grid>
 
-        <!-- 主页 -->
-        <Button x:Name="HomeBtn" Grid.Column="4" Content="&#xE80F;"
-                Click="HomeBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
-                ToolTipService.ToolTip="主页" AutomationProperties.Name="主页"/>
-
-        <!-- 全屏 -->
-        <Button x:Name="FullscreenBtn" Grid.Column="5" Content="&#xE740;"
-                Click="FullscreenBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
-                ToolTipService.ToolTip="切换全屏" AutomationProperties.Name="切换全屏"/>
+        <!-- 刷新 / 收藏 / 更多 / 前往 -->
+        <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
+                Click="RefreshBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
+                ToolTipService.ToolTip="刷新" AutomationProperties.Name="刷新"/>
+        <Button x:Name="FavoriteBtn" Grid.Column="4" Content="&#xE734;"
+                Click="FavoriteBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
+                ToolTipService.ToolTip="添加到收藏夹" AutomationProperties.Name="添加到收藏夹"/>
+        <Button x:Name="MoreBtn" Grid.Column="5" Content="&#xE712;"
+                Click="MoreBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
+                ToolTipService.ToolTip="更多" AutomationProperties.Name="更多"/>
+        <Button x:Name="GoBtn" Grid.Column="6" Content="&#xE72A;"
+                Click="GoBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
+                ToolTipService.ToolTip="前往" AutomationProperties.Name="前往"/>
     </Grid>
 </UserControl>

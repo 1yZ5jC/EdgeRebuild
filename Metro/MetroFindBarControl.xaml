@@ -4,7 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- 页内查找栏（Metro 风格底部浮层）：关闭 | 输入框 | n/N 计数 | 上一个 | 下一个 -->
-    <Border Background="#FF2D2D30" BorderBrush="#FF3C3C3C" BorderThickness="0,1,0,0" Height="48">
+    <Border Background="#FF000000" BorderBrush="#FF333333" BorderThickness="0,1,0,0" Height="48">
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>

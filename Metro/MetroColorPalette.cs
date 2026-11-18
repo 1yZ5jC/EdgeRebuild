@@ -10,8 +10,11 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public static class MetroColorPalette
     {
-        public static readonly Color ToolbarColor = Color.FromArgb(0xFF, 0x2D, 0x2D, 0x30);
-        public static readonly Color TabActiveColor = Color.FromArgb(0xFF, 0x19, 0x19, 0x1C);
+        // IE11 chrome：近黑底 + 深灰活动标签 + 强调色描边（不是 Win10 的蓝底填充）
+        public static readonly Color ChromeColor = Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
+        public static readonly Color ToolbarColor = ChromeColor;
+        public static readonly Color TabActiveColor = Color.FromArgb(0xFF, 0x33, 0x33, 0x33);
+        public static readonly Color TabActiveBorderColor = Color.FromArgb(0xFF, 0x00, 0x78, 0xD7);
         public static readonly Color PanelColor = Color.FromArgb(0xFF, 0x1E, 0x1E, 0x1E);
         public static readonly Color MetroBlue = Color.FromArgb(0xFF, 0x00, 0x78, 0xD7);
         public static readonly Color HoverColor = Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF);
@@ -20,8 +23,10 @@ namespace EdgeRebuild.Metro
         public static readonly Color ForegroundColor = Colors.White;
         public static readonly Color MutedColor = Color.FromArgb(0xFF, 0x8E, 0x8E, 0x8E);
 
+        public static Brush ChromeBrush => new SolidColorBrush(ChromeColor);
         public static Brush ToolbarBrush => new SolidColorBrush(ToolbarColor);
         public static Brush TabActiveBrush => new SolidColorBrush(TabActiveColor);
+        public static Brush TabActiveBorderBrush => new SolidColorBrush(TabActiveBorderColor);
         public static Brush PanelBrush => new SolidColorBrush(PanelColor);
         public static Brush AccentBrush => new SolidColorBrush(MetroBlue);
         public static Brush HoverBrush => new SolidColorBrush(HoverColor);
@@ -37,15 +42,15 @@ namespace EdgeRebuild.Metro
         {
             return new SkinManager.SkinColors
             {
-                ToolbarBackground = ToolbarBrush,
+                ToolbarBackground = ChromeBrush,
                 TabActiveBackground = new SolidColorBrush(TabActiveColor),
-                TabInactiveBackground = ToolbarBrush,
-                TabHoverBackground = new SolidColorBrush(Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3E)),
+                TabInactiveBackground = ChromeBrush,
+                TabHoverBackground = new SolidColorBrush(Color.FromArgb(0xFF, 0x1A, 0x1A, 0x1A)),
                 AccentBrush = new SolidColorBrush(MetroBlue),
-                AddressBarBackground = new SolidColorBrush(PanelColor),
-                AddressBarBorder = new SolidColorBrush(BorderColor),
+                AddressBarBackground = new SolidColorBrush(Color.FromArgb(0xFF, 0x1F, 0x1F, 0x1F)),
+                AddressBarBorder = new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
                 AddressBarFocusBorder = new SolidColorBrush(MetroBlue),
-                SeparatorBrush = new SolidColorBrush(BorderColor),
+                SeparatorBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x33, 0x33, 0x33)),
                 ForegroundBrush = new SolidColorBrush(ForegroundColor),
                 MutedForegroundBrush = new SolidColorBrush(MutedColor)
             };
