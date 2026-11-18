@@ -16,7 +16,7 @@ namespace EdgeRebuild.Core
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
         /// <summary>自动生成，如“3 个标签页”；MVP 不支持重命名。</summary>
-        public string Title { get; set; }
+        public string Title { get; set; } = "";
 
         /// <summary>来源窗口槽位，仅用于诊断；搁置组本身是全局抽屉。</summary>
         public int OriginSlot { get; set; }

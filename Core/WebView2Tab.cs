@@ -24,7 +24,7 @@ namespace EdgeRebuild.Core
         private bool _metroHome = false;
         private bool _inPrivate = false;
         private bool _dntRegistered = false;
-        private string _currentDocSource = null;
+        private string? _currentDocSource;
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
@@ -37,22 +37,22 @@ namespace EdgeRebuild.Core
         public string FaviconUri => _faviconUri;
         public bool IsSuspended => _isSuspended;
 
-        public CoreWebView2 CoreWebView2 => _webView?.CoreWebView2;
+        public CoreWebView2 CoreWebView2 => _webView.CoreWebView2!;
 
-        public event Action<string> TitleChanged;
-        public event Action<string> UrlChanged;
-        public event Action<bool> CanGoBackChanged;
-        public event Action<bool> CanGoForwardChanged;
-        public event Action<string> FaviconChanged;
-        public event Action<TabContextMenuEventArgs> ContextMenuRequested;
-        public event Action<string> NewWindowRequested;
-        public event Action<bool> LoadingChanged;
-        public event Action<bool> AudioPlayingChanged;   // 后台音频播放状态（标签喇叭指示）
-        public event Action<string> Scrolled;            // 页面滚动方向回报 "down|y"/"up|y"（Metro 底栏自动隐藏）
-        public event Action<PageShortcutKey> PageShortcutKeyPressed;
-        public event Action<string> PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
-        public event Action<string> TtsTextRequested;   // 大声朗读文本回传（EPUB 章节）
-        public event Action<string> NtpSearchRequested;   // 新标签页搜索词回传
+        public event Action<string>? TitleChanged;
+        public event Action<string>? UrlChanged;
+        public event Action<bool>? CanGoBackChanged;
+        public event Action<bool>? CanGoForwardChanged;
+        public event Action<string>? FaviconChanged;
+        public event Action<TabContextMenuEventArgs>? ContextMenuRequested;
+        public event Action<string>? NewWindowRequested;
+        public event Action<bool>? LoadingChanged;
+        public event Action<bool>? AudioPlayingChanged;   // 后台音频播放状态（标签喇叭指示）
+        public event Action<string>? Scrolled;            // 页面滚动方向回报 "down|y"/"up|y"（Metro 底栏自动隐藏）
+        public event Action<PageShortcutKey>? PageShortcutKeyPressed;
+        public event Action<string>? PageMarkActionRequested;   // 页面标记动作回传（如 "remove:3"）
+        public event Action<string>? TtsTextRequested;   // 大声朗读文本回传（EPUB 章节）
+        public event Action<string>? NtpSearchRequested;   // 新标签页搜索词回传
 
         // 页面内快捷键桥：焦点在网页内容内时键击被引擎吞掉、宿主收不到，
         // 注入监听脚本经 window.chrome.webview.postMessage 回传（ES5，双引擎通用）。
@@ -124,23 +124,25 @@ namespace EdgeRebuild.Core
                 if (_webView.CoreWebView2 != null || _disposed) return;
                 await _webView.EnsureCoreWebView2Async();
                 if (_disposed) return;
-                _webView.CoreWebView2.DocumentTitleChanged += OnDocumentTitleChanged;
-                _webView.CoreWebView2.HistoryChanged += OnHistoryChanged;
-                _webView.CoreWebView2.ContextMenuRequested += OnContextMenuRequested;
-                _webView.CoreWebView2.DownloadStarting += OnDownloadStarting;
-                _webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
-                _webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
-                _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
-                _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(PageKeyBridgeJs);
+                var core = _webView.CoreWebView2;
+                if (core == null) return;
+                core.DocumentTitleChanged += OnDocumentTitleChanged;
+                core.HistoryChanged += OnHistoryChanged;
+                core.ContextMenuRequested += OnContextMenuRequested;
+                core.DownloadStarting += OnDownloadStarting;
+                core.NewWindowRequested += OnNewWindowRequested;
+                core.NavigationStarting += OnNavigationStarting;
+                core.WebMessageReceived += OnWebMessageReceived;
+                _ = core.AddScriptToExecuteOnDocumentCreatedAsync(PageKeyBridgeJs);
                 // 后台音频指示桥（旧版 Edge/Chromium 标签喇叭图标）：媒体 play/pause 等事件
                 // 时上报播放状态，宿主据此点亮标签条喇叭
-                _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(AudioBridgeJs);
+                _ = core.AddScriptToExecuteOnDocumentCreatedAsync(AudioBridgeJs);
                 // 滚动方向桥（Metro 底栏自动隐藏，IE11 Modern 行为）：节流回报滚动方向与位置
-                _ = _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(ScrollBridgeJs);
+                _ = core.AddScriptToExecuteOnDocumentCreatedAsync(ScrollBridgeJs);
                 // UWP 版 WebView2 无 IsFindEnabled（WinUI3 专有），
                 // 禁用浏览器加速键以免 Ctrl+F 弹出原生查找条；
                 // Ctrl+F/Ctrl+P/Ctrl+R 由应用层快捷键接管，F5 已在 ShortcutManager 注册。
-                _webView.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
+                core.Settings.AreBrowserAcceleratorKeysEnabled = false;
                 // DoNotTrack 在引擎初始化时统一应用：懒恢复的标签首次激活也会经过这里，
                 // 不需要在 CreateTabAsync 里提前初始化 WebView2。
                 try
@@ -264,7 +266,7 @@ namespace EdgeRebuild.Core
             try
             {
                 byte[] bytes = Convert.FromBase64String(base64);
-                string src = _currentDocSource;
+                string? src = _currentDocSource;
                 if (string.IsNullOrEmpty(src))
                 {
                     Diagnostics.Log("[PDF] 批注回写跳过：缺少来源记录");
@@ -369,9 +371,9 @@ namespace EdgeRebuild.Core
                 if (docKind == DocumentKind.Pdf)
                 {
                     _currentDocSource = url;
-                    string annotPath = DocumentOpenService.GetCachePath(
+                    string? annotPath = DocumentOpenService.GetCachePath(
                         $"annot_{DocumentOpenService.Sha12(url)}.pdf");
-                    if (File.Exists(annotPath))
+                    if (annotPath != null && File.Exists(annotPath))
                     {
                         await OpenLocalDocumentAsync(docKind, annotPath, url);
                         return;
@@ -406,10 +408,10 @@ namespace EdgeRebuild.Core
                 if (kind == DocumentKind.Pdf)
                 {
                     // 已有批注版优先（批注回写与来源 URL/本地路径绑定）
-                    string annotPath = DocumentOpenService.GetCachePath(
+                    string? annotPath = DocumentOpenService.GetCachePath(
                         $"annot_{DocumentOpenService.Sha12(sourceUrl ?? cachePath)}.pdf");
-                    if (File.Exists(annotPath))
-                        fileName = Path.GetFileName(annotPath);
+                    if (annotPath != null && File.Exists(annotPath))
+                        fileName = Path.GetFileName(annotPath) ?? fileName;
                 }
 
                 string page = kind == DocumentKind.Pdf ? "viewer.html" : "reader.html";
@@ -475,7 +477,7 @@ namespace EdgeRebuild.Core
                     e.DownloadOperation.MimeType?.StartsWith("application/pdf", StringComparison.OrdinalIgnoreCase) == true
                         || e.DownloadOperation.Uri?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true
                         ? "pdf" : "epub",
-                    e.DownloadOperation.Uri);
+                    e.DownloadOperation.Uri ?? "");
                 return;
             }
 
@@ -503,7 +505,7 @@ namespace EdgeRebuild.Core
 
                 if (askBeforeDownload)
                 {
-                    StorageFolder defaultFolder = null;
+                    StorageFolder? defaultFolder = null;
                     try { defaultFolder = await Services.DownloadManager.GetDownloadFolderAsync(); } catch { }
 
                     var dialog = new Controls.DownloadDialog(
@@ -784,7 +786,7 @@ namespace EdgeRebuild.Core
                     string ntpType = "Classic";
                     try
                     {
-                        string v = await Services.SettingsManager.GetAsync("NewTabPageType");
+                        string? v = await Services.SettingsManager.GetAsync("NewTabPageType");
                         if (!string.IsNullOrEmpty(v)) ntpType = v;
                         else if ((await Services.SettingsManager.GetAsync("NewTabShowNtp")) == "False") ntpType = "Blank";
                     }
@@ -942,7 +944,7 @@ namespace EdgeRebuild.Core
                 // 已知噪音源：AppWindow 销毁竞态下 Close 抛 COMException——落日志定位
                 Services.Diagnostics.Log($"[WebView2] Close 异常: {ex.Message}");
             }
-            _webView = null;
+            _webView = null!;
 
             TitleChanged = null;
             UrlChanged = null;

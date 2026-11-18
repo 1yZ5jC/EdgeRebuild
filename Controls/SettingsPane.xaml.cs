@@ -11,22 +11,22 @@ namespace EdgeRebuild.Controls
 {
     public sealed partial class SettingsPane : UserControl
     {
-        public event EventHandler CloseRequested;
-        private UIElement[] _panels;
+        public event EventHandler? CloseRequested;
+        private UIElement[] _panels = null!;
         private readonly UISettings _uiSettings = new UISettings();
-        private RadioButton _spartanRadio, _modernIERadio, _edgeRadio, _webviewRadio;
-        private ToggleSwitch _askToggle, _suspendToggle, _doNotTrackToggle, _autoCleanDownloadToggle, _restoreToggle, _favoritesBarToggle, _systemTitleBarToggle;
-        private ToggleSwitch _forceLegacyToggle;
-        private TextBlock _forceLegacyStatus;
-        private ComboBox _ntpTypeCombo;
-        private ComboBox _readerFontSizeCombo;
-        private ComboBox _tilesSourceCombo;
-        private TextBox _suspendExcludeBox;
-        private TextBox _homePageBox;
-        private DispatcherTimer _homePageDebounce;
-        private ComboBox _searchEngineCombo;
-        private TextBlock _downloadPathBlock;
-        private string _currentDownloadPath;
+        private RadioButton _spartanRadio = null!, _modernIERadio = null!, _edgeRadio = null!, _webviewRadio = null!;
+        private ToggleSwitch _askToggle = null!, _suspendToggle = null!, _doNotTrackToggle = null!, _autoCleanDownloadToggle = null!, _restoreToggle = null!, _favoritesBarToggle = null!, _systemTitleBarToggle = null!;
+        private ToggleSwitch _forceLegacyToggle = null!;
+        private TextBlock _forceLegacyStatus = null!;
+        private ComboBox _ntpTypeCombo = null!;
+        private ComboBox _readerFontSizeCombo = null!;
+        private ComboBox _tilesSourceCombo = null!;
+        private TextBox _suspendExcludeBox = null!;
+        private TextBox _homePageBox = null!;
+        private DispatcherTimer _homePageDebounce = null!;
+        private ComboBox _searchEngineCombo = null!;
+        private TextBlock _downloadPathBlock = null!;
+        private string? _currentDownloadPath;
 
         public SettingsPane()
         {
@@ -36,7 +36,7 @@ namespace EdgeRebuild.Controls
         }
 
         private bool _settingsLoaded;
-        private System.Threading.Tasks.Task _settingsLoading;
+        private System.Threading.Tasks.Task? _settingsLoading;
 
         /// <summary>
         /// 设置面板在启动时是隐藏的，没必要首帧前查询约 20 个设置项并探测下载目录。
@@ -316,7 +316,7 @@ namespace EdgeRebuild.Controls
                 string searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google";
                 _searchEngineCombo.SelectedIndex = searchEngine switch { "Bing" => 1, "DuckDuckGo" => 2, _ => 0 };
 
-                string downloadPath = await SettingsManager.GetAsync("DownloadFolder");
+                string? downloadPath = await SettingsManager.GetAsync("DownloadFolder");
                 if (!string.IsNullOrEmpty(downloadPath))
                 {
                     _currentDownloadPath = downloadPath;

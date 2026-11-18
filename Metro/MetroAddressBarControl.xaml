@@ -15,11 +15,14 @@
 
         <!-- 后退 / 前进 / 刷新 -->
         <Button x:Name="BackBtn" Grid.Column="0" Content="&#xE72B;"
-                Click="BackBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+                Click="BackBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                ToolTipService.ToolTip="后退" AutomationProperties.Name="后退"/>
         <Button x:Name="ForwardBtn" Grid.Column="1" Content="&#xE72A;"
-                Click="ForwardBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+                Click="ForwardBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                ToolTipService.ToolTip="前进" AutomationProperties.Name="前进"/>
         <Button x:Name="RefreshBtn" Grid.Column="2" Content="&#xE72C;"
-                Click="RefreshBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+                Click="RefreshBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                ToolTipService.ToolTip="刷新" AutomationProperties.Name="刷新"/>
 
         <!-- 地址栏：聚焦时底部 2px Metro 蓝下划线 -->
         <Grid Grid.Column="3" VerticalAlignment="Center" Height="44" Margin="8,0">
@@ -30,15 +33,18 @@
                      PlaceholderText="输入网址或搜索"
                      GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
                      KeyDown="UrlBox_KeyDown" VerticalAlignment="Center"
-                     Padding="4,0,4,4"/>
+                     Padding="4,0,4,4"
+                     AutomationProperties.Name="地址栏"/>
         </Grid>
 
         <!-- 主页 -->
         <Button x:Name="HomeBtn" Grid.Column="4" Content="&#xE80F;"
-                Click="HomeBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+                Click="HomeBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                ToolTipService.ToolTip="主页" AutomationProperties.Name="主页"/>
 
         <!-- 全屏 -->
         <Button x:Name="FullscreenBtn" Grid.Column="5" Content="&#xE740;"
-                Click="FullscreenBtn_Click" Style="{StaticResource MetroNavButtonStyle}"/>
+                Click="FullscreenBtn_Click" Style="{StaticResource MetroNavButtonStyle}"
+                ToolTipService.ToolTip="切换全屏" AutomationProperties.Name="切换全屏"/>
     </Grid>
 </UserControl>

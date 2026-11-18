@@ -7,7 +7,7 @@ namespace EdgeRebuild.Services
 {
     public static class DatabaseService
     {
-        private static SQLiteAsyncConnection _database;
+        private static SQLiteAsyncConnection? _database;
 
         public static SQLiteAsyncConnection Database
         {

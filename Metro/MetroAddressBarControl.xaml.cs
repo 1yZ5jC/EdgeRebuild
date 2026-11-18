@@ -9,13 +9,13 @@ namespace EdgeRebuild.Metro
 {
     public sealed partial class MetroAddressBarControl : UserControl
     {
-        public event Action BackRequested;
-        public event Action ForwardRequested;
-        public event Action RefreshRequested;
-        public event Action HomeRequested;
-        public event Action FullscreenRequested;
-        public event Action<string> UrlSubmitted;
-        public event Action ContentAreaFocusRequested;   // Esc/提交后把焦点还给页面内容
+        public event Action? BackRequested;
+        public event Action? ForwardRequested;
+        public event Action? RefreshRequested;
+        public event Action? HomeRequested;
+        public event Action? FullscreenRequested;
+        public event Action<string>? UrlSubmitted;
+        public event Action? ContentAreaFocusRequested;   // Esc/提交后把焦点还给页面内容
 
         public MetroAddressBarControl()
         {

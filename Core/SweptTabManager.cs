@@ -59,7 +59,7 @@ namespace EdgeRebuild.Core
         /// 单条关闭失败时回滚该条记录，避免同一标签既在会话又在搁置组。
         /// 调用方需保证至少保留一个标签页。
         /// </summary>
-        public static async Task<SweptTabGroup> SweepAsync(
+        public static async Task<SweptTabGroup?> SweepAsync(
             TabManager tabManager,
             IReadOnlyList<TabViewItem> tabs,
             int originSlot)
@@ -177,7 +177,7 @@ namespace EdgeRebuild.Core
         }
 
         /// <summary>还原组内单个标签页；成功后删除该条记录，组空即删组。</summary>
-        public static async Task<TabViewItem> RestoreTabAsync(
+        public static async Task<TabViewItem?> RestoreTabAsync(
             TabManager tabManager,
             SweptTabGroup group,
             SweptTab tab)
@@ -190,7 +190,7 @@ namespace EdgeRebuild.Core
             return view;
         }
 
-        private static async Task<TabViewItem> RestoreRecordAsync(TabManager tabManager, SweptTab record)
+        private static async Task<TabViewItem?> RestoreRecordAsync(TabManager tabManager, SweptTab record)
         {
             try
             {

@@ -25,8 +25,8 @@ namespace EdgeRebuild.Metro
     public sealed partial class MetroPage : Page
     {
         private EngineType _defaultEngine;
-        private object _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
-        private TabManager _tabManager;
+        private object? _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
+        private TabManager _tabManager = null!;
         private bool _gridOpen;
         private bool _commandBarOpen;
         private bool _settingsOpen;
@@ -368,7 +368,7 @@ namespace EdgeRebuild.Metro
             // 网页/搜索二合一 + 中文域名 Punycode：无点号单词 → 搜索；www。cn 全角点也可当网址
             string searchEngine = "Google";
             try { searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google"; } catch { }
-            string url = UrlInputResolver.Resolve(input, searchEngine);
+            string? url = UrlInputResolver.Resolve(input, searchEngine);
             if (string.IsNullOrEmpty(url)) return;
             _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
             FocusCurrentTabContent();   // 焦点还给页面，地址栏不再滞留
@@ -500,10 +500,11 @@ namespace EdgeRebuild.Metro
             var tab = _tabManager?.CurrentTab;
             if (tab == null) return;
 
-            if (_readerModeUrls.TryGetValue(tab, out string originalUrl))
+            if (_readerModeUrls.TryGetValue(tab, out var originalUrl))
             {
                 _readerModeUrls.Remove(tab);
-                await tab.NavigateAsync(originalUrl);
+                if (!string.IsNullOrEmpty(originalUrl))
+                    await tab.NavigateAsync(originalUrl);
                 return;
             }
 
@@ -537,8 +538,8 @@ namespace EdgeRebuild.Metro
 
         private async Task StartReadAloudAsync(IBrowserTab tab)
         {
-            string text = null;
-            string title = null;
+            string? text = null;
+            string? title = null;
             try
             {
                 var article = await ReaderService.ExtractTextForTtsAsync(tab);
@@ -559,7 +560,7 @@ namespace EdgeRebuild.Metro
                 return;
             }
             _isReadingAloud = true;
-            ReadAloudService.Start(text, title);
+            ReadAloudService.Start(text!, title);
         }
 
         // ---- 打印（双引擎：WebView2 系统打印 UI / EdgeHTML window.print） ----
@@ -608,7 +609,12 @@ namespace EdgeRebuild.Metro
         private async Task ShareCurrentTabAsync()
         {
             var tab = _tabManager?.CurrentTab;
-            string url = tab?.CurrentUrl;
+            if (tab == null)
+            {
+                NotificationService.ShowToast("分享", "当前页面不可分享");
+                return;
+            }
+            string? url = tab.CurrentUrl;
             if (string.IsNullOrEmpty(url) || url == "about:blank")
             {
                 NotificationService.ShowToast("分享", "当前页面不可分享");
@@ -619,7 +625,7 @@ namespace EdgeRebuild.Metro
                 var dtm = Windows.ApplicationModel.DataTransfer.DataTransferManager.GetForCurrentView();
                 Windows.Foundation.TypedEventHandler<
                     Windows.ApplicationModel.DataTransfer.DataTransferManager,
-                    Windows.ApplicationModel.DataTransfer.DataRequestedEventArgs> handler = null;
+                    Windows.ApplicationModel.DataTransfer.DataRequestedEventArgs> handler = null!;
                 handler = (s, args) =>
                 {
                     try
@@ -838,9 +844,9 @@ namespace EdgeRebuild.Metro
                 _edgeSwipePointerId = null;
         }
 
-        private static bool IsWithinElement(DependencyObject src, DependencyObject target)
+        private static bool IsWithinElement(DependencyObject? src, DependencyObject target)
         {
-            DependencyObject cur = src;
+            DependencyObject? cur = src;
             while (cur != null)
             {
                 if (cur == target) return true;
@@ -857,7 +863,7 @@ namespace EdgeRebuild.Metro
                 new Point(args.Location.X, args.Location.Y + dy));
         }
 
-        private async void CtxPollTimer_Tick(object sender, object e)
+        private async void CtxPollTimer_Tick(object? sender, object e)
         {
             if (_tabManager?.CurrentTab is EdgeHtmlTab edge)
             {
@@ -963,7 +969,7 @@ namespace EdgeRebuild.Metro
             }
         }
 
-        private void ShowMetroContextMenu(ContextMenuType type, string linkUrl, string imageUrl, string selection, Point pt)
+        private void ShowMetroContextMenu(ContextMenuType type, string? linkUrl, string? imageUrl, string? selection, Point pt)
         {
             var tabManager = _tabManager;
             if (tabManager == null) return;
@@ -1101,7 +1107,7 @@ namespace EdgeRebuild.Metro
                     var c = item.ContentContainer;
                     if (c == null) continue;
                     c.Visibility = show
-                        ? (item == FindViewItem(_tabManager?.CurrentTab) ? Visibility.Visible : Visibility.Collapsed)
+                        ? (item == FindViewItem(_tabManager.CurrentTab) ? Visibility.Visible : Visibility.Collapsed)
                         : Visibility.Collapsed;
                 }
                 MetroDebug($"SetWebContentVisible({show}): 已切 {_tabManager.Tabs.Count} 个网页容器");
@@ -1123,7 +1129,7 @@ namespace EdgeRebuild.Metro
             sb.Begin();
         }
 
-        private TabViewItem? FindViewItem(IBrowserTab tab)
+        private TabViewItem? FindViewItem(IBrowserTab? tab)
         {
             if (tab == null) return null;
             foreach (var item in _tabManager.Tabs)

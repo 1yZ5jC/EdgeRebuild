@@ -20,7 +20,8 @@
                 <Button x:Name="CloseBtn" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="14"
                         HorizontalAlignment="Right" VerticalAlignment="Center"
                         Background="Transparent" Foreground="White" BorderThickness="0"
-                        Width="40" Height="40" Click="CloseBtn_Click"/>
+                        Width="40" Height="40" Click="CloseBtn_Click"
+                        ToolTipService.ToolTip="关闭设置" AutomationProperties.Name="关闭设置"/>
             </Grid>
 
             <!-- 内容（滚动） -->
@@ -73,16 +74,19 @@
                         </Grid.ColumnDefinitions>
                         <Button Grid.Column="0" Content="&#xE738;" FontFamily="Segoe MDL2 Assets"
                                 FontSize="16" Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
-                                Width="48" Height="48" HorizontalAlignment="Left" Click="ZoomOutBtn_Click"/>
+                                Width="48" Height="48" HorizontalAlignment="Left" Click="ZoomOutBtn_Click"
+                                ToolTipService.ToolTip="缩小" AutomationProperties.Name="缩小"/>
                         <TextBlock Grid.Column="1" x:Name="ZoomPercentText" Text="100%"
                                    FontSize="14" Foreground="White" MinWidth="64"
                                    TextAlignment="Center" VerticalAlignment="Center"/>
                         <Button Grid.Column="2" Content="&#xE739;" FontFamily="Segoe MDL2 Assets"
                                 FontSize="16" Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
-                                Width="48" Height="48" HorizontalAlignment="Left" Click="ZoomInBtn_Click"/>
+                                Width="48" Height="48" HorizontalAlignment="Left" Click="ZoomInBtn_Click"
+                                ToolTipService.ToolTip="放大" AutomationProperties.Name="放大"/>
                         <Button Grid.Column="3" Content="重置" FontSize="14" Margin="12,0,0,0"
                                 Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
-                                Padding="12,10" Click="ZoomResetBtn_Click"/>
+                                Padding="12,10" Click="ZoomResetBtn_Click"
+                                AutomationProperties.Name="重置缩放"/>
                     </Grid>
                     <TextBlock Text="仅对当前页面生效" FontSize="12"
                                Foreground="#FF7A7A7A" Margin="0,6,0,20"/>

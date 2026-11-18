@@ -9,7 +9,7 @@ namespace EdgeRebuild.Core
     {
         public int Id { get; set; }
         public int? ParentId { get; set; }
-        public string Name { get; set; }
+        public string Name { get; set; } = "";
     }
 
     /// <summary>收藏夹文件夹树的纯逻辑辅助（无 WinRT / SQLite 依赖）。</summary>

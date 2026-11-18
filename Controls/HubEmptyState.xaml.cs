@@ -12,7 +12,7 @@ namespace EdgeRebuild.Controls
     /// </summary>
     public sealed partial class HubEmptyState : UserControl
     {
-        public event EventHandler ActionInvoked;
+        public event EventHandler? ActionInvoked;
 
         public HubEmptyState()
         {
@@ -49,7 +49,7 @@ namespace EdgeRebuild.Controls
         }
 
         /// <summary>主行动的无障碍名称；为空时回退到 ActionText。</summary>
-        public string ActionAutomationName { get; set; }
+        public string ActionAutomationName { get; set; } = "";
 
         public void ApplyTheme(SolidColorBrush foreground, SolidColorBrush muted)
         {

@@ -29,7 +29,6 @@ using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
 using Windows.UI.Xaml.Media.Imaging;
-using Windows.UI.Xaml.Media.Imaging;
 using Windows.UI.Xaml.Navigation;
 using TabViewItem = EdgeRebuild.Core.TabViewItem;
 using ProgressRing = Windows.UI.Xaml.Controls.ProgressRing;
@@ -40,19 +39,19 @@ namespace EdgeRebuild
     {
         // ---- 字段 ----
         private bool _isLoaded;
-        private string _pendingUrl;
-        private List<string> _pendingUrls;
+        private string? _pendingUrl;
+        private List<string>? _pendingUrls;
         private EngineType? _pendingEngine;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
         private double _zoomFactor = 1.0;
         private bool _isEngineSwitching = false;
         // ---- 管理器 ----
-        private TabManager _tabManager;
-        private LayoutManager _layoutManager;
-        private TabDragManager _dragManager;
-        private TabContextMenuManager _contextMenuManager;
-        private DownloadCoordinator _downloadCoordinator;
-        private AppMenuManager _menuManager;
+        private TabManager _tabManager = null!;
+        private LayoutManager _layoutManager = null!;
+        private TabDragManager _dragManager = null!;
+        private TabContextMenuManager _contextMenuManager = null!;
+        private DownloadCoordinator _downloadCoordinator = null!;
+        private AppMenuManager _menuManager = null!;
 
         // ---- 拖拽状态 ----
         private bool _isDragging;
@@ -61,7 +60,7 @@ namespace EdgeRebuild
 
         // ---- 收藏夹栏状态 ----
         private bool _favoritesBarVisible;
-        private Storyboard _favoritesBarStoryboard;
+        private Storyboard? _favoritesBarStoryboard;
         private bool _suppressFavoritesBarAnimation = true;   // 启动时不播放展开动画
 
         // ---- 阅读模式：tab -> 原始 URL ----
@@ -69,8 +68,8 @@ namespace EdgeRebuild
 
         // ---- 辅助窗口引用（AppWindow 同线程模型；主窗口为 null）----
         // 类型为 object：17763 没有 AppWindow，避免字段类型解析失败；操作统一走 AppWindowCompat。
-        private object _appWindow;
-        private IDisposable _sizeChangedSubscription;
+        private object? _appWindow;
+        private IDisposable? _sizeChangedSubscription;
 
         // ---- 多窗口焦点守卫 ----
         // AppWindow 同线程模式：Window.Current 恒指主窗口，失活窗口的 XamlRoot 内
@@ -85,16 +84,16 @@ namespace EdgeRebuild
         private void OnSlotActivated(int slot) => _windowActive = (slot == _sessionSlot);
 
         // ---- 快捷键处理器引用（用于跨窗口守卫和反注册） ----
-        private Action _shortcutNewTab, _shortcutCloseTab, _shortcutReopenTab, _shortcutFocusAddressBar,
-            _shortcutRefresh, _shortcutAddFavorite, _shortcutShowHistory, _shortcutShowDownloads,
-            _shortcutFind, _shortcutFindNext, _shortcutFindPrevious, _shortcutCloseFind,
-            _shortcutPrint, _shortcutNextTab, _shortcutPreviousTab, _shortcutHighlightMark, _shortcutWebCapture,
-            _shortcutQuickSwitch;
-        private Action<int> _shortcutSwitchToTab;
-        private Action<PageShortcutKey> _shortcutPageKey;
+        private Action _shortcutNewTab = null!, _shortcutCloseTab = null!, _shortcutReopenTab = null!, _shortcutFocusAddressBar = null!,
+            _shortcutRefresh = null!, _shortcutAddFavorite = null!, _shortcutShowHistory = null!, _shortcutShowDownloads = null!,
+            _shortcutFind = null!, _shortcutFindNext = null!, _shortcutFindPrevious = null!, _shortcutCloseFind = null!,
+            _shortcutPrint = null!, _shortcutNextTab = null!, _shortcutPreviousTab = null!, _shortcutHighlightMark = null!, _shortcutWebCapture = null!,
+            _shortcutQuickSwitch = null!;
+        private Action<int> _shortcutSwitchToTab = null!;
+        private Action<PageShortcutKey> _shortcutPageKey = null!;
 
         // ---- EdgeHTML 页面内快捷键轮询（ScriptNotify 受白名单限制，改用 marker 轮询） ----
-        private DispatcherTimer _pageKeyTimer;
+        private DispatcherTimer? _pageKeyTimer;
         private bool _pageKeyPolling;
 
         public MainPage()
@@ -414,14 +413,14 @@ namespace EdgeRebuild
                 ApplyTheme();
 
                 // ---- 加载设置 ----
-                string askSetting = await SettingsManager.GetAsync("AskBeforeDownload");
+                string? askSetting = await SettingsManager.GetAsync("AskBeforeDownload");
                 _downloadCoordinator.UpdateAskSetting(askSetting == "True" || askSetting == "true");
 
-                string engineSetting = await SettingsManager.GetAsync("DefaultEngine");
+                string? engineSetting = await SettingsManager.GetAsync("DefaultEngine");
                 if (_pendingEngine == null)
                     _defaultEngine = (engineSetting == "WebView2") ? EngineType.WebView2 : EngineType.EdgeHtml;
 
-                string downloadPath = await SettingsManager.GetAsync("DownloadFolder");
+                string? downloadPath = await SettingsManager.GetAsync("DownloadFolder");
                 if (!string.IsNullOrEmpty(downloadPath))
                 {
                     DownloadManager.SetCustomDownloadPath(downloadPath);
@@ -493,7 +492,7 @@ namespace EdgeRebuild
                 // ---- 恢复垂直标签栏状态 ----
                 try
                 {
-                    string vtSetting = await SettingsManager.GetAsync("VerticalTabs");
+                    string? vtSetting = await SettingsManager.GetAsync("VerticalTabs");
                     if (vtSetting == "True" || vtSetting == "true")
                     {
                         _isVerticalTabs = true;
@@ -578,6 +577,7 @@ namespace EdgeRebuild
                 _shortcutCloseFind = () =>
                 {
                     if (!IsFocusedWindow()) return;
+                    if (TryCloseOverlay()) return;
                     if (FindBar.Visibility == Visibility.Visible)
                         CloseFindBar();
                 };
@@ -690,7 +690,7 @@ namespace EdgeRebuild
             _tabManager.SuppressCreationAnimation = true;
             _tabManager.SuppressAutoSwitch = true;
             _tabManager.SuppressSessionSave = true;
-            TabViewItem lastCreated = null;
+            TabViewItem? lastCreated = null;
             try
             {
                 foreach (var rec in records)
@@ -738,6 +738,7 @@ namespace EdgeRebuild
                         FindOnPage();
                     break;
                 case PageShortcutKey.CloseFind:
+                    if (TryCloseOverlay()) break;
                     if (FindBar.Visibility == Visibility.Visible)
                         CloseFindBar();
                     break;
@@ -776,7 +777,7 @@ namespace EdgeRebuild
         }
 
         // EdgeHTML 引擎无可靠的按键回传通道（ScriptNotify 需白名单、WebView 无输入事件、
-        private async void OnPageKeyTimerTick(object sender, object e)
+        private async void OnPageKeyTimerTick(object? sender, object e)
         {
             if (!IsFocusedWindow()) return;
             if (_pageKeyPolling) return;
@@ -977,7 +978,7 @@ namespace EdgeRebuild
             }
 
             string title = tab.Title ?? "网页";
-            string text = null;
+            string? text = null;
             try
             {
                 if (_readerModeUrls.ContainsKey(tab))
@@ -1014,7 +1015,7 @@ namespace EdgeRebuild
         {
             var tab = _tabManager?.CurrentTab;
             if (tab == null) return;
-            byte[] png = await WebCaptureService.CapturePagePngAsync(tab);
+            byte[]? png = await WebCaptureService.CapturePagePngAsync(tab);
             if (png == null || png.Length == 0)
             {
                 NotificationService.ShowToast("网页捕获", "截图失败");
@@ -1058,7 +1059,7 @@ namespace EdgeRebuild
 
         private void CaptureOverlay_Tapped(object sender, TappedRoutedEventArgs e)
         {
-            if (e.OriginalSource == CaptureOverlay) CloseCapture();
+            if (ReferenceEquals(e.OriginalSource, CaptureOverlay)) CloseCapture();
         }
 
         // ---- 区域裁剪：裁剪模式下拖动框选，保存/复制仅输出框内合成图 ----
@@ -1369,11 +1370,11 @@ namespace EdgeRebuild
         /// </summary>
         private static string GetSiteUrl(string url)
         {
-            string src = ExtractQueryParam(url, "src");
+            string? src = ExtractQueryParam(url, "src");
             return !string.IsNullOrEmpty(src) ? src : url;
         }
 
-        private static string ExtractQueryParam(string url, string name)
+        private static string? ExtractQueryParam(string url, string name)
         {
             // 用 TryCreate 而非 new Uri：新建副窗时本方法会在导航完成前收到空/畸形
             // CurrentUrl，抛出的 UriFormatException 即便被吞也会触发调试器首轮中断
@@ -1489,27 +1490,27 @@ namespace EdgeRebuild
         }
 
         // ---- 标签悬停缩略图预览（旧版 Edge 交互：悬停 250ms 出预览卡） ----
-        private Windows.UI.Xaml.Controls.Primitives.Popup _tabPreviewPopup;
-        private Border _tabPreviewCard;
-        private Image _tabPreviewImage;
-        private TextBlock _tabPreviewTitle;
-        private Windows.UI.Xaml.Controls.ProgressRing _tabPreviewRing;
-        private TabViewItem _tabPreviewTarget;
-        private readonly Dictionary<IBrowserTab, byte[]> _previewCache = new Dictionary<IBrowserTab, byte[]>();
-        private readonly Dictionary<IBrowserTab, Task<byte[]>> _previewCaptureTasks = new Dictionary<IBrowserTab, Task<byte[]>>();
+        private Windows.UI.Xaml.Controls.Primitives.Popup _tabPreviewPopup = null!;
+        private Border _tabPreviewCard = null!;
+        private Image _tabPreviewImage = null!;
+        private TextBlock _tabPreviewTitle = null!;
+        private Windows.UI.Xaml.Controls.ProgressRing _tabPreviewRing = null!;
+        private TabViewItem? _tabPreviewTarget;
+        private readonly Dictionary<IBrowserTab, byte[]?> _previewCache = new Dictionary<IBrowserTab, byte[]?>();
+        private readonly Dictionary<IBrowserTab, Task<byte[]?>> _previewCaptureTasks = new Dictionary<IBrowserTab, Task<byte[]?>>();
         // 预览带一次最多同时捕获 2 个标签，避免 x86 进程瞬间分配多张全尺寸位图
         private readonly SemaphoreSlim _previewStripCaptureGate = new SemaphoreSlim(2);
 
         // ---- 标签页快速切换（Ctrl+Shift+A）----
-        private Windows.UI.Xaml.Controls.Primitives.Popup _quickSwitchPopup;
-        private Grid _quickSwitchOverlay;
-        private Border _quickSwitchPanel;
-        private TextBox _quickSwitchBox;
-        private ListView _quickSwitchList;
-        private TextBlock _quickSwitchHint;
-        private TextBlock _quickSwitchEmpty;
-        private FontIcon _quickSwitchGlyph;
-        private Border _quickSwitchSeparator;
+        private Windows.UI.Xaml.Controls.Primitives.Popup _quickSwitchPopup = null!;
+        private Grid _quickSwitchOverlay = null!;
+        private Border _quickSwitchPanel = null!;
+        private TextBox _quickSwitchBox = null!;
+        private ListView _quickSwitchList = null!;
+        private TextBlock _quickSwitchHint = null!;
+        private TextBlock _quickSwitchEmpty = null!;
+        private FontIcon _quickSwitchGlyph = null!;
+        private Border _quickSwitchSeparator = null!;
         private bool _isQuickSwitchOpen;
         private bool _quickSwitchComposing;   // 输入法组词期间不拦截方向键/回车
         private readonly List<TabViewItem> _quickSwitchMatches = new List<TabViewItem>();
@@ -1518,28 +1519,28 @@ namespace EdgeRebuild
         private const double PreviewStripHeight = 120;
         private bool _isPreviewStripOpen;
         private bool _isSweptPaneOpen;
-        private Storyboard _previewStripStoryboard;
+        private Storyboard? _previewStripStoryboard;
         private readonly UISettings _uiSettings = new UISettings();
         private readonly Dictionary<TabViewItem, TabPreviewStripCard> _previewStripCards =
             new Dictionary<TabViewItem, TabPreviewStripCard>();
-        private DispatcherTimer _previewStripRefreshTimer;
+        private DispatcherTimer? _previewStripRefreshTimer;
         private readonly HashSet<TabViewItem> _previewStripRefreshQueue = new HashSet<TabViewItem>();
 
         private sealed class TabPreviewStripCard
         {
-            public TabViewItem Item { get; set; }
-            public Border Root { get; set; }
-            public Border Frame { get; set; }
-            public Grid ThumbHost { get; set; }
-            public Image Image { get; set; }
-            public ProgressRing Ring { get; set; }
-            public FontIcon Placeholder { get; set; }
-            public Button CloseButton { get; set; }
-            public string CaptureUrl { get; set; }
+            public TabViewItem Item { get; set; } = null!;
+            public Border Root { get; set; } = null!;
+            public Border Frame { get; set; } = null!;
+            public Grid ThumbHost { get; set; } = null!;
+            public Image Image { get; set; } = null!;
+            public ProgressRing Ring { get; set; } = null!;
+            public FontIcon Placeholder { get; set; } = null!;
+            public Button CloseButton { get; set; } = null!;
+            public string? CaptureUrl { get; set; }
         }
 
-        private DispatcherTimer _hoverTimer;
-        private DispatcherTimer _previewCloseTimer;   // 鼠标离开标签后延迟关闭预览卡
+        private DispatcherTimer? _hoverTimer;
+        private DispatcherTimer? _previewCloseTimer;   // 鼠标离开标签后延迟关闭预览卡
         private bool _isPreviewHovered;               // 鼠标是否在预览卡内
         private const double PreviewW = 240, PreviewH = 150;
         private const int PreviewCloseDelayMs = 300;  // 鼠标离开后 300ms 再关闭
@@ -1612,15 +1613,15 @@ namespace EdgeRebuild
             if (_isInPrivate || viewItem == null) return;   // 隐身窗口不预览
             if (_tabPreviewPopup == null) BuildTabPreviewPopup();
             _tabPreviewTarget = viewItem;
-            _hoverTimer.Stop();
-            _hoverTimer.Start();
+            _hoverTimer?.Stop();
+            _hoverTimer?.Start();
         }
 
         private void OnTabHoverEnded(TabViewItem viewItem)
         {
             if (_tabPreviewTarget != null && _tabPreviewTarget == viewItem)
             {
-                _hoverTimer.Stop();
+                _hoverTimer?.Stop();
                 // 不再立即关闭：如果鼠标在预览卡内，等 PointerExited 再关
                 if (!_isPreviewHovered)
                     SchedulePreviewClose();
@@ -1696,7 +1697,7 @@ namespace EdgeRebuild
 
             try
             {
-                byte[] png = await GetTabPreviewPngAsync(target.Tab);
+                byte[]? png = await GetTabPreviewPngAsync(target.Tab);
                 if (_tabPreviewTarget != target || target.Tab.CurrentUrl != url
                     || png == null || png.Length == 0) return;
 
@@ -1718,26 +1719,26 @@ namespace EdgeRebuild
         }
 
         // ---- 缩略图捕获：悬停预览与预览带共用，按标签去重并缓存 ----
-        private Task<byte[]> GetTabPreviewPngAsync(IBrowserTab tab)
+        private Task<byte[]?> GetTabPreviewPngAsync(IBrowserTab tab)
         {
-            if (_previewCache.TryGetValue(tab, out byte[] cached) && cached != null && cached.Length > 0)
-                return Task.FromResult(cached);
-            if (_previewCaptureTasks.TryGetValue(tab, out Task<byte[]> pending))
+            if (_previewCache.TryGetValue(tab, out var cached) && cached != null && cached.Length > 0)
+                return Task.FromResult<byte[]?>(cached);
+            if (_previewCaptureTasks.TryGetValue(tab, out var pending))
                 return pending;
             return CaptureAndCacheTabPreviewAsync(tab);
         }
 
-        private async Task<byte[]> CaptureAndCacheTabPreviewAsync(IBrowserTab tab)
+        private async Task<byte[]?> CaptureAndCacheTabPreviewAsync(IBrowserTab tab)
         {
-            Task<byte[]> task = CaptureTabPreviewCoreAsync(tab);
+            Task<byte[]?> task = CaptureTabPreviewCoreAsync(tab);
             _previewCaptureTasks[tab] = task;
             try
             {
-                byte[] png = await task;
+                byte[]? png = await task;
                 // 标签可能在捕获期间被关闭，避免把已释放标签留在缓存里
                 if (png != null && png.Length > 0 && _tabManager.Tabs.Any(v => v.Tab == tab))
                     _previewCache[tab] = png;
-                return png;
+                return png!;
             }
             finally
             {
@@ -1745,13 +1746,13 @@ namespace EdgeRebuild
             }
         }
 
-        private async Task<byte[]> CaptureTabPreviewCoreAsync(IBrowserTab tab)
+        private async Task<byte[]?> CaptureTabPreviewCoreAsync(IBrowserTab tab)
         {
             // 后台标签容器 Collapsed → 捕获前临时置可见；期间切到该标签则不还原
             var item = _tabManager.Tabs.FirstOrDefault(v => v.Tab == tab);
             var container = item?.ContentContainer;
             bool restore = container != null && container.Visibility != Visibility.Visible;
-            if (restore) container.Visibility = Visibility.Visible;
+            if (restore && container != null) container.Visibility = Visibility.Visible;
             try { return await WebCaptureService.CapturePagePngAsync(tab, 480); }
             finally
             {
@@ -1966,7 +1967,11 @@ namespace EdgeRebuild
             => CloseSweptTabsPane();
 
         private void HubSplitView_PaneOpening(object sender, object args)
-            => CloseSweptTabsPane(false);
+        {
+            CloseSweptTabsPane(false);
+            // 面板打开后把焦点移入 Hub，键盘用户可直接用方向键切换分区、Esc 关闭。
+            _ = Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Low, () => hubPane.FocusInitial());
+        }
 
         private void SettingsSplitView_PaneOpening(object sender, object args)
         {
@@ -2044,10 +2049,10 @@ namespace EdgeRebuild
             }
 
             // 只复用已有预览缓存；没有缓存的卡片显示骨架，不为搁置额外截图
-            var thumbs = new List<byte[]>();
+            var thumbs = new List<byte[]?>();
             foreach (var item in sweep)
             {
-                byte[] png = null;
+                byte[]? png = null;
                 if (item.Tab != null)
                     _previewCache.TryGetValue(item.Tab, out png);
                 thumbs.Add(png);
@@ -2133,6 +2138,7 @@ namespace EdgeRebuild
                 Visibility = Visibility.Collapsed
             };
             closeBtn.Click += async (s, e) => await _tabManager.CloseTabAsync(item);
+            AutomationProperties.SetName(closeBtn, $"关闭标签页：{item.Tab.Title ?? "新标签页"}");
             // 关闭按钮的 Tapped 不再冒泡到卡片，避免“先切换再关闭”抢走当前标签
             closeBtn.Tapped += (s, e) => e.Handled = true;
             thumbHost.Children.Add(closeBtn);
@@ -2238,7 +2244,7 @@ namespace EdgeRebuild
             try
             {
                 await _previewStripCaptureGate.WaitAsync();
-                byte[] png;
+                byte[]? png;
                 try
                 {
                     // 排队期间预览带可能已收起，别再做无用的全页捕获
@@ -2368,7 +2374,12 @@ namespace EdgeRebuild
         private async Task ShareCurrentPageAsync()
         {
             var tab = _tabManager?.CurrentTab;
-            string url = tab?.CurrentUrl;
+            if (tab == null)
+            {
+                NotificationService.ShowToast("分享", "当前页面不可分享");
+                return;
+            }
+            string? url = tab.CurrentUrl;
             if (string.IsNullOrEmpty(url) || url == "about:blank")
             {
                 NotificationService.ShowToast("分享", "当前页面不可分享");
@@ -2379,7 +2390,7 @@ namespace EdgeRebuild
                 var dtm = Windows.ApplicationModel.DataTransfer.DataTransferManager.GetForCurrentView();
                 Windows.Foundation.TypedEventHandler<
                     Windows.ApplicationModel.DataTransfer.DataTransferManager,
-                    Windows.ApplicationModel.DataTransfer.DataRequestedEventArgs> handler = null;
+                    Windows.ApplicationModel.DataTransfer.DataRequestedEventArgs> handler = null!;
                 handler = (s, args) =>
                 {
                     try
@@ -2409,7 +2420,7 @@ namespace EdgeRebuild
             var tab = _tabManager.CurrentTab;
             if (tab == null) return;
 
-            if (_readerModeUrls.TryGetValue(tab, out string originalUrl))
+            if (_readerModeUrls.TryGetValue(tab, out var originalUrl))
             {
                 _readerModeUrls.Remove(tab);
                 await tab.NavigateAsync(originalUrl);
@@ -2507,8 +2518,8 @@ namespace EdgeRebuild
             PositionQuickSwitchOverlay();
             _quickSwitchBox.Text = string.Empty;
             RebuildQuickSwitchList(string.Empty);
-            PlatformCompat.SetPopupRoot(_quickSwitchPopup, this);
-            _quickSwitchPopup.IsOpen = true;
+            PlatformCompat.SetPopupRoot(_quickSwitchPopup!, this);
+            _quickSwitchPopup!.IsOpen = true;
             AnimateQuickSwitchEntrance();
 
             _ = Dispatcher.RunAsync(CoreDispatcherPriority.Low, () =>
@@ -2761,17 +2772,18 @@ namespace EdgeRebuild
         private void QuickSwitchList_ItemClick(object sender, ItemClickEventArgs e)
         {
             var target = (e.ClickedItem as Grid)?.Tag as TabViewItem;
-            _ = ActivateQuickSwitchTabAsync(target);
+            if (target != null) _ = ActivateQuickSwitchTabAsync(target);
         }
 
         private void MoveQuickSwitchSelection(int delta)
         {
-            int count = _quickSwitchList?.Items.Count ?? 0;
+            var list = _quickSwitchList!;
+            int count = list.Items.Count;
             if (count == 0) return;
-            int index = _quickSwitchList.SelectedIndex;
+            int index = list.SelectedIndex;
             index = index < 0 ? 0 : (index + delta + count) % count;
-            _quickSwitchList.SelectedIndex = index;
-            _quickSwitchList.ScrollIntoView(_quickSwitchList.Items[index]);
+            list.SelectedIndex = index;
+            list.ScrollIntoView(list.Items[index]);
         }
 
         private Task ActivateQuickSwitchSelectionAsync()
@@ -2972,6 +2984,11 @@ namespace EdgeRebuild
         // ---- 副视图键盘快捷键（XAML 路由；副视图不挂 CoreWindow 全局钩子） ----
         private void OnWindowKeyDown(object sender, KeyRoutedEventArgs e)
         {
+            if (e.Key == VirtualKey.Escape && TryCloseOverlay())
+            {
+                e.Handled = true;
+                return;
+            }
             if (e.Key == VirtualKey.Escape && _isSweptPaneOpen)
             {
                 CloseSweptTabsPane();
@@ -3009,7 +3026,7 @@ namespace EdgeRebuild
         private double _lastPreviewViewportWidth = -1;
         private double _lastPreviewOriginX = double.NaN;
 
-        private void OnTabScrollViewerLayoutUpdated(object sender, object e)
+        private void OnTabScrollViewerLayoutUpdated(object? sender, object e)
         {
             if (!_isPreviewStripOpen || _isVerticalTabs || _alignPreviewQueued) return;
             double viewport = TabScrollViewer.ActualWidth;
@@ -3282,7 +3299,7 @@ namespace EdgeRebuild
                     VerticalTabPanel.Children.Add(child);
                 }
                 _dragManager?.SetTargetPanel(VerticalTabPanel);
-                _dragManager.IsVertical = true;
+                _dragManager!.IsVertical = true;
                 if (_isPreviewStripOpen)
                 {
                     // 垂直模式没有横向标签条可对齐，预览卡按侧边栏宽度重建
@@ -3302,7 +3319,7 @@ namespace EdgeRebuild
                     TabBarPanel.Children.Add(child);
                 }
                 _dragManager?.SetTargetPanel(TabBarPanel);
-                _dragManager.IsVertical = false;
+                _dragManager!.IsVertical = false;
                 UpdateTabLayout();
                 if (_isPreviewStripOpen)
                 {
@@ -3358,7 +3375,7 @@ namespace EdgeRebuild
         }
 
         /// <summary>标签根 Grid 的最后一个子元素是活动强调条（见 TabManager.BuildTabUI）</summary>
-        private static Border GetTabAccentBar(Border border)
+        private static Border? GetTabAccentBar(Border border)
         {
             var root = border.Child as Grid;
             if (root == null || root.Children.Count == 0) return null;
@@ -3476,7 +3493,7 @@ namespace EdgeRebuild
         }
 
         // ---- 收藏夹栏(参考规范 §6.1)----
-        private void OnFavoritesChanged(object sender, EventArgs e)
+        private void OnFavoritesChanged(object? sender, EventArgs e)
         {
             _ = Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
@@ -3654,6 +3671,7 @@ namespace EdgeRebuild
                 VerticalAlignment = VerticalAlignment.Center
             };
             btn.Click += (s, args) => NavigateFromFavoritesBar(fav.Url);
+            AutomationProperties.SetName(btn, $"打开收藏：{fav.Title ?? fav.Url}");
             btn.RightTapped += (s, args) =>
             {
                 var menu = new MenuFlyout();
@@ -3675,7 +3693,7 @@ namespace EdgeRebuild
                 var renameItem = new MenuFlyoutItem { Text = "重命名" };
                 renameItem.Click += async (_, _) =>
                 {
-                    string name = await PromptFavoriteTextAsync("重命名书签", "名称", fav.Title);
+                    string? name = await PromptFavoriteTextAsync("重命名书签", "名称", fav.Title);
                     if (name != null) await FavoritesManager.Instance.RenameAsync(fav, name);
                 };
                 menu.Items.Add(renameItem);
@@ -3707,7 +3725,7 @@ namespace EdgeRebuild
             return btn;
         }
 
-        private static void ApplyFavicon(string faviconUrl, FontIcon fallback, Image target)
+        private static void ApplyFavicon(string? faviconUrl, FontIcon fallback, Image target)
         {
             if (string.IsNullOrWhiteSpace(faviconUrl)) return;
             try
@@ -3731,7 +3749,7 @@ namespace EdgeRebuild
             Clipboard.SetContent(dataPackage);
         }
 
-        private async Task<string> PromptFavoriteTextAsync(string title, string label, string initial)
+        private async Task<string?> PromptFavoriteTextAsync(string title, string label, string? initial)
         {
             var box = new TextBox { Text = initial ?? "", Header = label };
             var dialog = new ContentDialog
@@ -3743,12 +3761,12 @@ namespace EdgeRebuild
             };
             PlatformCompat.SetDialogRoot(dialog, this);
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return null;
-            string text = box.Text?.Trim();
+            string? text = box.Text?.Trim();
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
 
         private void PopulateFavoriteMoveMenu(MenuFlyoutSubItem moveMenu, Action<int?> onMove,
-            FavoriteFolder movingFolder = null)
+            FavoriteFolder? movingFolder = null)
         {
             var manager = FavoritesManager.Instance;
             var rootItem = new MenuFlyoutItem { Text = "收藏夹（根目录）" };
@@ -3820,6 +3838,7 @@ namespace EdgeRebuild
             AddFavoriteFolderOpenAllItems(flyout.Items, folder.Id);
             flyout.Items.Add(new MenuFlyoutSeparator());
             PopulateFavoriteFolderFlyout(flyout.Items, folder.Id);
+            AutomationProperties.SetName(btn, $"收藏夹文件夹：{folder.Name ?? "未命名文件夹"}");
             btn.Flyout = flyout;
 
             btn.RightTapped += async (s, args) =>
@@ -3831,7 +3850,7 @@ namespace EdgeRebuild
                 var renameItem = new MenuFlyoutItem { Text = "重命名" };
                 renameItem.Click += async (_, _) =>
                 {
-                    string name = await PromptFavoriteTextAsync("重命名文件夹", "名称", folder.Name);
+                    string? name = await PromptFavoriteTextAsync("重命名文件夹", "名称", folder.Name);
                     if (name != null) await FavoritesManager.Instance.RenameFolderAsync(folder, name);
                 };
                 menu.Items.Add(renameItem);
@@ -4049,7 +4068,7 @@ namespace EdgeRebuild
                 });
                 return;
             }
-            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url));
+            await Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () => await _downloadCoordinator.HandleEdgeHtmlDownloadRequested(url!));
         }
 
         // ---- 本地 EPUB/PDF 打开（文件选择器 / 拖放 / 地址栏 file://） ----
@@ -4081,7 +4100,7 @@ namespace EdgeRebuild
         /// 本地文档统一入口：空白/NTP 标签复用当前标签，否则新建标签；
         /// PDF 强制 WebView2（EdgeHTML 无法运行 pdf.js）。
         /// </summary>
-        private async Task OpenLocalDocumentAsync(string source, StorageFile file = null)
+        private async Task OpenLocalDocumentAsync(string source, StorageFile? file = null)
         {
             DocumentKind kind = file != null && DocumentOpenService.TryGetDocumentKind(file.Name, out var fileKind)
                 ? fileKind
@@ -4094,7 +4113,7 @@ namespace EdgeRebuild
                     || ToolbarControl.IsNtpUrl(current.CurrentUrl));
             bool currentEngineOk = kind != DocumentKind.Pdf || current is WebView2Tab;
 
-            if (currentIsBlank && currentEngineOk)
+            if (currentIsBlank && currentEngineOk && current != null)
             {
                 bool opened = file != null
                     ? await DocumentOpenService.OpenLocalFileAsync(current, file)
@@ -4105,7 +4124,7 @@ namespace EdgeRebuild
             }
 
             EngineType engine = kind == DocumentKind.Pdf ? EngineType.WebView2 : _defaultEngine;
-            var created = await _tabManager.CreateTabAsync(engine, null);
+            var created = await _tabManager!.CreateTabAsync(engine, null);
             bool ok = file != null
                 ? await DocumentOpenService.OpenLocalFileAsync(created.Tab, file)
                 : await DocumentOpenService.OpenDocumentAsync(created.Tab, source);
@@ -4243,7 +4262,7 @@ namespace EdgeRebuild
             }
         }
 
-        private static FindResult ParseFindResult(string raw) => Services.FindService.ParseFindResult(raw);
+        private static FindResult? ParseFindResult(string raw) => Services.FindService.ParseFindResult(raw);
 
         private static string BuildFindScript(string query, string mode) => Services.FindService.BuildFindScript(query, mode);
 
@@ -4457,6 +4476,24 @@ namespace EdgeRebuild
         {
             HubSplitView.IsPaneOpen = false;
             toolbarControl.FocusAddressBarAndClear();
+        }
+
+        /// <summary>Esc 关闭当前覆盖层（Hub / 设置），返回是否处理了本次按键。</summary>
+        private bool TryCloseOverlay()
+        {
+            if (HubSplitView.IsPaneOpen)
+            {
+                HubSplitView.IsPaneOpen = false;
+                SetFocusToCurrentTabContent();
+                return true;
+            }
+            if (SettingsSplitView.IsPaneOpen)
+            {
+                SettingsSplitView.IsPaneOpen = false;
+                SetFocusToCurrentTabContent();
+                return true;
+            }
+            return false;
         }
 
         private void NewTabBtn_Click(object sender, RoutedEventArgs e) => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");

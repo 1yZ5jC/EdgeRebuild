@@ -23,7 +23,9 @@
                                 Background="Transparent"
                                 Click="CloseButton_Click"
                                 Width="32" Height="32" 
-                                HorizontalAlignment="Left"/>
+                                HorizontalAlignment="Left"
+                                ToolTipService.ToolTip="关闭设置"
+                                AutomationProperties.Name="关闭设置"/>
                         <TextBlock Text="设置" 
                                    FontSize="18" 
                                    FontWeight="SemiBold" 

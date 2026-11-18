@@ -65,7 +65,8 @@
             <!-- 左滚动按钮 -->
             <Button x:Name="ScrollLeftBtn" Grid.Column="0" Content="&#xE76B;"
                     Style="{StaticResource TabToolButtonStyle}" Width="24" Height="24"
-                    Click="ScrollLeftBtn_Click" VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"/>
+                    Click="ScrollLeftBtn_Click" VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"
+                    ToolTipService.ToolTip="向左滚动标签栏" AutomationProperties.Name="向左滚动标签栏"/>
 
             <!-- 标签滚动区 -->
             <ScrollViewer x:Name="TabScrollViewer" Grid.Column="1"
@@ -85,10 +86,12 @@
                         Background="Transparent" Margin="0,0,50,0">
                 <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
                         Style="{StaticResource TabToolButtonStyle}" Width="24" Height="24"
-                        Click="ScrollRightBtn_Click" Visibility="Collapsed" Margin="0,0,0,0"/>
+                        Click="ScrollRightBtn_Click" Visibility="Collapsed" Margin="0,0,0,0"
+                        ToolTipService.ToolTip="向右滚动标签栏" AutomationProperties.Name="向右滚动标签栏"/>
                 <Button x:Name="NewTabButton" Content="&#xE710;"
                         Style="{StaticResource TabToolButtonStyle}" Width="32" Height="32"
-                        Click="NewTabButton_Click" Margin="0,0,0,0"/>
+                        Click="NewTabButton_Click" Margin="0,0,0,0"
+                        ToolTipService.ToolTip="新建标签页" AutomationProperties.Name="新建标签页"/>
             </StackPanel>
 
             <!-- 标题栏可拖拽区域（占满剩余空间） -->

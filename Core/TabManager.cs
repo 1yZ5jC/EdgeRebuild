@@ -8,6 +8,7 @@ using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
@@ -18,7 +19,7 @@ namespace EdgeRebuild.Core
     public class TabManager
     {
         private readonly List<TabViewItem> _tabs = new List<TabViewItem>();
-        private IBrowserTab _currentTab;
+        private IBrowserTab? _currentTab;
         private readonly Stack<(string url, string title, EngineType engine)> _closedTabs = new Stack<(string, string, EngineType)>();
         private const int MaxClosedTabs = 20;
 
@@ -45,47 +46,48 @@ namespace EdgeRebuild.Core
         /// </summary>
         public bool SuppressSessionSave { get; set; }
 
-        private StackPanel _tabBarPanel;
-        private Panel _contentContainer;
-        private readonly Func<SkinManager.SkinColors> _colorProvider;
+        private StackPanel? _tabBarPanel;
+        private Panel? _contentContainer;
+        private readonly Func<SkinManager.SkinColors>? _colorProvider;
 
         // 无标签条模式（Metro 窗口）：标签 UI 不构建，靠 TabCreated/TabChanged 事件驱动
         private bool IsTabBarlessMode => _tabBarPanel == null;
 
-        public event Action<TabViewItem> TabCreated;
-        public event Action<TabViewItem> TabChanged;
-        public event Action<TabViewItem> TabTitleChanged;   // 标题变化（不触发 TabChanged，避免抢焦点）
-        public event Action<int> TabCountChanged;
-        public event Action<TabViewItem> TabClosed;
-        public event Action<IBrowserTab, bool> TabSuspendedChanged;
-        public event Action<IBrowserTab, string> TabUrlChanged;
-        public event Action<IBrowserTab, bool> TabCanGoBackChanged;
-        public event Action<IBrowserTab, bool> TabCanGoForwardChanged;
-        public event Action<string> NewWindowRequested;
-        public event Action<TabContextMenuEventArgs> ContextMenuRequested;
-        public event Action TabOrderChanged;
-        public event Action<PageShortcutKey> PageKeyPressed;
-        public event Action<string> PageMarkActionRequested;
-        public event Action<string> TtsTextRequested;
-        public event Action<string> NtpSearchRequested;
-        public event Action<TabViewItem> TabHoverStarted;   // 标签悬停（缩略图预览用）
-        public event Action<TabViewItem> TabHoverEnded;
-        public event Action<IBrowserTab, string> TabScrolled;   // 页面滚动回报（Metro 底栏自动隐藏）
+        public event Action<TabViewItem>? TabCreated;
+        public event Action<TabViewItem>? TabChanged;
+        public event Action<TabViewItem>? TabTitleChanged;   // 标题变化（不触发 TabChanged，避免抢焦点）
+        public event Action<int>? TabCountChanged;
+        public event Action<TabViewItem>? TabClosed;
+        public event Action<IBrowserTab, bool>? TabSuspendedChanged;
+        public event Action<IBrowserTab, string>? TabUrlChanged;
+        public event Action<IBrowserTab, bool>? TabCanGoBackChanged;
+        public event Action<IBrowserTab, bool>? TabCanGoForwardChanged;
+        public event Action<string>? NewWindowRequested;
+        public event Action<TabContextMenuEventArgs>? ContextMenuRequested;
+        public event Action? TabOrderChanged;
+        public event Action<PageShortcutKey>? PageKeyPressed;
+        public event Action<string>? PageMarkActionRequested;
+        public event Action<string>? TtsTextRequested;
+        public event Action<string>? NtpSearchRequested;
+        public event Action<TabViewItem>? TabHoverStarted;   // 标签悬停（缩略图预览用）
+        public event Action<TabViewItem>? TabHoverEnded;
+        public event Action<IBrowserTab, string>? TabScrolled;   // 页面滚动回报（Metro 底栏自动隐藏）
 
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
-        public IBrowserTab CurrentTab => _currentTab;
+        // 无标签时运行时为 null；保留非可空签名以匹配既有调用约定（调用方先看 TabCount/判空）。
+        public IBrowserTab CurrentTab => _currentTab!;
         public int TabCount => _tabs.Count;
         public bool IsTabSuspendEnabled => _enableTabSuspend;
 
         public const int PinnedTabWidth = 36;
 
-        public TabManager(Func<SkinManager.SkinColors> colorProvider = null)
+        public TabManager(Func<SkinManager.SkinColors>? colorProvider = null)
         {
             _colorProvider = colorProvider;
             _ = LoadSettingsAsync();
         }
 
-        public void Initialize(StackPanel tabBarPanel, Panel contentContainer)
+        public void Initialize(StackPanel? tabBarPanel, Panel contentContainer)
         {
             _tabBarPanel = tabBarPanel;
             _contentContainer = contentContainer;
@@ -127,8 +129,8 @@ namespace EdgeRebuild.Core
             = new Dictionary<IBrowserTab, (string, HistoryItem)>();
 
         public async Task<TabViewItem> CreateTabAsync(
-            EngineType engine, string url = null, bool isPinned = false, bool isMetroHome = false,
-            bool deferNavigation = false, string pendingTitle = null)
+            EngineType engine, string? url = null, bool isPinned = false, bool isMetroHome = false,
+            bool deferNavigation = false, string? pendingTitle = null)
         {
             // PDF 需要 pdf.js（WebView2）：即使调用方指定 EdgeHTML（如地址栏直接输入
             // 本地 PDF 路径），也自动改用 WebView2，避免 EdgeHTML 下载/空白页。
@@ -199,21 +201,22 @@ namespace EdgeRebuild.Core
         /// <summary>
         /// 懒标签在页面加载前先显示上次标题（旧会话没有标题时显示 URL）。
         /// </summary>
-        private static void ApplyLazyTabVisual(TabViewItem viewItem, string title, string url)
+        private static void ApplyLazyTabVisual(TabViewItem viewItem, string? title, string? url)
         {
             if (viewItem.TitleText == null) return;
-            string display = title;
+            string safeUrl = url ?? "";
+            string? display = title;
             if (string.IsNullOrWhiteSpace(display))
             {
                 try
                 {
-                    var uri = new Uri(url);
-                    display = string.IsNullOrEmpty(uri.Host) ? url : uri.Host + uri.PathAndQuery;
+                    var uri = new Uri(safeUrl);
+                    display = string.IsNullOrEmpty(uri.Host) ? safeUrl : uri.Host + uri.PathAndQuery;
                 }
-                catch { display = url; }
+                catch { display = safeUrl; }
             }
             viewItem.TitleText.Text = display;
-            ToolTipService.SetToolTip(viewItem.TitleText, url);
+            ToolTipService.SetToolTip(viewItem.TitleText, safeUrl);
         }
 
         /// <summary>
@@ -373,6 +376,7 @@ namespace EdgeRebuild.Core
                 };
                 Grid.SetColumn(closeBtn, 1);
                 tabPanel.Children.Add(closeBtn);
+                AutomationProperties.SetName(closeBtn, $"关闭标签页：{tab.Title ?? "新标签页"}");
 
                 // 选中标签顶部强调条（Edge/Fluent 风格，高对比标识当前标签）
                 var accentBar = new Border
@@ -656,7 +660,7 @@ namespace EdgeRebuild.Core
 
             // 会话懒恢复：首次切到该标签时才加载页面。切换本身不等待加载完成。
             // 先记录待加载地址，等内容容器变为可见后再启动导航（WebView2 初始化要求控件已加载）。
-            string lazyUrl = viewItem.LazyUrl;
+            string? lazyUrl = viewItem.LazyUrl;
             viewItem.LazyUrl = null;
 
             var colors = GetColors();
@@ -747,8 +751,8 @@ namespace EdgeRebuild.Core
                 return true;
             }
             engine = EngineType.EdgeHtml;
-            url = null;
-            title = null;
+            url = "";
+            title = "";
             return false;
         }
 

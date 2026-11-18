@@ -273,7 +273,8 @@
                                     VerticalAlignment="Center">
                             <Button x:Name="VerticalNewTabBtn" Content="&#xE710;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
-                                    Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"/>
+                                    Click="VerticalNewTabBtn_Click" ToolTipService.ToolTip="新建标签页"
+                                    AutomationProperties.Name="新建标签页"/>
                             <Button x:Name="VerticalSweptTabsBtn" Content="&#xED50;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
                                     FontFamily="{StaticResource BrowserMdlFontFamily}"
@@ -287,7 +288,8 @@
                                     AutomationProperties.Name="展开标签预览"/>
                             <Button x:Name="VerticalTabToggleBtn" Content="&#xE711;"
                                     Style="{StaticResource RevealButtonStyle}" Width="26" Height="26"
-                                    Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"/>
+                                    Click="VerticalTabToggleBtn_Click" ToolTipService.ToolTip="切换回水平标签栏"
+                                    AutomationProperties.Name="切换回水平标签栏"/>
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -338,7 +340,9 @@
                 <Button x:Name="ScrollLeftBtn" Grid.Column="1" Content="&#xE76B;"
                         Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
                         Click="ScrollLeftBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
-                        VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"/>
+                        VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Collapsed"
+                        ToolTipService.ToolTip="向左滚动标签栏"
+                        AutomationProperties.Name="向左滚动标签栏"/>
 
                 <ScrollViewer x:Name="TabScrollViewer" Grid.Column="2"
                               HorizontalScrollBarVisibility="Hidden"
@@ -359,7 +363,9 @@
                     <Button x:Name="ScrollRightBtn" Content="&#xE76C;"
                             Style="{StaticResource RevealButtonStyle}" Width="24" Height="24"
                             Click="ScrollRightBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
-                            Visibility="Collapsed" Margin="0,0,0,0"/>
+                            Visibility="Collapsed" Margin="0,0,0,0"
+                            ToolTipService.ToolTip="向右滚动标签栏"
+                            AutomationProperties.Name="向右滚动标签栏"/>
                     <Button x:Name="TabPreviewToggleBtn" Content="&#xE70D;"
                             Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"
                             Click="TabPreviewToggleBtn_Click" ToolTipService.ToolTip="展开标签预览"
@@ -369,7 +375,9 @@
                     <Button x:Name="NewTabButton" Content="&#xE710;"
                             Style="{StaticResource RevealButtonStyle}" Width="32" Height="32"
                             Click="NewTabBtn_Click" Foreground="{StaticResource MutedForegroundBrush}"
-                            Margin="0,0,0,0"/>
+                            Margin="0,0,0,0"
+                            ToolTipService.ToolTip="新建标签页"
+                            AutomationProperties.Name="新建标签页"/>
                 </StackPanel>
 
                 <Rectangle x:Name="OldTitleBarDragArea" Fill="Transparent"
@@ -512,21 +520,25 @@
                     Canvas.ZIndex="80">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <TextBox x:Name="FindBox" Width="220" PlaceholderText="在页面中查找"
-                             TextChanged="FindBox_TextChanged" KeyDown="FindBox_KeyDown"/>
+                             TextChanged="FindBox_TextChanged" KeyDown="FindBox_KeyDown"
+                             AutomationProperties.Name="在页面中查找"/>
                     <TextBlock x:Name="FindResultText" VerticalAlignment="Center"
                                MinWidth="44" TextAlignment="Center" FontSize="12"
                                Foreground="{StaticResource MutedForegroundBrush}"/>
                     <Button x:Name="FindPrevBtn" Content="&#xE70E;" Width="30" Height="30"
                             Style="{StaticResource RevealButtonStyle}"
                             ToolTipService.ToolTip="上一个（Shift+Enter）"
+                            AutomationProperties.Name="查找上一个"
                             Click="FindPrevBtn_Click"/>
                     <Button x:Name="FindNextBtn" Content="&#xE70D;" Width="30" Height="30"
                             Style="{StaticResource RevealButtonStyle}"
                             ToolTipService.ToolTip="下一个（Enter）"
+                            AutomationProperties.Name="查找下一个"
                             Click="FindNextBtn_Click"/>
                     <Button x:Name="FindCloseBtn" Content="&#xE711;" Width="30" Height="30"
                             Style="{StaticResource RevealButtonStyle}"
                             ToolTipService.ToolTip="关闭（Esc）"
+                            AutomationProperties.Name="关闭查找栏"
                             Click="FindCloseBtn_Click"/>
                 </StackPanel>
             </Border>
@@ -585,15 +597,18 @@
                 <Button x:Name="ReadAloudPauseBtn" Content="&#xE769;" FontFamily="Segoe MDL2 Assets"
                         FontSize="14" Padding="10,4" MinWidth="40"
                         Click="ReadAloudPauseBtn_Click"
-                        ToolTipService.ToolTip="暂停/继续"/>
+                        ToolTipService.ToolTip="暂停/继续"
+                        AutomationProperties.Name="暂停或继续朗读"/>
                 <Button x:Name="ReadAloudStopBtn" Content="&#xE71A;" FontFamily="Segoe MDL2 Assets"
                         FontSize="14" Padding="10,4" MinWidth="40"
                         Click="ReadAloudStopBtn_Click"
-                        ToolTipService.ToolTip="停止朗读"/>
+                        ToolTipService.ToolTip="停止朗读"
+                        AutomationProperties.Name="停止朗读"/>
                 <Button x:Name="ReadAloudCloseBtn" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
                         FontSize="12" Padding="8,4" MinWidth="32"
                         Click="ReadAloudCloseBtn_Click"
-                        ToolTipService.ToolTip="隐藏面板（朗读继续）"/>
+                        ToolTipService.ToolTip="隐藏面板（朗读继续）"
+                        AutomationProperties.Name="隐藏朗读面板"/>
             </StackPanel>
         </Border>
 

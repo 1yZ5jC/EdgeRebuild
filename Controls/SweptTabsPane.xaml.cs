@@ -22,10 +22,10 @@ namespace EdgeRebuild.Controls
     /// </summary>
     public sealed partial class SweptTabsPane : UserControl
     {
-        public event Action CloseRequested;
-        public event Action SweepOtherRequested;
+        public event Action? CloseRequested;
+        public event Action? SweepOtherRequested;
 
-        private TabManager _tabManager;
+        private TabManager? _tabManager;
         private List<SweptTabGroup> _groups = new List<SweptTabGroup>();
         private readonly Dictionary<int, byte[]> _thumbnails = new Dictionary<int, byte[]>();
         private bool _refreshing;
@@ -88,14 +88,15 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        public void StoreThumbnails(SweptTabGroup group, IReadOnlyList<byte[]> thumbnails)
+        public void StoreThumbnails(SweptTabGroup group, IReadOnlyList<byte[]?> thumbnails)
         {
             if (group?.Tabs == null || thumbnails == null) return;
             int count = Math.Min(group.Tabs.Count, thumbnails.Count);
             for (int i = 0; i < count; i++)
             {
-                if (thumbnails[i] != null && thumbnails[i].Length > 0)
-                    _thumbnails[group.Tabs[i].Id] = thumbnails[i];
+                var png = thumbnails[i];
+                if (png != null && png.Length > 0)
+                    _thumbnails[group.Tabs[i].Id] = png;
             }
         }
 
@@ -341,7 +342,7 @@ namespace EdgeRebuild.Controls
             button.ContextFlyout = menu;
 
             // 只复用宿主已有的悬停预览缓存；没有就显示骨架，不为搁置额外截图
-            byte[] png = _thumbnails.TryGetValue(tab.Id, out var cached) ? cached : null;
+            byte[]? png = _thumbnails.TryGetValue(tab.Id, out var cached) ? cached : null;
             if (png != null && png.Length > 0)
                 _ = LoadThumbnailAsync(image, placeholder, png);
 

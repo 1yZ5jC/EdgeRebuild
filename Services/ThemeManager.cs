@@ -11,11 +11,11 @@ namespace EdgeRebuild.Services
     {
         private static string _currentSkin = "Spartan";
         private static bool _isDarkTheme = false;
-        private static SkinManager.SkinColors _currentColors;
-        private static UISettings _uiSettings;
-        private static Windows.UI.Core.CoreDispatcher _mainDispatcher;
+        private static SkinManager.SkinColors _currentColors = null!;
+        private static UISettings _uiSettings = null!;
+        private static Windows.UI.Core.CoreDispatcher? _mainDispatcher;
 
-        public static event Action<SkinManager.SkinColors, bool> ThemeChanged;
+        public static event Action<SkinManager.SkinColors, bool>? ThemeChanged;
 
         // 画笔是 XAML DependencyObject，具有线程亲和性：
         // 不能跨窗口共享（辅助窗口布局时会抛 RPC_E_WRONG_THREAD），

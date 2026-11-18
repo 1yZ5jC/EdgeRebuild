@@ -8,10 +8,10 @@ namespace EdgeRebuild.Services
 {
     public class ArticleResult
     {
-        public string Title { get; set; }
-        public string Byline { get; set; }
-        public string Content { get; set; }
-        public string Text { get; set; }
+        public string Title { get; set; } = "";
+        public string Byline { get; set; } = "";
+        public string Content { get; set; } = "";
+        public string Text { get; set; } = "";
     }
 
     /// <summary>
@@ -20,7 +20,7 @@ namespace EdgeRebuild.Services
     /// </summary>
     public static class ReaderService
     {
-        private static string _readabilityJs;
+        private static string? _readabilityJs;
 
         private static async Task<string> LoadReadabilityJsAsync()
         {
@@ -56,9 +56,9 @@ namespace EdgeRebuild.Services
                 double lineHeight = 1.75;
                 try
                 {
-                    string fsSetting = await Services.SettingsManager.GetAsync("ReaderFontSize");
+                    string? fsSetting = await Services.SettingsManager.GetAsync("ReaderFontSize");
                     if (int.TryParse(fsSetting, out int f)) fontSize = Math.Min(28, Math.Max(12, f));
-                    string lhSetting = await Services.SettingsManager.GetAsync("ReaderLineHeight");
+                    string? lhSetting = await Services.SettingsManager.GetAsync("ReaderLineHeight");
                     if (double.TryParse(lhSetting, System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out double l))
                         lineHeight = Math.Min(2.6, Math.Max(1.2, l));
@@ -77,7 +77,7 @@ namespace EdgeRebuild.Services
             }
         }
 
-        private static async Task<ArticleResult> ExtractAsync(IBrowserTab tab, string readabilityJs)
+        private static async Task<ArticleResult?> ExtractAsync(IBrowserTab tab, string readabilityJs)
         {
             const string extractScript = @"
 ;(function(){
@@ -117,7 +117,7 @@ namespace EdgeRebuild.Services
         /// <summary>
         /// 大声朗读用：提取文章纯文本（不切换页面，原页面保持不动）。
         /// </summary>
-        public static async Task<ArticleResult> ExtractTextForTtsAsync(IBrowserTab tab)
+        public static async Task<ArticleResult?> ExtractTextForTtsAsync(IBrowserTab tab)
         {
             try
             {
@@ -162,7 +162,7 @@ namespace EdgeRebuild.Services
             string json = raw.Trim();
             if (json.StartsWith("\""))
             {
-                try { json = JsonSerializer.Deserialize(json, AppJsonContext.Default.String); }
+                try { json = JsonSerializer.Deserialize(json, AppJsonContext.Default.String) ?? ""; }
                 catch (Exception ex)
                 {
                     Diagnostics.Log($"[阅读模式] 外层字符串解析失败 原始长度={raw.Length}: {ex.Message}");

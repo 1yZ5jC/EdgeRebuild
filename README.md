@@ -2,7 +2,7 @@
 
 EdgeRebuild 是一个 **Vibe Coding** 的浏览器外壳项目，目标是复刻旧版 Edge（EdgeHTML / Spartan）与 Metro IE 的风味，同时保留现代 Chromium 内核的可用性。
 
-当前里程碑：**7.8 · R5-1 标签页快速切换**（2026-11-17）
+当前里程碑：**7.8 · R5 质量项**（R5-1 快速切换 / R5-4 无障碍与 nullable 清理，2026-11-18）
 
 ## 项目概览
 
@@ -89,7 +89,8 @@ Release|x86 使用 NativeAOT（`PublishAot=true`）发布，产物约 11 MB（�
 
 - EdgeHTML 为系统旧内核，部分现代网站不兼容；可在工具栏切换到 WebView2。
 - PDF 查看器依赖 WebView2 / pdf.js，EdgeHTML 标签会自动使用 WebView2 打开 PDF。
-- 真实 Windows 10 1809 设备回归仍在进行（代码最低目标为 17763）。
+- 真实 Windows 10 1809 设备回归仍在进行（代码最低目标为 17763）；复验步骤见
+  `docs/win10-1809-regression-checklist.md`。
 - Tab Sweep 缩略图复用预览缓存；重启后未命中缓存的卡片显示骨架图。
 - 会话快照为单份，副窗口不写入主会话。
 - 双击标签栏空白处新建标签尚未实现。
@@ -98,7 +99,8 @@ Release|x86 使用 NativeAOT（`PublishAot=true`）发布，产物约 11 MB（�
 
 近期工作与状态见 `docs/roadmap.md`。近期计划：
 
-- R5-4 质量项：图标按钮无障碍名称、Hub 键盘导航、nullable 警告清理、真实 1809 回归复验。
+- R5-4 质量项：图标按钮无障碍名称、Hub 键盘导航、nullable 警告清理已完成；真实 1809 复验按
+  `docs/win10-1809-regression-checklist.md` 执行。
 - R1-1 / R1-2：多窗口回归清单与关闭链观察。
 
 暂缓：PDF 朗读、Sweep 整组重命名 / 共享、经典皮肤、扩展体系、独立 PDF 进程（见 R4-4）。

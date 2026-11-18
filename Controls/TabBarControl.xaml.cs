@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Windows.Foundation;
 using Windows.UI;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
@@ -168,6 +169,7 @@ namespace EdgeRebuild.Controls
             };
             Grid.SetColumn(closeBtn, 1);
             tabPanel.Children.Add(closeBtn);
+            AutomationProperties.SetName(closeBtn, $"关闭标签页：{viewItem.Tab.Title ?? "新标签页"}");
 
             tabBorder.Child = tabPanel;
             TabBarPanel.Children.Add(tabBorder);

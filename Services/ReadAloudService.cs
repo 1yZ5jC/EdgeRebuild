@@ -13,9 +13,9 @@ namespace EdgeRebuild.Services
     /// </summary>
     public static class ReadAloudService
     {
-        private static SpeechSynthesizer _synth;
-        private static MediaElement _player;
-        private static Windows.UI.Core.CoreDispatcher _playerDispatcher;   // 播放器所属视图的调度器
+        private static SpeechSynthesizer? _synth;
+        private static MediaElement? _player;
+        private static Windows.UI.Core.CoreDispatcher? _playerDispatcher;   // 播放器所属视图的调度器
         private static readonly List<string> _paragraphs = new List<string>();
         private static int _index = 0;
         private static bool _active = false;
@@ -23,7 +23,7 @@ namespace EdgeRebuild.Services
         private static string _currentText = "";
 
         /// <summary>朗读状态变化（供 UI 刷新按钮文字）。</summary>
-        public static event Action StateChanged;
+        public static event Action? StateChanged;
 
         public static bool IsActive => _active;
         public static bool IsPaused => _paused;
@@ -64,7 +64,7 @@ namespace EdgeRebuild.Services
         }
 
         /// <summary>开始朗读（自动替换当前朗读）。任意视图线程可调，内部封送到播放器线程。</summary>
-        public static void Start(string text, string label)
+        public static void Start(string text, string? label)
         {
             if (string.IsNullOrWhiteSpace(text)) return;
             if (_synth == null || _player == null)
@@ -130,12 +130,19 @@ namespace EdgeRebuild.Services
                 StopCore();
                 return;
             }
+            var synth = _synth;
+            var player = _player;
+            if (synth == null || player == null)
+            {
+                StopCore();
+                return;
+            }
             try
             {
-                var stream = await _synth.SynthesizeTextToStreamAsync(_paragraphs[_index]);
+                var stream = await synth.SynthesizeTextToStreamAsync(_paragraphs[_index]);
                 if (!_active) return;
-                _player.SetSource(stream, stream.ContentType);
-                _player.Play();
+                player.SetSource(stream, stream.ContentType);
+                player.Play();
             }
             catch
             {

@@ -18,7 +18,7 @@ namespace EdgeRebuild.Core
         public ObservableCollection<FavoriteFolder> Folders { get; } = new ObservableCollection<FavoriteFolder>();
 
         /// <summary>收藏夹结构（书签或文件夹）发生任何变更时触发，供收藏栏/星标刷新。</summary>
-        public event EventHandler Changed;
+        public event EventHandler? Changed;
 
         private FavoritesManager() { }
 
@@ -136,13 +136,13 @@ namespace EdgeRebuild.Core
 
         // ---- 书签 CRUD ----
 
-        public async Task AddAsync(string title, string url, int? folderId = null, string faviconUrl = null)
+        public async Task AddAsync(string title, string url, int? folderId = null, string? faviconUrl = null)
         {
             await AddItemInternalAsync(title, url, folderId, faviconUrl);
             RaiseChanged();
         }
 
-        private async Task<FavoriteItem> AddItemInternalAsync(string title, string url, int? folderId, string faviconUrl = null)
+        private async Task<FavoriteItem> AddItemInternalAsync(string title, string url, int? folderId, string? faviconUrl = null)
         {
             if (folderId.HasValue && !Folders.Any(f => f.Id == folderId.Value)) folderId = null;
             var item = new FavoriteItem
@@ -381,7 +381,7 @@ namespace EdgeRebuild.Core
             return itemsToRemove.Count;
         }
 
-        private FavoriteFolder FindFolder(string name, int? parentId)
+        private FavoriteFolder? FindFolder(string name, int? parentId)
             => Folders.FirstOrDefault(f => f.ParentId == parentId &&
                 string.Equals(f.Name, name, StringComparison.CurrentCultureIgnoreCase));
 
@@ -447,7 +447,7 @@ namespace EdgeRebuild.Core
             // 栈顶为当前文件夹；根目录用 null 表示。
             var folderStack = new Stack<int?>();
             folderStack.Push(null);
-            string pendingFolderName = null;
+            string? pendingFolderName = null;
 
             foreach (Match match in BookmarkTokenRegex.Matches(html))
             {

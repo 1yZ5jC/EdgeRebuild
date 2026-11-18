@@ -27,15 +27,15 @@ namespace EdgeRebuild.Core
 
         // UI 引用
         private FrameworkElement _container;
-        private ScrollViewer _tabScrollViewer;
+        private ScrollViewer? _tabScrollViewer;
         private StackPanel _tabBarPanel;
         private StackPanel _rightSidePanel;
         private Button _scrollLeftBtn;
         private Button _scrollRightBtn;
 
         // 事件
-        public event Action LayoutUpdated;
-        public event Action<double> ScrollPositionChanged;
+        public event Action? LayoutUpdated;
+        public event Action<double>? ScrollPositionChanged;
 
         // 公共属性
         public double TabWidth => _tabWidth;
@@ -207,9 +207,9 @@ namespace EdgeRebuild.Core
             _rightSidePanel.Margin = new Thickness(0, 0, ButtonBaseOffset + extraOffset, 0);
         }
 
-        private void OnScrollViewerChanged(object sender, ScrollViewerViewChangedEventArgs e)
+        private void OnScrollViewerChanged(object? sender, ScrollViewerViewChangedEventArgs e)
         {
-            ScrollPositionChanged?.Invoke(_tabScrollViewer.HorizontalOffset);
+            ScrollPositionChanged?.Invoke(_tabScrollViewer?.HorizontalOffset ?? 0);
         }
 
         public void ScrollToLeft()

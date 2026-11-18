@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Imaging;
@@ -16,16 +17,16 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public sealed partial class MetroTabStripControl : UserControl
     {
-        public event Action<TabViewItem> TabSelected;
-        public event Action<TabViewItem> TabCloseRequested;
-        public event Action NewTabRequested;
+        public event Action<TabViewItem>? TabSelected;
+        public event Action<TabViewItem>? TabCloseRequested;
+        public event Action? NewTabRequested;
 
         public MetroTabStripControl()
         {
             InitializeComponent();
         }
 
-        public void Refresh(IReadOnlyList<TabViewItem> tabs, TabViewItem current)
+        public void Refresh(IReadOnlyList<TabViewItem>? tabs, TabViewItem? current)
         {
             Host.Children.Clear();
 
@@ -42,9 +43,10 @@ namespace EdgeRebuild.Metro
                 }
             };
             newBtn.Click += (s, e) => NewTabRequested?.Invoke();
+            AutomationProperties.SetName(newBtn, "新建标签页");
             Host.Children.Add(newBtn);
 
-            foreach (var item in tabs)
+            foreach (var item in tabs ?? Array.Empty<TabViewItem>())
                 Host.Children.Add(BuildTab(item, item == current));
 
             ScrollCurrentIntoView();
@@ -120,6 +122,7 @@ namespace EdgeRebuild.Metro
             Grid.SetColumn(faviconImage, 0);
             Grid.SetColumn(title, 1);
             Grid.SetColumn(closeBtn, 2);
+            AutomationProperties.SetName(closeBtn, $"关闭标签页：{item.Tab.Title ?? "新标签页"}");
             grid.Children.Add(icon);
             grid.Children.Add(faviconImage);
             grid.Children.Add(title);
@@ -135,6 +138,7 @@ namespace EdgeRebuild.Metro
                 if (e.OriginalSource is DependencyObject src && !IsWithinCloseButton(src, closeBtn))
                     TabSelected?.Invoke(item);
             };
+            AutomationProperties.SetName(btn, $"标签页：{item.Tab.Title ?? "新标签页"}");
             return btn;
         }
 

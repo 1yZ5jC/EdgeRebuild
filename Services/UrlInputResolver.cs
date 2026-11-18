@@ -16,7 +16,7 @@ namespace EdgeRebuild.Services
     {
         private static readonly IdnMapping _idn = new IdnMapping();
 
-        public static string Resolve(string raw, string searchEngine)
+        public static string? Resolve(string raw, string searchEngine)
         {
             raw = (raw ?? "").Trim();
             if (string.IsNullOrEmpty(raw)) return null;

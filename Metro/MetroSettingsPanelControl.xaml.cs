@@ -12,12 +12,12 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public sealed partial class MetroSettingsPanelControl : UserControl
     {
-        public event Action CloseRequested;
-        public event Action ZoomInRequested;
-        public event Action ZoomOutRequested;
-        public event Action ZoomResetRequested;
-        public event Action ClearHistoryRequested;
-        public event Action<bool> InPrivateToggled;   // P2-13：Metro 窗口 InPrivate 开关
+        public event Action? CloseRequested;
+        public event Action? ZoomInRequested;
+        public event Action? ZoomOutRequested;
+        public event Action? ZoomResetRequested;
+        public event Action? ClearHistoryRequested;
+        public event Action<bool>? InPrivateToggled;   // P2-13：Metro 窗口 InPrivate 开关
 
         public MetroSettingsPanelControl()
         {

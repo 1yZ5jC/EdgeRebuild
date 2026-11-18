@@ -18,7 +18,7 @@ namespace EdgeRebuild.Core
         private bool _metroHome = false;
         private bool _inPrivate = false;
 
-        public static event Action<string> DownloadRequested;
+        public static event Action<string>? DownloadRequested;
 
         public string Id { get; } = Guid.NewGuid().ToString();
         public FrameworkElement ViewElement => _webView;
@@ -31,13 +31,13 @@ namespace EdgeRebuild.Core
         public string FaviconUri => _faviconUri;
         public bool IsSuspended => false;
 
-        public event Action<string> TitleChanged;
-        public event Action<string> UrlChanged;
-        public event Action<bool> CanGoBackChanged;
-        public event Action<bool> CanGoForwardChanged;
-        public event Action<string> FaviconChanged;
-        public event Action<string> NewWindowRequested;
-        public event Action<bool> LoadingChanged;
+        public event Action<string>? TitleChanged;
+        public event Action<string>? UrlChanged;
+        public event Action<bool>? CanGoBackChanged;
+        public event Action<bool>? CanGoForwardChanged;
+        public event Action<string>? FaviconChanged;
+        public event Action<string>? NewWindowRequested;
+        public event Action<bool>? LoadingChanged;
         // 快捷键/标记/朗读/NTP 搜索/右键不走事件：EdgeHTML 无消息通道，
         // 由宿主轮询 PollPageKeyAsync / PollNtpSearchAsync / PollContextMenuAsync 等 marker 读取。
 
@@ -352,7 +352,7 @@ namespace EdgeRebuild.Core
                     string ntpType = "Classic";
                     try
                     {
-                        string v = await Services.SettingsManager.GetAsync("NewTabPageType");
+                        string? v = await Services.SettingsManager.GetAsync("NewTabPageType");
                         if (!string.IsNullOrEmpty(v)) ntpType = v;
                         else if ((await Services.SettingsManager.GetAsync("NewTabShowNtp")) == "False") ntpType = "Blank";
                     }
@@ -387,7 +387,7 @@ namespace EdgeRebuild.Core
         /// 用 ms-local-stream 打开本地 EPUB 阅读器。阅读器页面、脚本与 EPUB 同源，
         /// 规避 EdgeHTML 对 ms-appx-web → ms-appdata 的 XHR 封锁。
         /// </summary>
-        public Task NavigateToEpubReaderAsync(string epubPath, string sourceUrl, string cacheFileName = null)
+        public Task NavigateToEpubReaderAsync(string epubPath, string sourceUrl, string? cacheFileName = null)
         {
             if (string.IsNullOrEmpty(epubPath) || !File.Exists(epubPath))
             {
@@ -441,7 +441,7 @@ namespace EdgeRebuild.Core
             try
             {
                 (_webView.Parent as Panel)?.Children.Remove(_webView);
-                _webView = null;
+                _webView = null!;
             }
             catch { }
         }

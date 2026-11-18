@@ -15,8 +15,8 @@ namespace EdgeRebuild.Core
     public sealed class ReaderRestoreTarget
     {
         public DocumentKind Kind { get; set; }
-        public string SourceUrl { get; set; }
-        public string CacheFileName { get; set; }
+        public string? SourceUrl { get; set; }
+        public string? CacheFileName { get; set; }
     }
 
     /// <summary>
@@ -43,7 +43,7 @@ namespace EdgeRebuild.Core
         /// 把阅读器 file 参数（contentcache.local URL / ms-appdata 路径 / 文件名）
         /// 归一为 contentcache 下的物理路径。
         /// </summary>
-        public static string GetCachePath(string fileName)
+        public static string? GetCachePath(string? fileName)
         {
             if (string.IsNullOrWhiteSpace(fileName)) return null;
             string name = fileName.Trim();
@@ -147,7 +147,7 @@ namespace EdgeRebuild.Core
         }
 
         /// <summary>把用户选择的本地文件复制到 contentcache（按原路径哈希命名，批注/进度可复用）。</summary>
-        public static async Task<string> ImportLocalFileAsync(StorageFile file)
+        public static async Task<string?> ImportLocalFileAsync(StorageFile file)
         {
             if (file == null) return null;
             string ext = Path.GetExtension(file.Name).ToLowerInvariant();
@@ -167,7 +167,7 @@ namespace EdgeRebuild.Core
             return destPath;
         }
 
-        public static async Task<string> ImportLocalSourceAsync(string source)
+        public static async Task<string?> ImportLocalSourceAsync(string source)
         {
             try
             {
@@ -198,7 +198,7 @@ namespace EdgeRebuild.Core
             if (tab == null || !TryGetDocumentKind(source, out var kind)) return false;
             try
             {
-                string cachePath = IsLocalDocumentSource(source)
+                string? cachePath = IsLocalDocumentSource(source)
                     ? await ImportLocalSourceAsync(source)
                     : await DownloadAsync(kind, source);
                 if (string.IsNullOrEmpty(cachePath)) return false;
@@ -225,7 +225,7 @@ namespace EdgeRebuild.Core
                 else
                     return false;
 
-                string cachePath = await ImportLocalFileAsync(file);
+                string? cachePath = await ImportLocalFileAsync(file);
                 if (string.IsNullOrEmpty(cachePath)) return false;
                 string source = string.IsNullOrEmpty(file.Path) ? file.Name : file.Path;
                 return await OpenCachedDocumentAsync(tab, kind, cachePath, source);
@@ -259,7 +259,7 @@ namespace EdgeRebuild.Core
         /// - https://epubreader.local/reader.html?file=https://contentcache.local/...&amp;src=...
         /// - https://pdfviewer.local/viewer.html?file=https://contentcache.local/...&amp;src=...
         /// </summary>
-        public static bool TryParseReaderUrl(string url, out ReaderRestoreTarget target)
+        public static bool TryParseReaderUrl(string url, out ReaderRestoreTarget? target)
         {
             target = null;
             if (string.IsNullOrWhiteSpace(url)) return false;
@@ -274,10 +274,10 @@ namespace EdgeRebuild.Core
                 && host.EndsWith("pdfviewer.local", StringComparison.OrdinalIgnoreCase);
             if (!isEpubReader && !isPdfViewer) return false;
 
-            string src = GetQueryParam(url, "src");
-            string file = GetQueryParam(url, "file");
-            string cache = GetQueryParam(url, "cache");
-            string cacheName = cache;
+            string? src = GetQueryParam(url, "src");
+            string? file = GetQueryParam(url, "file");
+            string? cache = GetQueryParam(url, "cache");
+            string? cacheName = cache;
             if (string.IsNullOrEmpty(cacheName) && !string.IsNullOrEmpty(file))
             {
                 if (file.StartsWith("https://contentcache.local/", StringComparison.OrdinalIgnoreCase)
@@ -299,27 +299,28 @@ namespace EdgeRebuild.Core
         /// <summary>恢复阅读器标签：优先用缓存，缓存缺失时按来源重新下载/导入。</summary>
         public static async Task<bool> RestoreReaderAsync(IBrowserTab tab, string readerUrl)
         {
-            if (tab == null || !TryParseReaderUrl(readerUrl, out var target)) return false;
+            if (tab == null || !TryParseReaderUrl(readerUrl, out var target) || target == null) return false;
 
-            string cachePath = GetCachePath(target.CacheFileName);
+            string sourceUrl = target.SourceUrl ?? "";
+            string cachePath = GetCachePath(target.CacheFileName) ?? "";
             if (!string.IsNullOrEmpty(cachePath) && File.Exists(cachePath))
             {
-                if (await OpenCachedDocumentAsync(tab, target.Kind, cachePath, target.SourceUrl))
+                if (await OpenCachedDocumentAsync(tab, target.Kind, cachePath, sourceUrl))
                     return true;
             }
 
-            if (!string.IsNullOrEmpty(target.SourceUrl) && TryGetDocumentKind(target.SourceUrl, out _))
+            if (!string.IsNullOrEmpty(sourceUrl) && TryGetDocumentKind(sourceUrl, out _))
             {
-                if (await OpenDocumentAsync(tab, target.SourceUrl))
+                if (await OpenDocumentAsync(tab, sourceUrl))
                     return true;
             }
 
             // 兼容旧版 ms-local-stream 阅读器 URL（file=book.epub，没有 cache 参数）
             if (target.Kind == DocumentKind.Epub)
             {
-                cachePath = GetCachePath("doc_reader.epub");
+                cachePath = GetCachePath("doc_reader.epub") ?? "";
                 if (File.Exists(cachePath)
-                    && await OpenCachedDocumentAsync(tab, DocumentKind.Epub, cachePath, target.SourceUrl))
+                    && await OpenCachedDocumentAsync(tab, DocumentKind.Epub, cachePath, sourceUrl))
                     return true;
             }
             return false;
@@ -348,7 +349,7 @@ namespace EdgeRebuild.Core
             return false;
         }
 
-        private static string GetQueryParam(string url, string name)
+        private static string? GetQueryParam(string url, string name)
         {
             int q = url.IndexOf('?');
             if (q < 0 || q == url.Length - 1) return null;

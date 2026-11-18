@@ -9,12 +9,12 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public sealed partial class MetroAppBarControl : UserControl
     {
-        public event Action NewTabClicked;
-        public event Action TabsClicked;
-        public event Action RefreshClicked;
-        public event Action FullscreenClicked;
-        public event Action SettingsClicked;
-        public event Action MoreClicked;
+        public event Action? NewTabClicked;
+        public event Action? TabsClicked;
+        public event Action? RefreshClicked;
+        public event Action? FullscreenClicked;
+        public event Action? SettingsClicked;
+        public event Action? MoreClicked;
 
         public MetroAppBarControl()
         {

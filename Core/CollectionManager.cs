@@ -97,7 +97,7 @@ namespace EdgeRebuild.Core
 
         public async Task<CollectionItem> AddItemAsync(
             string title, string content, CollectionItemType type,
-            int groupId, string snippet = null)
+            int groupId, string? snippet = null)
         {
             var item = new CollectionItem
             {

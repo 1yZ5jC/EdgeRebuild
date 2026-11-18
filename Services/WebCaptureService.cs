@@ -18,7 +18,7 @@ namespace EdgeRebuild.Services
         /// 捕获当前可见区域为 PNG 字节。失败返回 null。
         /// maxPixelWidth > 0 时把结果缩到指定宽度，供标签预览等小尺寸用途，避免全尺寸位图占用内存。
         /// </summary>
-        public static async Task<byte[]> CapturePagePngAsync(IBrowserTab tab, int maxPixelWidth = 0)
+        public static async Task<byte[]?> CapturePagePngAsync(IBrowserTab tab, int maxPixelWidth = 0)
         {
             try
             {
@@ -97,7 +97,7 @@ namespace EdgeRebuild.Services
         }
 
         /// <summary>把 PNG 等比缩到指定最大宽度；失败时原样返回。</summary>
-        private static async Task<byte[]> ResizePngAsync(byte[] png, int maxWidth)
+        private static async Task<byte[]?> ResizePngAsync(byte[]? png, int maxWidth)
         {
             if (png == null || png.Length == 0 || maxWidth <= 0) return png;
             try

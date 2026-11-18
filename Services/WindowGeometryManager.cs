@@ -42,7 +42,7 @@ namespace EdgeRebuild.Services
             catch { }
         }
 
-        public static async Task<WindowGeometryRecord> LoadAsync(int slot)
+        public static async Task<WindowGeometryRecord?> LoadAsync(int slot)
         {
             if (slot < 0) return null;
             try

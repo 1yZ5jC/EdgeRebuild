@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Windows.UI;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
@@ -22,14 +23,14 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public sealed partial class MetroTabGridControl : UserControl
     {
-        public event Action<TabViewItem> TabSelected;
-        public event Action<TabViewItem> TabCloseRequested;
-        public event Action NewTabRequested;
-        public event Action DismissRequested;
+        public event Action<TabViewItem>? TabSelected;
+        public event Action<TabViewItem>? TabCloseRequested;
+        public event Action? NewTabRequested;
+        public event Action? DismissRequested;
 
         private readonly Dictionary<TabViewItem, Border> _cards = new Dictionary<TabViewItem, Border>();
         private readonly Dictionary<TabViewItem, bool> _thumbReady = new Dictionary<TabViewItem, bool>();
-        private TabViewItem _current;
+        private TabViewItem? _current;
         private const int CaptureTimeoutMs = 3500;
         private int _generation;   // Refresh 递增：旧一轮捕获作废，防止切标签重入导致重复捕获/回写旧卡片
 
@@ -46,7 +47,7 @@ namespace EdgeRebuild.Metro
             GridDebug($"控件构造完成");
         }
 
-        public void Refresh(IReadOnlyList<TabViewItem> tabs, TabViewItem current)
+        public void Refresh(IReadOnlyList<TabViewItem>? tabs, TabViewItem? current)
         {
             GridDebug($"Refresh 开始: 标签数={(tabs == null ? 0 : tabs.Count)} 当前={(current == null ? "null" : current.Tab.Title)}");
             GridHost.Items.Clear();
@@ -148,6 +149,7 @@ namespace EdgeRebuild.Metro
                 Tag = item
             };
             closeBtn.Click += CloseCardBtn_Click;
+            AutomationProperties.SetName(closeBtn, $"关闭标签页：{item.Tab.Title ?? "新标签页"}");
             Grid.SetColumn(closeBtn, 2);
 
             titleRow.Children.Add(favIcon);
@@ -190,10 +192,11 @@ namespace EdgeRebuild.Metro
         // ---- 缩略图捕获：并行 + 每标签超时，避免单个标签卡死整张网格 ----
         // 全程 try/catch + 日志：捕获触发的中断（未观察任务异常 / 标签关闭后旧任务
         // KeyNotFound / EdgeHTML 捕获空转）都不会再向上传播。
-        private async Task CaptureAllAsync(IReadOnlyList<TabViewItem> tabs, TabViewItem current, int gen)
+        private async Task CaptureAllAsync(IReadOnlyList<TabViewItem>? tabs, TabViewItem? current, int gen)
         {
             try
             {
+                if (tabs == null) return;
                 var tasks = new List<Task>();
                 foreach (var item in tabs)
                     tasks.Add(CaptureOneWithTimeoutAsync(item, gen));
@@ -242,7 +245,7 @@ namespace EdgeRebuild.Metro
 
                 var container = item.ContentContainer;
                 bool restoreVisibility = false;
-                byte[] png = null;
+                byte[]? png = null;
                 try
                 {
                     // EdgeHTML WebView 会保留上次渲染帧：先原样捕获，成功就不必把网页
@@ -314,17 +317,17 @@ namespace EdgeRebuild.Metro
         }
 
         // 卡片内部结构：grid.Children[0]=thumb grid，thumb.Children[0]=Image，[1]=32x32 包装 Grid(内含 ProgressRing)
-        private static Image FindThumbImage(Border card)
+        private static Image? FindThumbImage(Border card)
         {
             var grid = card.Child as Grid;
-            if (grid?.Children.Count < 1) return null;
+            if (grid == null || grid.Children.Count < 1) return null;
             return (grid.Children[0] as Grid)?.Children[0] as Image;
         }
 
-        private static ProgressRing FindThumbRing(Border card)
+        private static ProgressRing? FindThumbRing(Border card)
         {
             var grid = card.Child as Grid;
-            if (grid?.Children.Count < 1) return null;
+            if (grid == null || grid.Children.Count < 1) return null;
             return ((grid.Children[0] as Grid)?.Children[1] as Grid)?.Children[0] as ProgressRing;
         }
 
@@ -334,7 +337,7 @@ namespace EdgeRebuild.Metro
         private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
         {
             // 点击空白区域收起网格（卡片区域不触发：指针落在 GridView 子树上）
-            if (e.OriginalSource == RootGrid)
+            if (ReferenceEquals(e.OriginalSource, RootGrid))
                 DismissRequested?.Invoke();
         }
     }

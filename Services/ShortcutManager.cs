@@ -59,25 +59,25 @@ namespace EdgeRebuild.Services
             Register(VirtualKeyModifiers.None, VirtualKey.Escape, () => OnCloseFind?.Invoke());
         }
 
-        public static event Action OnNewTab;
-        public static event Action OnCloseTab;
-        public static event Action OnReopenTab;
-        public static event Action OnFocusAddressBar;
-        public static event Action OnRefresh;
-        public static event Action OnAddFavorite;
-        public static event Action OnShowHistory;
-        public static event Action OnShowDownloads;
-        public static event Action OnFind;
-        public static event Action OnFindNext;
-        public static event Action OnFindPrevious;
-        public static event Action OnCloseFind;
-        public static event Action OnPrint;
-        public static event Action OnHighlightMark;
-        public static event Action OnWebCapture;
-        public static event Action OnNextTab;
-        public static event Action OnPreviousTab;
-        public static event Action OnQuickSwitchTabs;
-        public static event Action<int> OnSwitchToTab;
+        public static event Action? OnNewTab;
+        public static event Action? OnCloseTab;
+        public static event Action? OnReopenTab;
+        public static event Action? OnFocusAddressBar;
+        public static event Action? OnRefresh;
+        public static event Action? OnAddFavorite;
+        public static event Action? OnShowHistory;
+        public static event Action? OnShowDownloads;
+        public static event Action? OnFind;
+        public static event Action? OnFindNext;
+        public static event Action? OnFindPrevious;
+        public static event Action? OnCloseFind;
+        public static event Action? OnPrint;
+        public static event Action? OnHighlightMark;
+        public static event Action? OnWebCapture;
+        public static event Action? OnNextTab;
+        public static event Action? OnPreviousTab;
+        public static event Action? OnQuickSwitchTabs;
+        public static event Action<int>? OnSwitchToTab;
 
         public static void Register(VirtualKeyModifiers modifiers, VirtualKey key, Action action)
         {

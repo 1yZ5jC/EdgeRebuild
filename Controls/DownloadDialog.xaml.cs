@@ -14,15 +14,15 @@ namespace EdgeRebuild.Controls
 {
     public sealed partial class DownloadDialog : ContentDialog
     {
-        private StorageFolder _selectedFolder;
+        private StorageFolder? _selectedFolder;
 
-        public string FileName => FileNameBox.Text?.Trim();
-        public StorageFolder SelectedFolder => _selectedFolder;
+        public string FileName => FileNameBox.Text?.Trim() ?? "";
+        public StorageFolder? SelectedFolder => _selectedFolder;
 
         public static bool TryValidateFileName(string input, out string safeName, out string error)
         {
-            safeName = null;
-            error = null;
+            safeName = "";
+            error = "";
             if (string.IsNullOrWhiteSpace(input))
             {
                 error = "文件名不能为空。";
@@ -54,7 +54,7 @@ namespace EdgeRebuild.Controls
             return true;
         }
 
-        public DownloadDialog(string defaultFileName, string url, StorageFolder defaultFolder = null, long? totalBytes = null)
+        public DownloadDialog(string defaultFileName, string url, StorageFolder? defaultFolder = null, long? totalBytes = null)
         {
             this.InitializeComponent();
             FileNameBox.Text = defaultFileName ?? "download";

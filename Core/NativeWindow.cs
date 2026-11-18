@@ -30,22 +30,22 @@ namespace EdgeRebuild.Core
         public int Slot { get; internal set; } = -1;
         public bool IsActive { get; private set; }
         public bool IsClosed { get; private set; }
-        public Frame Frame { get; internal set; }
+        public Frame Frame { get; internal set; } = null!;
         public string Title { get; private set; } = "EdgeRebuild";
 
         /// <summary>独立视图模式：CoreApplicationView 句柄。</summary>
-        public CoreApplicationView CoreView { get; private set; }
+        public CoreApplicationView CoreView { get; private set; } = null!;
 
         /// <summary>
         /// AppWindow 回退模式：AppWindow 句柄。类型为 object 以便 17763 加载本类时
         /// 不解析不存在的 AppWindow 类型；实际操作统一走 AppWindowCompat。
         /// </summary>
-        public object AppWindowRef { get; private set; }
+        public object AppWindowRef { get; private set; } = null!;
 
         // ---- 事件 ----
-        public event Action<NativeWindow> Activated;
-        public event Action<NativeWindow> Deactivated;
-        public event Action<NativeWindow> Closed;
+        public event Action<NativeWindow>? Activated;
+        public event Action<NativeWindow>? Deactivated;
+        public event Action<NativeWindow>? Closed;
 
         // ---- 内部 ----
         // 注意：ApplicationView.Id 在本机是负数（如 -198299），
@@ -59,7 +59,7 @@ namespace EdgeRebuild.Core
         //  创建：原生独立视图
         // ================================================================
 
-        public static async Task<NativeWindow> CreateNativeViewAsync(Type pageType, object navigationArg, int slot)
+        public static async Task<NativeWindow?> CreateNativeViewAsync(Type pageType, object navigationArg, int slot)
         {
             var win = new NativeWindow(WindowMode.NativeView) { Slot = slot };
             try
@@ -140,7 +140,7 @@ namespace EdgeRebuild.Core
         // ================================================================
 
         [SupportedOSPlatform("windows10.0.18362.0")]
-        public static async Task<NativeWindow> CreateAppWindowAsync(Type pageType, object navigationArg, int slot)
+        public static async Task<NativeWindow?> CreateAppWindowAsync(Type pageType, object navigationArg, int slot)
         {
             // 双保险：调用方应已检查，这里再挡一次，17763 绝不进入 AppWindow 类型。
             if (!PlatformCompat.HasAppWindow)
@@ -359,13 +359,13 @@ namespace EdgeRebuild.Core
             private readonly CoreDispatcher _dispatcher;
             public ViewSyncContext(CoreDispatcher dispatcher) { _dispatcher = dispatcher; }
 
-            public override void Post(SendOrPostCallback d, object state)
+            public override void Post(SendOrPostCallback d, object? state)
                 => _ = _dispatcher.RunAsync(CoreDispatcherPriority.Normal, () => d(state));
 
-            public override void Send(SendOrPostCallback d, object state)
+            public override void Send(SendOrPostCallback d, object? state)
             {
                 if (_dispatcher.HasThreadAccess) { d(state); return; }
-                var tcs = new TaskCompletionSource<object>();
+                var tcs = new TaskCompletionSource<object?>();
                 _ = _dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
                 {
                     try { d(state); tcs.SetResult(null); }
@@ -379,9 +379,9 @@ namespace EdgeRebuild.Core
 
         public void Dispose()
         {
-            Frame = null;
-            CoreView = null;
-            AppWindowRef = null;
+            Frame = null!;
+            CoreView = null!;
+            AppWindowRef = null!;
         }
     }
 }

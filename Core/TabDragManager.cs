@@ -17,8 +17,8 @@ namespace EdgeRebuild.Core
         private readonly Canvas _dragCanvas;
         private readonly LayoutManager _layoutManager;
 
-        private TabViewItem _dragItem;
-        private Border _dragGhost;
+        private TabViewItem? _dragItem;
+        private Border? _dragGhost;
         private Point _dragOffset;
         private Point _dragStartCanvasPoint;
         private Point _tabBarPanelOffset;
@@ -34,11 +34,11 @@ namespace EdgeRebuild.Core
         public bool IsVertical { get; set; }
 
         // 事件
-        public event Action<int, int> SortRequested;
-        public event Action<TabViewItem> DetachRequested;
-        public event Action DragStarted;
-        public event Action DragCompleted;
-        public event Action<Border, TabViewItem> TabRightTapped;
+        public event Action<int, int>? SortRequested;
+        public event Action<TabViewItem>? DetachRequested;
+        public event Action? DragStarted;
+        public event Action? DragCompleted;
+        public event Action<Border, TabViewItem>? TabRightTapped;
 
         public TabDragManager(TabManager tabManager, Panel tabBarPanel, Canvas dragCanvas, LayoutManager layoutManager)
         {
@@ -152,8 +152,12 @@ namespace EdgeRebuild.Core
             _dragItem.Container.Child = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
             _dragItem.Container.Opacity = 1.0;
 
-            var tabBarTransform = _tabBarPanel.TransformToVisual(_dragCanvas);
-            _tabBarPanelOffset = tabBarTransform.TransformPoint(new Point(0, 0));
+            var tabBarPanel = _tabBarPanel;
+            if (tabBarPanel == null) return;
+            var tabBarTransform = tabBarPanel.TransformToVisual(_dragCanvas);
+            _tabBarPanelOffset = tabBarTransform == null
+                ? new Point(0, 0)
+                : tabBarTransform.TransformPoint(new Point(0, 0));
             _lastReorderTime = DateTime.MinValue;
 
             borderLeft.CapturePointer(e.Pointer);
@@ -161,7 +165,7 @@ namespace EdgeRebuild.Core
 
             DragStarted?.Invoke();
             Services.Diagnostics.Log($"[拖拽] 拖拽开始 tab=\"{_dragItem.Tab.Title}\" index={_tabManager.Tabs.ToList().IndexOf(_dragItem)} tabCount={_tabManager.TabCount} " +
-                $"barOffset=({_tabBarPanelOffset.X:0},{_tabBarPanelOffset.Y:0}) barSize=({_tabBarPanel.ActualWidth:0}x{_tabBarPanel.ActualHeight:0})");
+                $"barOffset=({_tabBarPanelOffset.X:0},{_tabBarPanelOffset.Y:0}) barSize=({tabBarPanel.ActualWidth:0}x{tabBarPanel.ActualHeight:0})");
         }
 
         private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
@@ -243,13 +247,17 @@ namespace EdgeRebuild.Core
         {
             if ((DateTime.Now - _lastReorderTime).TotalMilliseconds < ReorderThrottleMs) return;
 
-            int dragIndex = _tabManager.Tabs.ToList().IndexOf(_dragItem);
+            var dragItem = _dragItem;
+            var dragGhost = _dragGhost;
+            if (dragItem == null || dragGhost == null) return;
+
+            int dragIndex = _tabManager.Tabs.ToList().IndexOf(dragItem);
             int targetIndex = -1;
 
             if (IsVertical)
             {
                 // 垂直模式：Y 轴排序
-                double ghostCenterY = posInCanvas.Y - _dragOffset.Y + _dragGhost.Height / 2;
+                double ghostCenterY = posInCanvas.Y - _dragOffset.Y + dragGhost.Height / 2;
                 double ghostLocalY = ghostCenterY - _tabBarPanelOffset.Y;
                 double accumulatedHeight = 0;
                 for (int i = 0; i < _tabManager.Tabs.Count; i++)
@@ -270,7 +278,7 @@ namespace EdgeRebuild.Core
             else
             {
                 // 水平模式：X 轴排序
-                double ghostCenterInCanvas = posInCanvas.X - _dragOffset.X + _dragGhost.Width / 2;
+                double ghostCenterInCanvas = posInCanvas.X - _dragOffset.X + dragGhost.Width / 2;
                 double ghostLocalX = ghostCenterInCanvas - _tabBarPanelOffset.X;
                 double accumulatedWidth = 0;
                 for (int i = 0; i < _tabManager.Tabs.Count; i++)

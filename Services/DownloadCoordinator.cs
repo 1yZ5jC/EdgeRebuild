@@ -26,7 +26,7 @@ namespace EdgeRebuild.Services
 
         public async Task InitializeAsync()
         {
-            string askSetting = await SettingsManager.GetAsync("AskBeforeDownload");
+            string? askSetting = await SettingsManager.GetAsync("AskBeforeDownload");
             _askBeforeDownload = (askSetting == "True" || askSetting == "true");
         }
 
@@ -48,7 +48,7 @@ namespace EdgeRebuild.Services
 
             if (_askBeforeDownload)
             {
-                StorageFolder defaultFolder = null;
+                StorageFolder? defaultFolder = null;
                 try { defaultFolder = await DownloadManager.GetDownloadFolderAsync(); } catch { }
 
                 var dialog = new DownloadDialog(defaultFileName, url, defaultFolder, null);
@@ -71,7 +71,8 @@ namespace EdgeRebuild.Services
                     return;
                 }
 
-                StorageFolder selectedFolder = dialog.SelectedFolder ?? defaultFolder;
+                StorageFolder? selectedFolder = dialog.SelectedFolder ?? defaultFolder;
+                if (selectedFolder == null) return;
                 string token = Guid.NewGuid().ToString();
                 StorageApplicationPermissions.FutureAccessList.AddOrReplace(token, selectedFolder);
                 DownloadManager.SetCustomDownloadPath(selectedFolder.Path, token);

@@ -150,8 +150,12 @@
       分区分组；现有分区搜索保留。
 - [-] R5-3 收藏夹自动备份/恢复（2026-11-15 决定不做）：变更后防抖导出 Netscape HTML/JSON 到
       `LocalState\Backups`，保留最近 N 份，设置页提供恢复入口。
-- [ ] R5-4 质量项：图标按钮补 `AutomationProperties.Name`、Hub 键盘导航、真实 Windows 10 1809
-      回归复验、nullable 存量警告专项清理。
+- [ ] R5-4 质量项（代码部分 2026-11-18 完成，真实 1809 复验待执行）：
+      图标按钮 / 地址栏 / 搜索框已补 `AutomationProperties.Name`（含代码创建的标签关闭、预览关闭、
+      收藏栏、Hub 图标与集锦分组、Metro 新建标签）；Hub 打开后焦点落到当前分区，Tab / 方向键
+      导航，Esc 关闭并把焦点还给页面；页面级 Esc 先关 Hub / 设置覆盖层。nullable 存量警告
+      从 598 清到 0（Debug|x86 构建 0 警告 0 错误），数据层单测 50 项通过。真实 Windows 10 1809
+      回归按 `docs/win10-1809-regression-checklist.md` 执行，结果回填后再勾选本项。
 
 ## P0 — 高价值低成本
 - [x] P0-4 多主窗口会话覆盖隐患：`SessionTabs` 单快照表，两个主窗口互踩（D1 同款）。方案：副窗口 `ParticipatesInSession=false`

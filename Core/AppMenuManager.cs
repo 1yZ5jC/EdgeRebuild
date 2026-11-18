@@ -41,8 +41,8 @@ namespace EdgeRebuild.Core
         private readonly Action _onToggleReaderMode;
         private readonly Func<string> _getReadAloudLabel;
         private readonly Action _onToggleReadAloud;
-        private readonly Action _onOpenDemoWindow;
-        private readonly Action _onOpenLocalFile;
+        private readonly Action? _onOpenDemoWindow;
+        private readonly Action? _onOpenLocalFile;
 
         public AppMenuManager(
             TabManager tabManager,
@@ -76,8 +76,8 @@ namespace EdgeRebuild.Core
             Action onToggleReaderMode,
             Func<string> getReadAloudLabel,
             Action onToggleReadAloud,
-            Action onOpenDemoWindow = null,
-            Action onOpenLocalFile = null)
+            Action? onOpenDemoWindow = null,
+            Action? onOpenLocalFile = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -189,7 +189,7 @@ namespace EdgeRebuild.Core
 
             // 只标注 ShortcutManager 中真实注册的快捷键，避免“看起来能用”的假标注。
             var printItem = new MenuFlyoutItem { Text = "打印", KeyboardAcceleratorTextOverride = "Ctrl+P" };
-            printItem.Click += async (_, _) => await _onPrint?.Invoke();
+            printItem.Click += async (_, _) => { if (_onPrint != null) await _onPrint(); };
             menu.Items.Add(printItem);
 
             var findItem = new MenuFlyoutItem { Text = "查找", KeyboardAcceleratorTextOverride = "Ctrl+F" };
@@ -197,7 +197,7 @@ namespace EdgeRebuild.Core
             menu.Items.Add(findItem);
 
             var sourceItem = new MenuFlyoutItem { Text = "查看源代码" };
-            sourceItem.Click += async (_, _) => await _onViewSource?.Invoke();
+            sourceItem.Click += async (_, _) => { if (_onViewSource != null) await _onViewSource(); };
             menu.Items.Add(sourceItem);
 
             var captureItem = new MenuFlyoutItem { Text = "网页捕获（截图批注）", KeyboardAcceleratorTextOverride = "Ctrl+Shift+S" };
@@ -232,7 +232,7 @@ namespace EdgeRebuild.Core
             else
             {
                 var reopenItem = new MenuFlyoutItem { Text = "恢复最近关闭的标签", KeyboardAcceleratorTextOverride = "Ctrl+Shift+T" };
-                reopenItem.Click += async (_, _) => await _onReopenTab?.Invoke();
+                reopenItem.Click += async (_, _) => { if (_onReopenTab != null) await _onReopenTab(); };
                 reopenSub.Items.Add(reopenItem);
 
                 var clearItem = new MenuFlyoutItem { Text = "清空列表" };
@@ -253,7 +253,7 @@ namespace EdgeRebuild.Core
 
             // 清除浏览数据
             var clearDataItem = new MenuFlyoutItem { Text = "清除浏览数据" };
-            clearDataItem.Click += async (_, _) => await _onClearData?.Invoke();
+            clearDataItem.Click += async (_, _) => { if (_onClearData != null) await _onClearData(); };
             menu.Items.Add(clearDataItem);
 
             menu.Items.Add(new MenuFlyoutSeparator());

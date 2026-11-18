@@ -27,10 +27,10 @@ namespace EdgeRebuild.Services
     public class DownloadRecord
     {
         [PrimaryKey, AutoIncrement] public int Id { get; set; }
-        public string Url { get; set; }
-        public string FileName { get; set; }
-        public string FullPath { get; set; }
-        public string StatusString { get; set; }
+        public string Url { get; set; } = "";
+        public string FileName { get; set; } = "";
+        public string FullPath { get; set; } = "";
+        public string StatusString { get; set; } = "";
         public double Progress { get; set; }
         public bool Deleted { get; set; }
         public bool IsCompleted { get; set; }
@@ -44,15 +44,15 @@ namespace EdgeRebuild.Services
         private bool _indeterminate = true;
         private bool _deleted = false;
         private bool _isCompleted = false;
-        private Action _cleanupAction;
-        private TaskCompletionSource<bool> _terminalTcs;
+        private Action? _cleanupAction;
+        private TaskCompletionSource<bool>? _terminalTcs;
 
         public int Id { get; set; }
-        public string Url { get; set; }
-        public string FileName { get; set; }
-        public string FullPath { get; set; }
+        public string Url { get; set; } = "";
+        public string FileName { get; set; } = "";
+        public string FullPath { get; set; } = "";
         public DateTime StartTime { get; set; } = DateTime.Now;
-        public CoreWebView2DownloadOperation WebViewOperation { get; set; }
+        public CoreWebView2DownloadOperation? WebViewOperation { get; set; }
 
         public long TotalBytesToReceive { get => _totalBytes; set { _totalBytes = value; OnPropertyChanged(nameof(TotalBytesToReceive)); Indeterminate = (value <= 0); } }
         public bool Indeterminate { get => _indeterminate; set { _indeterminate = value; OnPropertyChanged(nameof(Indeterminate)); } }
@@ -92,7 +92,7 @@ namespace EdgeRebuild.Services
         public bool IsCompleted { get => _isCompleted; set { _isCompleted = value; OnPropertyChanged(nameof(IsCompleted)); } }
         public bool IsActive => Status == DownloadStatus.Downloading || Status == DownloadStatus.Paused || Status == DownloadStatus.Pending;
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public event PropertyChangedEventHandler? PropertyChanged;
         protected void OnPropertyChanged(string propertyName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
         public void SetCleanupAction(Action cleanup) => _cleanupAction = cleanup;
@@ -131,20 +131,20 @@ namespace EdgeRebuild.Services
     public static class DownloadManager
     {
         public static ObservableCollection<DownloadItem> Downloads { get; } = new ObservableCollection<DownloadItem>();
-        public static event Action<DownloadItem> DownloadProgressChanged;
-        public static event Action<DownloadItem> DownloadStatusChanged;
-        public static event Action<DownloadItem> RetryDownloadRequested;
+        public static event Action<DownloadItem>? DownloadProgressChanged;
+        public static event Action<DownloadItem>? DownloadStatusChanged;
+        public static event Action<DownloadItem>? RetryDownloadRequested;
 
         private static bool _canUseSystemFolder = false;
         private static bool _checkedSystemFolder = false;
         private static readonly SQLiteAsyncConnection _db = DatabaseService.Database;
-        private static string _customDownloadPath;
-        private static string _downloadFolderToken;
-        private static StorageFolder _resolvedDownloadFolder;
+        private static string? _customDownloadPath;
+        private static string? _downloadFolderToken;
+        private static StorageFolder? _resolvedDownloadFolder;
 
-        public static string SystemDownloadFolderPath { get; private set; }
+        public static string SystemDownloadFolderPath { get; private set; } = "";
 
-        public static void SetCustomDownloadPath(string path, string token = null)
+        public static void SetCustomDownloadPath(string path, string? token = null)
         {
             // 启动时 App 与 MainPage 会各设置一次；路径未变就不要让缓存失效，
             // 否则会重复探测下载目录（StorageFolder / 注册表 / 探针文件）。
@@ -362,7 +362,7 @@ namespace EdgeRebuild.Services
                     DownloadStatusChanged?.Invoke(item);
                     ShowToastOnUIThread(item.FileName);
 
-                    string autoClean = await SettingsManager.GetAsync("AutoCleanDownload");
+                    string? autoClean = await SettingsManager.GetAsync("AutoCleanDownload");
                     if (autoClean == "True" || autoClean == "true")
                     {
                         if (item.Id > 0) await _db.DeleteAsync<DownloadRecord>(item.Id);
@@ -391,7 +391,7 @@ namespace EdgeRebuild.Services
 
         public static Task DeleteDownloadAsync(DownloadItem item) => DeleteDownloadAsync(item, true);
 
-        public static DownloadItem FindCompletedByFileNameSync(string fileName, string url = null) =>
+        public static DownloadItem? FindCompletedByFileNameSync(string fileName, string? url = null) =>
             Downloads.FirstOrDefault(d => d.Status == DownloadStatus.Completed && !d.Deleted && File.Exists(d.FullPath) && d.FileName == fileName && (url == null || d.Url == url));
 
         private static async Task SaveDownloadAsync(DownloadItem item)

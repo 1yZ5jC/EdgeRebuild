@@ -16,23 +16,27 @@
 
             <Button x:Name="CloseBtn" Grid.Column="0" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
                     FontSize="14" Background="Transparent" Foreground="#FF8E8E8E" BorderThickness="0"
-                    Width="44" Height="48" Click="CloseBtn_Click"/>
+                    Width="44" Height="48" Click="CloseBtn_Click"
+                    ToolTipService.ToolTip="关闭查找栏" AutomationProperties.Name="关闭查找栏"/>
 
             <TextBox x:Name="FindBox" Grid.Column="1" PlaceholderText="在页面中查找"
                      VerticalAlignment="Center" Height="32" FontSize="14"
                      Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
-                     Margin="0,0,8,0" TextChanged="FindBox_TextChanged" KeyDown="FindBox_KeyDown"/>
+                     Margin="0,0,8,0" TextChanged="FindBox_TextChanged" KeyDown="FindBox_KeyDown"
+                     AutomationProperties.Name="在页面中查找"/>
 
             <TextBlock x:Name="CountText" Grid.Column="2" Text="0/0" FontSize="14"
                        Foreground="#FF8E8E8E" VerticalAlignment="Center" Margin="0,0,12,0"/>
 
             <Button Grid.Column="3" Content="&#xE70E;" FontFamily="Segoe MDL2 Assets"
                     FontSize="16" Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
-                    Width="44" Height="48" Click="PrevBtn_Click" ToolTipService.ToolTip="上一个"/>
+                    Width="44" Height="48" Click="PrevBtn_Click" ToolTipService.ToolTip="上一个"
+                    AutomationProperties.Name="查找上一个"/>
 
             <Button Grid.Column="4" Content="&#xE70D;" FontFamily="Segoe MDL2 Assets"
                     FontSize="16" Background="#FF1E1E1E" Foreground="White" BorderThickness="0"
-                    Width="44" Height="48" Margin="0,0,4,0" Click="NextBtn_Click" ToolTipService.ToolTip="下一个"/>
+                    Width="44" Height="48" Margin="0,0,4,0" Click="NextBtn_Click" ToolTipService.ToolTip="下一个"
+                    AutomationProperties.Name="查找下一个"/>
         </Grid>
     </Border>
 </UserControl>

@@ -21,21 +21,21 @@ namespace EdgeRebuild
     {
         private int _slot;
         private bool _bound;
-        private object _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
-        private IDisposable _sizeChangedSubscription;
-        private TabManager _tabManager;
+        private object? _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
+        private IDisposable? _sizeChangedSubscription;
+        private TabManager? _tabManager;
         private EngineType _defaultEngine = EngineType.EdgeHtml;
-        private string _pendingUrl;
-        private string _presentation;
+        private string? _pendingUrl;
+        private string? _presentation;
         private bool _isEngineSwitching;
         private bool _setupStarted;
 
         // ---- 标签条布局 / 拖拽 / 右键菜单（Phase 1 恢复） ----
         private bool _isLoaded;
         private bool _isDragging;
-        private LayoutManager _layoutManager;
-        private TabDragManager _dragManager;
-        private TabContextMenuManager _contextMenuManager;
+        private LayoutManager? _layoutManager;
+        private TabDragManager? _dragManager;
+        private TabContextMenuManager? _contextMenuManager;
 
         public DemoPage()
         {
@@ -142,10 +142,10 @@ namespace EdgeRebuild
             _contextMenuManager = new TabContextMenuManager(
                 _tabManager,
                 _defaultEngine,
-                () => _tabManager.CurrentTab?.Engine ?? _defaultEngine,
+                () => _tabManager?.CurrentTab?.Engine ?? _defaultEngine,
                 PrintCurrentPageAsync,
                 ViewSourceAsync,
-                viewItem => _ = _tabManager.TogglePinTabAsync(viewItem),
+                viewItem => _ = _tabManager?.TogglePinTabAsync(viewItem),
                 WebCaptureCurrentAsync,
                 ShareCurrentPageAsync);
 
@@ -210,6 +210,7 @@ namespace EdgeRebuild
 
         private async void OnTabCreated(TabViewItem viewItem)
         {
+            if (_tabManager == null) return;
             await _tabManager.SwitchToTabAsync(viewItem);
             UpdateTabLayout();
         }
@@ -257,7 +258,7 @@ namespace EdgeRebuild
             UpdateTabLayout();
             // 关掉最后一个标签 → 重建一个空标签（引擎切换时由 _isEngineSwitching 屏蔽）
             if (count == 0 && !_isEngineSwitching)
-                _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank");
+                _ = _tabManager?.CreateTabAsync(_defaultEngine, "about:blank");
         }
 
         // ================================================================
@@ -368,8 +369,9 @@ namespace EdgeRebuild
 
         private async void OnUrlSubmitted(string url)
         {
-            if (_tabManager?.CurrentTab == null) return;
-            await _tabManager.CurrentTab.NavigateAsync(url);
+            var tab = _tabManager?.CurrentTab;
+            if (tab == null) return;
+            await tab.NavigateAsync(url);
             SetFocusToContent();
         }
 
@@ -401,10 +403,12 @@ namespace EdgeRebuild
         {
             try
             {
-                var current = _tabManager?.CurrentTab;
+                var manager = _tabManager;
+                if (manager == null) return;
+                var current = manager.CurrentTab;
                 if (current == null || current.Engine == newEngine) return;
 
-                var viewItem = _tabManager.Tabs.FirstOrDefault(v => v.Tab == current);
+                var viewItem = manager.Tabs.FirstOrDefault(v => v.Tab == current);
                 if (viewItem == null) return;
 
                 string currentUrl = current.CurrentUrl;
@@ -413,8 +417,8 @@ namespace EdgeRebuild
                 if (ToolbarControl.IsNtpUrl(currentUrl)) currentUrl = "about:blank";
 
                 _isEngineSwitching = true;
-                await _tabManager.CloseTabAsync(viewItem, false);
-                await _tabManager.CreateTabAsync(newEngine, currentUrl);
+                await manager.CloseTabAsync(viewItem, false);
+                await manager.CreateTabAsync(newEngine, currentUrl);
                 SetFocusToContent();
             }
             catch (Exception ex)
@@ -448,12 +452,14 @@ namespace EdgeRebuild
 
         private void OnDragSortRequested(int fromIndex, int toIndex)
         {
-            _tabManager.ReorderTab(fromIndex, toIndex);
+            _tabManager?.ReorderTab(fromIndex, toIndex);
             SyncTabPanelOrder();
         }
 
         private async void OnDragDetachRequested(TabViewItem item)
         {
+            var manager = _tabManager;
+            if (manager == null) return;
             string url = item.Tab.CurrentUrl;
             EngineType engine = item.Tab.Engine;
             Diagnostics.Log($"[Demo] 拖拽分离 url={url} engine={engine}");
@@ -461,7 +467,7 @@ namespace EdgeRebuild
             Diagnostics.Log($"[Demo] 分离→新窗口 shown={shown}");
             if (shown)
             {
-                await _tabManager.CloseTabAsync(item, false);
+                await manager.CloseTabAsync(item, false);
             }
             else
             {

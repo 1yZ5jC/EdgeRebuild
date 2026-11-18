@@ -6,17 +6,17 @@ namespace EdgeRebuild.Core
     public class NewWindowArgs
     {
         public EngineType Engine { get; set; }
-        public string Url { get; set; }
+        public string Url { get; set; } = "";
 
         /// <summary>批量打开：新窗口启动时依次建标签的 URL 列表（可为空）。</summary>
-        public System.Collections.Generic.List<string> Urls { get; set; }
+        public System.Collections.Generic.List<string>? Urls { get; set; }
 
         /// <summary>
         /// AppWindow 回退模式的句柄（18362+）。类型刻意声明为 object，
         /// 避免 17763 加载本类型时因 AppWindow 不存在而失败；
         /// 调用方必须先检查 PlatformCompat.HasAppWindow。
         /// </summary>
-        public object AppWindow { get; set; }
+        public object? AppWindow { get; set; }
         public bool IsMetro { get; set; }
         public bool IsInPrivate { get; set; }
 
@@ -26,7 +26,7 @@ namespace EdgeRebuild.Core
         /// "AppWindow"  = AppWindow + ElementCompositionPreview 同线程；
         /// 主窗口不走 NewWindowArgs，保持 null → 页面显示"主窗口"。
         /// </summary>
-        public string Presentation { get; set; }
+        public string? Presentation { get; set; }
 
         /// <summary>本窗口的会话槽位（1..n；主窗口恒 0）。</summary>
         public int SessionSlot { get; set; }

@@ -12,9 +12,9 @@ namespace EdgeRebuild.Core
         [Indexed]
         public int GroupId { get; set; }
 
-        public string Url { get; set; }
-        public string Title { get; set; }
-        public string Engine { get; set; }
+        public string Url { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Engine { get; set; } = "";
         public int Position { get; set; }
         public bool IsPinned { get; set; }
     }

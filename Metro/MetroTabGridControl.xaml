@@ -15,7 +15,8 @@
                        VerticalAlignment="Center"/>
             <Button x:Name="CloseGridBtn" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                     Foreground="#FF8E8E8E" Background="Transparent" BorderThickness="0"
-                    Width="44" Height="44" HorizontalAlignment="Right" Click="CloseBtn_Click"/>
+                    Width="44" Height="44" HorizontalAlignment="Right" Click="CloseBtn_Click"
+                    ToolTipService.ToolTip="关闭标签视图" AutomationProperties.Name="关闭标签视图"/>
         </Grid>
 
         <!-- 标签卡片网格：GridView 自带折行(ItemsWrapGrid 3 列)+垂直滚动+虚拟化。
@@ -55,7 +56,7 @@
         <!-- 新建标签磁贴 -->
         <Button x:Name="NewTabTile" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="20"
                 Width="160" Height="72" Background="#FF0078D7" BorderThickness="0"
-                Click="NewTabTile_Click">
+                Click="NewTabTile_Click" AutomationProperties.Name="新建标签页">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
                 <FontIcon Glyph="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="White"/>
                 <TextBlock Text="新建标签" FontFamily="Segoe UI Light" FontSize="18" Foreground="White" Margin="10,0,0,0"/>

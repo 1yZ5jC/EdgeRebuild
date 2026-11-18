@@ -38,7 +38,7 @@ namespace EdgeRebuild.Core
         {
             if (string.IsNullOrEmpty(url)) return;
             var item = new ReadingItem { Title = title ?? url, Url = url, AddedDate = DateTime.Now };
-            List<ReadingItem> replaced = null;
+            List<ReadingItem>? replaced = null;
             lock (_collSync)
             {
                 // 已存在 → 移除旧条目后置顶（最近添加优先显示）
@@ -46,8 +46,9 @@ namespace EdgeRebuild.Core
                 foreach (var old in replaced) Items.Remove(old);
                 Items.Insert(0, item);
             }
-            foreach (var old in replaced)
-                await Services.DatabaseService.Database.DeleteAsync(old);
+            if (replaced != null)
+                foreach (var old in replaced)
+                    await Services.DatabaseService.Database.DeleteAsync(old);
             await Services.DatabaseService.Database.InsertAsync(item);
         }
 

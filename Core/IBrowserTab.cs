@@ -67,13 +67,13 @@ namespace EdgeRebuild.Core
         void SetInPrivate();   // InPrivate 模式：新标签页为隐身专用主页，不写历史
         void Dispose();
 
-        event Action<string> TitleChanged;
-        event Action<string> UrlChanged;
-        event Action<bool> CanGoBackChanged;
-        event Action<bool> CanGoForwardChanged;
-        event Action<string> FaviconChanged;
-        event Action<string> NewWindowRequested;
-        event Action<bool> LoadingChanged;   // 新增：加载状态 true=开始，false=结束
+        event Action<string>? TitleChanged;
+        event Action<string>? UrlChanged;
+        event Action<bool>? CanGoBackChanged;
+        event Action<bool>? CanGoForwardChanged;
+        event Action<string>? FaviconChanged;
+        event Action<string>? NewWindowRequested;
+        event Action<bool>? LoadingChanged;   // 新增：加载状态 true=开始，false=结束
         // 注：PageShortcutKeyPressed / PageMarkActionRequested / TtsTextRequested /
         // NtpSearchRequested / ContextMenuRequested 仅 WebView2Tab 经消息通道回传，
         // EdgeHTML 走宿主 marker 轮询（PollPageKeyAsync 等），不进接口——

@@ -8,13 +8,13 @@ namespace EdgeRebuild.Services
     /// </summary>
     internal static class FindService
     {
-        public static EdgeRebuild.FindResult ParseFindResult(string raw)
+        public static EdgeRebuild.FindResult? ParseFindResult(string raw)
         {
             if (string.IsNullOrEmpty(raw)) return null;
             string json = raw.Trim();
             if (json.StartsWith("\""))
             {
-                try { json = JsonSerializer.Deserialize(json, AppJsonContext.Default.String); }
+                try { json = JsonSerializer.Deserialize(json, AppJsonContext.Default.String) ?? ""; }
                 catch { return null; }
             }
             if (string.IsNullOrEmpty(json)) return null;

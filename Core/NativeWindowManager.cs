@@ -32,10 +32,10 @@ namespace EdgeRebuild.Core
         // ---- 窗口注册表 ----
         private sealed class Entry
         {
-            public NativeWindow Window;
+            public NativeWindow Window = null!;
             public int Slot;
             public bool ParticipatesInSession;
-            public Type PageType;
+            public Type PageType = null!;
             public bool IsInPrivate;
         }
 
@@ -44,7 +44,7 @@ namespace EdgeRebuild.Core
 
         // ---- 激活槽位广播 ----
         public static int ActiveSlot { get; private set; }
-        public static event Action<int> SlotActivated;
+        public static event Action<int>? SlotActivated;
 
         /// <summary>页面根元素 GotFocus 时调用（AppWindow 回退模式的近似焦点上报）。</summary>
         public static void ReportSlotFocus(int slot)
@@ -88,7 +88,7 @@ namespace EdgeRebuild.Core
 
         private static async Task<bool> OpenCoreAsync(
             EngineType engine, string url, Type pageType, bool isMetro, bool isInPrivate, int restoreSlot = -1,
-            IList<string> urls = null)
+            IList<string>? urls = null)
         {
             try
             {
@@ -210,7 +210,7 @@ namespace EdgeRebuild.Core
                 (w.Frame?.Content as MainPage)?.Shutdown();
                 (w.Frame?.Content as MetroPage)?.Shutdown();
                 (w.Frame?.Content as DemoPage)?.Shutdown();
-                w.Frame = null;
+                w.Frame = null!;
             };
 
             lock (_entries) _entries.Add(entry);

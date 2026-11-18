@@ -12,8 +12,8 @@ namespace EdgeRebuild.Metro
     /// </summary>
     public sealed partial class MetroFindBarControl : UserControl
     {
-        public event Action<string, string> FindRequested;   // query, mode(new/prev/next)
-        public event Action CloseRequested;
+        public event Action<string, string>? FindRequested;   // query, mode(new/prev/next)
+        public event Action? CloseRequested;
 
         private readonly DispatcherTimer _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
 

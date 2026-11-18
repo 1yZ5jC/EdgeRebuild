@@ -137,7 +137,7 @@ namespace EdgeRebuild.Services
         }
 
         /// <summary>本窗口的根 Frame；17763 使用 Window.Current.Content。</summary>
-        public static Frame GetPageFrame(UIElement element)
+        public static Frame? GetPageFrame(UIElement element)
         {
             if (HasXamlRoot)
                 return GetXamlRootPageFrame(element);
@@ -147,7 +147,7 @@ namespace EdgeRebuild.Services
 
         [SupportedOSPlatform("windows10.0.18362.0")]
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private static Frame GetXamlRootPageFrame(UIElement element)
+        private static Frame? GetXamlRootPageFrame(UIElement element)
         {
             var root = element.XamlRoot;
             if (root?.Content is Frame frame) return frame;

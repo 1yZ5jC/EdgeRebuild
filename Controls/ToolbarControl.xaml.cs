@@ -19,22 +19,22 @@ namespace EdgeRebuild.Controls
 {
     public sealed partial class ToolbarControl : UserControl
     {
-        public event Action<string> UrlSubmitted;
-        public event Action BackRequested;
-        public event Action ForwardRequested;
-        public event Action RefreshRequested;
-        public event Action AddFavoriteClicked;
-        public event Action CaptureClicked;
-        public event Action HubClicked;
-        public event Action MenuClicked;
-        public event Action<EngineType> EngineSwitched;
+        public event Action<string>? UrlSubmitted;
+        public event Action? BackRequested;
+        public event Action? ForwardRequested;
+        public event Action? RefreshRequested;
+        public event Action? AddFavoriteClicked;
+        public event Action? CaptureClicked;
+        public event Action? HubClicked;
+        public event Action? MenuClicked;
+        public event Action<EngineType>? EngineSwitched;
 
-        private DispatcherTimer _suggestionTimer;
+        private DispatcherTimer _suggestionTimer = null!;
         private bool _isSuggestionsVisible;
         private List<SuggestionItem> _currentSuggestions = new List<SuggestionItem>();
 
-        private Brush _foregroundBrush;
-        private Brush _mutedForegroundBrush;
+        private Brush? _foregroundBrush;
+        private Brush? _mutedForegroundBrush;
         private bool _isDarkTheme;
         private string _searchEngine = "Google";
 
@@ -230,7 +230,7 @@ namespace EdgeRebuild.Controls
                 if (isReaderUrl)
                 {
                     Services.Diagnostics.Log($"[阅读器] 内部地址: {url}");
-                    string src = ExtractQueryParam(url, "src");
+                    string? src = ExtractQueryParam(url, "src");
                     if (!string.IsNullOrEmpty(src))
                         return src;
                     return url.Contains("viewer.html") ? "PDF 阅读器" : "EPUB 阅读器";
@@ -240,7 +240,7 @@ namespace EdgeRebuild.Controls
             return url;
         }
 
-        private static string ExtractQueryParam(string url, string name)
+        private static string? ExtractQueryParam(string url, string name)
         {
             // TryCreate：空/畸形 URL（新视图导航完成前 CurrentUrl 为空串）不再抛首轮异常
             if (string.IsNullOrEmpty(url) ||
@@ -374,9 +374,9 @@ namespace EdgeRebuild.Controls
             flyout.ShowAt(SiteInfoButton, new Point(0, SiteInfoButton.ActualHeight));
         }
 
-        private string GetTemporaryEngineFromInput()
+        private string? GetTemporaryEngineFromInput()
         {
-            string raw = UrlBox.Text?.Trim();
+            string? raw = UrlBox.Text?.Trim();
             if (string.IsNullOrEmpty(raw) || !raw.StartsWith("@")) return null;
             int spaceIndex = raw.IndexOf(' ');
             if (spaceIndex <= 1) return null;
@@ -412,7 +412,7 @@ namespace EdgeRebuild.Controls
 
         private void UpdateSearchEngineIndicator()
         {
-            string tempEngine = GetTemporaryEngineFromInput();
+            string? tempEngine = GetTemporaryEngineFromInput();
             if (tempEngine != null)
             {
                 SiteInfoText.Text = GetEngineShortName(tempEngine);
@@ -461,7 +461,7 @@ namespace EdgeRebuild.Controls
         // ---- 收藏编辑面板 ----
 
         /// <summary>在收藏按钮下方打开编辑面板；已收藏时预填名称与位置。</summary>
-        public void ShowFavoriteEditor(string title, string url, string faviconUrl = null)
+        public void ShowFavoriteEditor(string title, string url, string? faviconUrl = null)
         {
             if (string.IsNullOrWhiteSpace(url) || FavoriteEditFlyout.IsOpen) return;
 
@@ -509,7 +509,7 @@ namespace EdgeRebuild.Controls
         {
             if (string.IsNullOrEmpty(_favoriteEditorUrl) || _favoriteEditorBusy) return;
 
-            string title = FavoriteNameBox.Text?.Trim();
+            string? title = FavoriteNameBox.Text?.Trim();
             if (string.IsNullOrWhiteSpace(title)) title = _favoriteEditorFallbackTitle;
             int? folderId = GetSelectedFavoriteFolderId();
 
@@ -636,7 +636,7 @@ namespace EdgeRebuild.Controls
         {
             if (_favoriteEditorBusy) return;
 
-            string name = NewFavoriteFolderNameBox.Text?.Trim();
+            string? name = NewFavoriteFolderNameBox.Text?.Trim();
             if (string.IsNullOrWhiteSpace(name)) name = "新建文件夹";
             int? parentId = GetSelectedFavoriteFolderId();
 
@@ -724,7 +724,7 @@ namespace EdgeRebuild.Controls
                     AcceptAutoComplete();
                 }
 
-                string input = UrlBox.Text?.Trim();
+                string? input = UrlBox.Text?.Trim();
                 if (!string.IsNullOrEmpty(input))
                 {
                     string url = ResolveInputToUrl(input);
@@ -796,7 +796,7 @@ namespace EdgeRebuild.Controls
                     string query = raw.Substring(spaceIndex + 1).Trim();
                     if (!string.IsNullOrEmpty(query))
                     {
-                        string url = engineName switch
+                        string? url = engineName switch
                         {
                             "g" or "google" => $"https://www.google.com/search?q={Uri.EscapeDataString(query)}",
                             "b" or "bing" => $"https://www.bing.com/search?q={Uri.EscapeDataString(query)}",
@@ -809,7 +809,7 @@ namespace EdgeRebuild.Controls
             }
 
             // 智能解析（网页/搜索二合一 + 中文域名 Punycode）见 UrlInputResolver
-            return Services.UrlInputResolver.Resolve(raw, _searchEngine);
+            return Services.UrlInputResolver.Resolve(raw, _searchEngine) ?? "";
         }
 
         private string DecodeUrl(string url)
@@ -944,7 +944,7 @@ namespace EdgeRebuild.Controls
             return true;
         }
 
-        private Uri TryParseUri(string input)
+        private Uri? TryParseUri(string input)
         {
             try
             {
@@ -958,7 +958,7 @@ namespace EdgeRebuild.Controls
         }
 
         // ---- 自动补全：查找最佳匹配 ----
-        private (string matchUrl, string matchTitle) FindBestMatch(string input)
+        private (string? matchUrl, string? matchTitle) FindBestMatch(string input)
         {
             if (string.IsNullOrEmpty(input)) return (null, null);
 
@@ -1094,7 +1094,7 @@ namespace EdgeRebuild.Controls
         }
 
         // ---- 自动补全：应用补全 ----
-        private void ApplyAutoComplete(string input, string matchUrl, string matchTitle)
+        private void ApplyAutoComplete(string input, string matchUrl, string? matchTitle)
         {
             if (string.IsNullOrEmpty(matchUrl)) return;
 
@@ -1210,7 +1210,7 @@ namespace EdgeRebuild.Controls
         }
 
         // ---- 建议列表相关 ----
-        private void OnSuggestionTimerTick(object sender, object e)
+        private void OnSuggestionTimerTick(object? sender, object e)
         {
             _suggestionTimer.Stop();
             if (_isSuggestionsVisible)
@@ -1376,8 +1376,8 @@ namespace EdgeRebuild.Controls
 
         private class SuggestionItem
         {
-            public string DisplayTitle { get; set; }
-            public string Url { get; set; }
+            public string DisplayTitle { get; set; } = "";
+            public string Url { get; set; } = "";
             public bool IsFavorite { get; set; }
             public bool IsPopular { get; set; }
         }

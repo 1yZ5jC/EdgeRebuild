@@ -14,8 +14,8 @@ namespace EdgeRebuild.Core
     public class TabContextMenuEventArgs : EventArgs
     {
         public ContextMenuType MenuType { get; set; }
-        public string LinkUrl { get; set; }
-        public string ImageUrl { get; set; }
+        public string LinkUrl { get; set; } = "";
+        public string ImageUrl { get; set; } = "";
         public Point Location { get; set; }
         public bool CanGoBack { get; set; }
         public bool CanGoForward { get; set; }

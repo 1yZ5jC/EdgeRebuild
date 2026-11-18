@@ -13,6 +13,7 @@ using Windows.UI;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
+using Windows.UI.Xaml.Automation;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
@@ -23,8 +24,8 @@ namespace EdgeRebuild.Controls
 {
     public sealed partial class HistoryTemplateSelector : DataTemplateSelector
     {
-        public DataTemplate HeaderTemplate { get; set; }
-        public DataTemplate ItemTemplate { get; set; }
+        public DataTemplate HeaderTemplate { get; set; } = null!;
+        public DataTemplate ItemTemplate { get; set; } = null!;
 
         protected override DataTemplate SelectTemplateCore(object item)
             => item is HistoryGroup ? HeaderTemplate : ItemTemplate;
@@ -33,12 +34,13 @@ namespace EdgeRebuild.Controls
     /// <summary>Hub 收藏夹列表行：文件夹或书签二选一。</summary>
     public sealed class FavoriteRow
     {
-        public FavoriteFolder Folder { get; set; }
-        public FavoriteItem Item { get; set; }
+        // 行对象按“文件夹或书签二选一”构建：未设置的一项保持 null，使用方先判 IsFolder。
+        public FavoriteFolder Folder { get; set; } = null!;
+        public FavoriteItem Item { get; set; } = null!;
         public int Depth { get; set; }
         public bool IsExpanded { get; set; }
         public int ChildCount { get; set; }
-        public string SearchPath { get; set; }
+        public string SearchPath { get; set; } = "";
 
         public bool IsFolder => Folder != null;
     }
@@ -46,8 +48,8 @@ namespace EdgeRebuild.Controls
     /// <summary>历史分组键(参考规范 §7.7:past-hour/today/yesterday/date-YYYY-M-D/earlier)。</summary>
     public sealed class HistoryGroup
     {
-        public string Key { get; set; }
-        public string HeaderText { get; set; }
+        public string Key { get; set; } = "";
+        public string HeaderText { get; set; } = "";
         public List<HistoryItem> Items { get; } = new List<HistoryItem>();
         public bool IsExpanded { get; set; }
 
@@ -56,16 +58,16 @@ namespace EdgeRebuild.Controls
 
     public sealed partial class HubPane : UserControl
     {
-        public event Action<string> NavigateRequested;
+        public event Action<string>? NavigateRequested;
 
         /// <summary>“打开全部”：由宿主在当前窗口批量创建标签页。</summary>
-        public event Action<IList<string>> OpenAllRequested;
+        public event Action<IList<string>>? OpenAllRequested;
 
         /// <summary>“在新窗口打开全部”：由宿主创建新窗口并批量建标签。</summary>
-        public event Action<IList<string>> OpenAllInNewWindowRequested;
+        public event Action<IList<string>>? OpenAllInNewWindowRequested;
 
         /// <summary>空状态里的“开始浏览”：由宿主关闭 Hub 并把焦点交回地址栏。</summary>
-        public event Action CloseRequested;
+        public event Action? CloseRequested;
 
         /// InPrivate 模式：历史面板内显示“不记录历史”提示，不加载列表
         public bool SuppressHistory { get; set; }
@@ -445,6 +447,29 @@ namespace EdgeRebuild.Controls
                 RefreshHistory();
         }
 
+        /// <summary>打开 Hub 时把键盘焦点放到当前分区导航项，方向键即可切换分区。</summary>
+        public void FocusInitial()
+        {
+            if (HubNavView.SelectedItem is NavigationViewItem selected)
+            {
+                selected.Focus(FocusState.Programmatic);
+                return;
+            }
+            if (HubNavView.MenuItems.Count > 0 && HubNavView.MenuItems[0] is NavigationViewItem first)
+                first.Focus(FocusState.Programmatic);
+            else
+                HubNavView.Focus(FocusState.Programmatic);
+        }
+
+        private void HubPane_KeyDown(object sender, KeyRoutedEventArgs e)
+        {
+            if (e.Key == VirtualKey.Escape)
+            {
+                CloseRequested?.Invoke();
+                e.Handled = true;
+            }
+        }
+
         public void ShowDownloads()
         {
             // 导航项顺序：0=收藏夹 1=历史记录 2=稍后读 3=下载 4=集锦
@@ -544,7 +569,7 @@ namespace EdgeRebuild.Controls
             var renameItem = new MenuFlyoutItem { Text = "重命名" };
             renameItem.Click += async (s, args) =>
             {
-                string name = await PromptTextAsync("重命名书签", "名称", fav.Title);
+                string? name = await PromptTextAsync("重命名书签", "名称", fav.Title);
                 if (name == null) return;
                 await FavoritesManager.Instance.RenameAsync(fav, name);
                 RefreshFavorites();
@@ -638,7 +663,7 @@ namespace EdgeRebuild.Controls
             var renameItem = new MenuFlyoutItem { Text = "重命名" };
             renameItem.Click += async (s, args) =>
             {
-                string name = await PromptTextAsync("重命名文件夹", "名称", folder.Name);
+                string? name = await PromptTextAsync("重命名文件夹", "名称", folder.Name);
                 if (name == null) return;
                 await FavoritesManager.Instance.RenameFolderAsync(folder, name);
                 RefreshFavorites();
@@ -685,7 +710,7 @@ namespace EdgeRebuild.Controls
 
         private async Task CreateFolderAsync(int? parentId)
         {
-            string name = await PromptTextAsync("新建文件夹", "文件夹名称", "新建文件夹");
+            string? name = await PromptTextAsync("新建文件夹", "文件夹名称", "新建文件夹");
             if (name == null) return;
             await FavoritesManager.Instance.AddFolderAsync(name, parentId);
             if (parentId.HasValue) _expandedFavoriteFolders.Add(parentId.Value);
@@ -699,7 +724,7 @@ namespace EdgeRebuild.Controls
             RefreshFavorites();
         }
 
-        private async Task<string> PromptTextAsync(string title, string label, string initial)
+        private async Task<string?> PromptTextAsync(string title, string label, string? initial)
         {
             var box = new TextBox { Text = initial ?? "", Header = label };
             var dialog = new ContentDialog
@@ -712,12 +737,12 @@ namespace EdgeRebuild.Controls
             PlatformCompat.SetDialogRoot(dialog, this);
             var result = await dialog.ShowAsync();
             if (result != ContentDialogResult.Primary) return null;
-            string text = box.Text?.Trim();
+            string? text = box.Text?.Trim();
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
 
         /// <summary>返回 -1=取消，0=根目录，&gt;0=文件夹 Id。</summary>
-        private async Task<int> PickFolderAsync(string title, FavoriteFolder movingFolder = null)
+        private async Task<int> PickFolderAsync(string title, FavoriteFolder? movingFolder = null)
         {
             var combo = new ComboBox
             {
@@ -744,7 +769,7 @@ namespace EdgeRebuild.Controls
         }
 
         private void AddFolderPickItems(ComboBox combo, List<int> folderIds,
-            int? parentId, int depth, FavoriteFolder movingFolder)
+            int? parentId, int depth, FavoriteFolder? movingFolder)
         {
             foreach (var folder in FavoritesManager.Instance.GetFolders(parentId))
             {
@@ -790,7 +815,7 @@ namespace EdgeRebuild.Controls
         }
 
         // ---- 多选管理模式 ----
-        private void ToggleManageBtn_Click(object sender, RoutedEventArgs e)
+        private void ToggleManageBtn_Click(object? sender, RoutedEventArgs? e)
         {
             bool managing = FavListView.SelectionMode == ListViewSelectionMode.None;
             FavListView.SelectionMode = managing ? ListViewSelectionMode.Multiple : ListViewSelectionMode.None;
@@ -800,7 +825,7 @@ namespace EdgeRebuild.Controls
             UpdateManageCount();
         }
 
-        private void ManageCancelBtn_Click(object sender, RoutedEventArgs e)
+        private void ManageCancelBtn_Click(object? sender, RoutedEventArgs? e)
             => ToggleManageBtn_Click(null, null);
 
         private void FavListView_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1434,6 +1459,7 @@ namespace EdgeRebuild.Controls
                 BorderThickness = new Thickness(0)
             };
             ToolTipService.SetToolTip(btn, tooltip);
+            AutomationProperties.SetName(btn, tooltip);
             btn.Click += (_, _) => action();
             return btn;
         }
@@ -1484,7 +1510,7 @@ namespace EdgeRebuild.Controls
         /// <summary>
         /// Hub 分区切换：内容淡入 + 上移 8px（160ms）。只动应用壳层，不对网页内容做动画。
         /// </summary>
-        private void AnimateSectionEntrance(FrameworkElement panel)
+        private void AnimateSectionEntrance(FrameworkElement? panel)
         {
             if (panel == null || _suppressSectionAnimation || !_uiSettings.AnimationsEnabled) return;
             try
@@ -1564,7 +1590,7 @@ namespace EdgeRebuild.Controls
             }
         }
 
-        private static DependencyObject FindElementByName(DependencyObject parent, string name)
+        private static DependencyObject? FindElementByName(DependencyObject parent, string name)
         {
             int count = Windows.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent);
             for (int i = 0; i < count; i++)
@@ -1647,6 +1673,7 @@ namespace EdgeRebuild.Controls
                 };
                 btn.Click += CollectionGroupBtn_Click;
                 btn.RightTapped += CollectionGroup_RightTapped;
+                AutomationProperties.SetName(btn, $"集锦分组：{group.Name}，{count} 项");
                 CollectionGroupList.Children.Add(btn);
             }
             bool empty = CollectionManager.Instance.Groups.Count == 0;

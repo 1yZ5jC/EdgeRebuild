@@ -12,10 +12,10 @@ namespace EdgeRebuild.Services
     {
         [PrimaryKey, AutoIncrement]
         public int Id { get; set; }
-        public string Url { get; set; }
+        public string Url { get; set; } = "";
         // 会话懒恢复：标签条在页面加载前就能显示上次标题（旧数据为空时回退到 URL）
-        public string Title { get; set; }
-        public string Engine { get; set; }
+        public string Title { get; set; } = "";
+        public string Engine { get; set; } = "";
         public bool IsPinned { get; set; }
         public int Position { get; set; }
 
@@ -37,7 +37,7 @@ namespace EdgeRebuild.Services
         // 真·多视图：各窗口在不同线程调用 ScheduleSave，DispatcherTimer 有线程亲和
         // （跨线程 Stop/Start 直接崩溃）——改用无线程亲和的 Threading.Timer，
         // 回调只触碰 DB 与纯托管状态，不涉及任何 UI 对象。
-        private static System.Threading.Timer _saveTimer;
+        private static System.Threading.Timer? _saveTimer;
         private const int SaveDebounceMs = 800;
 
         /// <summary>

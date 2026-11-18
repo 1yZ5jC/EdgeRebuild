@@ -71,17 +71,17 @@ namespace EdgeRebuild.Services
 
         public class SkinColors
         {
-            public Brush ToolbarBackground;
-            public SolidColorBrush TabActiveBackground;
-            public Brush TabInactiveBackground;
-            public SolidColorBrush TabHoverBackground;
-            public SolidColorBrush AccentBrush;
-            public SolidColorBrush AddressBarBackground;
-            public SolidColorBrush AddressBarBorder;
-            public SolidColorBrush AddressBarFocusBorder;
-            public SolidColorBrush SeparatorBrush;
-            public SolidColorBrush ForegroundBrush;
-            public SolidColorBrush MutedForegroundBrush;
+            public Brush ToolbarBackground = null!;
+            public SolidColorBrush TabActiveBackground = null!;
+            public Brush TabInactiveBackground = null!;
+            public SolidColorBrush TabHoverBackground = null!;
+            public SolidColorBrush AccentBrush = null!;
+            public SolidColorBrush AddressBarBackground = null!;
+            public SolidColorBrush AddressBarBorder = null!;
+            public SolidColorBrush AddressBarFocusBorder = null!;
+            public SolidColorBrush SeparatorBrush = null!;
+            public SolidColorBrush ForegroundBrush = null!;
+            public SolidColorBrush MutedForegroundBrush = null!;
         }
     }
 }

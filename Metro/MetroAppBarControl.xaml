@@ -52,7 +52,8 @@
     <Grid Height="48" Background="#FF2D2D30">
         <!-- 左：全局命令（新建/导航类） -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Stretch" Margin="4,0,0,0">
-            <Button Click="NewTabBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <Button Click="NewTabBtn_Click" Style="{StaticResource CommandBarButtonStyle}"
+                    AutomationProperties.Name="新建标签">
                 <StackPanel VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                     <TextBlock Text="新建标签" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
@@ -62,31 +63,36 @@
 
         <!-- 右：上下文命令（视图/刷新/全屏/设置/溢出），「更多」固定最右缘（8.1 溢出约定） -->
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Stretch" Margin="0,0,4,0">
-            <Button Click="TabsBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <Button Click="TabsBtn_Click" Style="{StaticResource CommandBarButtonStyle}"
+                    AutomationProperties.Name="标签视图">
                 <StackPanel VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE78C;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                     <TextBlock FontSize="11" Margin="0,3,0,0" TextAlignment="Center"><Run Text="标签视图 "/><Run x:Name="TabCountText" Text=""/></TextBlock>
                 </StackPanel>
             </Button>
-            <Button Click="RefreshBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <Button Click="RefreshBtn_Click" Style="{StaticResource CommandBarButtonStyle}"
+                    AutomationProperties.Name="刷新">
                 <StackPanel VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                     <TextBlock Text="刷新" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
                 </StackPanel>
             </Button>
-            <Button Click="FullscreenBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <Button Click="FullscreenBtn_Click" Style="{StaticResource CommandBarButtonStyle}"
+                    AutomationProperties.Name="切换全屏">
                 <StackPanel VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE740;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                     <TextBlock FontSize="11" Margin="0,3,0,0" TextAlignment="Center"><Run x:Name="FullscreenText" Text="全屏"/></TextBlock>
                 </StackPanel>
             </Button>
-            <Button Click="SettingsBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <Button Click="SettingsBtn_Click" Style="{StaticResource CommandBarButtonStyle}"
+                    AutomationProperties.Name="设置">
                 <StackPanel VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                     <TextBlock Text="设置" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>
                 </StackPanel>
             </Button>
-            <Button Click="MoreBtn_Click" Style="{StaticResource CommandBarButtonStyle}">
+            <Button Click="MoreBtn_Click" Style="{StaticResource CommandBarButtonStyle}"
+                    AutomationProperties.Name="更多操作">
                 <StackPanel VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE712;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                     <TextBlock Text="更多" FontSize="11" Margin="0,3,0,0" TextAlignment="Center"/>

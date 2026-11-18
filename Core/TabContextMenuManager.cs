@@ -17,10 +17,10 @@ namespace EdgeRebuild.Core
         private readonly Func<EngineType> _getCurrentEngine;
         private readonly Func<Task> _onPrintRequested;
         private readonly Func<Task> _onViewSourceRequested;
-        private readonly Action<TabViewItem> _onTogglePin;
-        private readonly Func<Task> _onWebCapture;
-        private readonly Func<Task> _onShareRequested;
-        private readonly Action<TabViewItem> _onSweepTab;
+        private readonly Action<TabViewItem>? _onTogglePin;
+        private readonly Func<Task>? _onWebCapture;
+        private readonly Func<Task>? _onShareRequested;
+        private readonly Action<TabViewItem>? _onSweepTab;
 
         public TabContextMenuManager(
             TabManager tabManager,
@@ -28,10 +28,10 @@ namespace EdgeRebuild.Core
             Func<EngineType> getCurrentEngine,
             Func<Task> onPrintRequested,
             Func<Task> onViewSourceRequested,
-            Action<TabViewItem> onTogglePin = null,
-            Func<Task> onWebCapture = null,
-            Func<Task> onShareRequested = null,
-            Action<TabViewItem> onSweepTab = null)
+            Action<TabViewItem>? onTogglePin = null,
+            Func<Task>? onWebCapture = null,
+            Func<Task>? onShareRequested = null,
+            Action<TabViewItem>? onSweepTab = null)
         {
             _tabManager = tabManager;
             _defaultEngine = defaultEngine;
@@ -129,7 +129,7 @@ namespace EdgeRebuild.Core
                 groupItem.Click += async (_, _) =>
                 {
                     var tab = viewItem.Tab;
-                    string tabUrl = !string.IsNullOrEmpty(tab?.CurrentUrl) ? tab.CurrentUrl : viewItem.FallbackUrl;
+                    string? tabUrl = !string.IsNullOrEmpty(tab?.CurrentUrl) ? tab.CurrentUrl : viewItem.FallbackUrl;
                     if (tab == null || string.IsNullOrEmpty(tabUrl) || tabUrl == "about:blank")
                     {
                         NotificationService.ShowToast("集锦", "当前页面不可添加");
@@ -295,7 +295,7 @@ namespace EdgeRebuild.Core
                     }
                     string title = tab.Title ?? tab.CurrentUrl;
                     string url = tab.CurrentUrl;
-                    string snippet = null;
+                    string? snippet = null;
                     if (tab is WebView2Tab wv2 && wv2.CoreWebView2 != null)
                     {
                         try
@@ -407,13 +407,13 @@ namespace EdgeRebuild.Core
             if (_tabManager.CurrentTab is WebView2Tab)
             {
                 var printItem = new MenuFlyoutItem { Text = "打印" };
-                printItem.Click += async (_, _) => await _onPrintRequested?.Invoke();
+                printItem.Click += async (_, _) => { if (_onPrintRequested != null) await _onPrintRequested(); };
                 flyout.Items.Add(printItem);
             }
 
             // ---- 查看源代码 ----
             var sourceItem = new MenuFlyoutItem { Text = "查看页面源代码" };
-            sourceItem.Click += async (_, _) => await _onViewSourceRequested?.Invoke();
+            sourceItem.Click += async (_, _) => { if (_onViewSourceRequested != null) await _onViewSourceRequested(); };
             flyout.Items.Add(sourceItem);
 
             flyout.Items.Add(new MenuFlyoutSeparator());

@@ -78,7 +78,7 @@ namespace EdgeRebuild
                 Services.Diagnostics.Log($"[多窗口] DisableSystemViewActivationPolicy 失败: {ex.Message}");
             }
 
-            Frame rootFrame = Window.Current.Content as Frame;
+            Frame? rootFrame = Window.Current.Content as Frame;
             if (rootFrame == null)
             {
                 rootFrame = new Frame();
@@ -130,7 +130,7 @@ namespace EdgeRebuild
                     // 先按默认目录探测一次，MainPage 再按自定义目录探测一次。
                     try
                     {
-                        string downloadPath = SettingsManager.GetCached("DownloadFolder");
+                        string? downloadPath = SettingsManager.GetCached("DownloadFolder");
                         if (!string.IsNullOrEmpty(downloadPath))
                             DownloadManager.SetCustomDownloadPath(downloadPath);
                     }

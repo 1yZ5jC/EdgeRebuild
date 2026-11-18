@@ -29,7 +29,7 @@ namespace EdgeRebuild.Services
         {
             var item = new HistoryItem { Title = title ?? url, Url = url, VisitTime = DateTime.Now };
             await DatabaseService.Database.InsertAsync(item);
-            List<HistoryItem> overflow = null;
+            List<HistoryItem>? overflow = null;
             lock (_collSync)
             {
                 History.Insert(0, item);
@@ -69,7 +69,7 @@ namespace EdgeRebuild.Services
             if (ids == null || ids.Count == 0) return;
             foreach (var id in ids)
             {
-                HistoryItem item;
+                HistoryItem? item;
                 lock (_collSync)
                 {
                     item = History.FirstOrDefault(h => h.Id == id);

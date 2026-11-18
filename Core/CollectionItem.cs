@@ -12,9 +12,9 @@ namespace EdgeRebuild.Core
         public int Id { get; set; }
         public int GroupId { get; set; }
         public CollectionItemType ItemType { get; set; }
-        public string Title { get; set; }
-        public string Content { get; set; }    // URL / 纯文本 / 图片地址
-        public string Snippet { get; set; }    // 预览摘录（可空）
+        public string Title { get; set; } = "";
+        public string Content { get; set; } = "";    // URL / 纯文本 / 图片地址
+        public string? Snippet { get; set; }    // 预览摘录（可空）
         public DateTime AddedDate { get; set; } = DateTime.Now;
     }
 }

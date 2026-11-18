@@ -23,7 +23,7 @@ namespace EdgeRebuild.Services
             ("粉色", "#F3B3C8"),
         };
 
-        private static string _markScript;
+        private static string? _markScript;
 
         private static async Task<string> LoadScriptAsync()
         {
@@ -72,7 +72,7 @@ namespace EdgeRebuild.Services
         /// <summary>
         /// 标记当前选中文本。成功返回标记记录，无选中/无法标记返回 null。
         /// </summary>
-        public static async Task<PageMark> MarkSelectionAsync(IBrowserTab tab, string color)
+        public static async Task<PageMark?> MarkSelectionAsync(IBrowserTab tab, string color)
         {
             try
             {
@@ -86,9 +86,9 @@ namespace EdgeRebuild.Services
                 using (var doc = JsonDocument.Parse(raw))
                 {
                     var root = doc.RootElement;
-                    string xpath = root.GetProperty("xpath").GetString();
+                    string? xpath = root.GetProperty("xpath").GetString();
                     int offset = root.GetProperty("offset").GetInt32();
-                    string text = root.GetProperty("text").GetString();
+                    string? text = root.GetProperty("text").GetString();
                     if (string.IsNullOrEmpty(xpath) || string.IsNullOrEmpty(text)) return null;
 
                     var mark = new PageMark
