@@ -10,7 +10,8 @@ namespace EdgeRebuild.Core
     {
         Find, FindNext, FindPrevious, CloseFind, HighlightMark, WebCapture,
         NewTab, CloseTab, FocusUrl, ToggleFullscreen, QuickSwitch,
-        ReaderMode   // Ctrl+Shift+R（Metro/主窗口共用桥）
+        ReaderMode,       // Ctrl+Shift+R（Metro/主窗口共用桥）
+        RestoreClosedTab  // Ctrl+Shift+T（Metro/主窗口共用桥）
     }
 
     /// <summary>
@@ -36,6 +37,7 @@ namespace EdgeRebuild.Core
                 case "cl": return PageShortcutKey.FocusUrl;            // Ctrl+L
                 case "qa": return PageShortcutKey.QuickSwitch;          // Ctrl+Shift+A
                 case "cr": return PageShortcutKey.ReaderMode;           // Ctrl+Shift+R
+                case "cst": return PageShortcutKey.RestoreClosedTab;    // Ctrl+Shift+T
                 case "f11": return PageShortcutKey.ToggleFullscreen;   // F11
                 default: return null;
             }

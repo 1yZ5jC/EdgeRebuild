@@ -7,7 +7,8 @@
     RequestedTheme="Dark"
     KeyDown="Page_KeyDown" KeyUp="Page_KeyUp">
 
-    <!-- 布局（Metro IE 真实形态）：Row0 标题栏 / Row1 内容区 / Row2 底部组合条。
+    <!-- 布局（Metro IE 真实形态）：Row0 内容区 / Row1 底部组合条。
+         标题使用系统标题栏（黑色），不再在页面内自绘标题条。
          其余功能（新建标签/标签视图/刷新/全屏/设置）收进底部命令栏（Windows 8.1 AppBar 形态：
          平时隐藏，右键或命令唤出，图标+文字平铺）。
          网页空白处右键 = 唤出命令栏；链接/图片/选区右键 = 就近小菜单（MetroPage 代码隐藏）。
@@ -16,25 +17,17 @@
           PointerMoved="Root_PointerMoved" PointerReleased="Root_PointerReleased"
           PointerCanceled="Root_PointerReleased">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题栏：显示当前页标题，整条可拖动（ExtendsContentIntoTitleBar 下默认全标题栏区域可拖）；全屏时隐藏 -->
-        <Grid x:Name="TopBar" Grid.Row="0" Height="32" Background="#FF000000">
-            <TextBlock x:Name="TopBarTitle" Text="Metro IE" FontFamily="Segoe UI" FontSize="12"
-                       Foreground="#FF8E8E8E" VerticalAlignment="Center" Margin="12,0,140,0"
-                       TextTrimming="CharacterEllipsis"/>
-        </Grid>
-
         <!-- 内容区（必须用 Grid：StackPanel 给子元素无限高度，WebView 会塌成 0 高不可见） -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="0">
             <Grid x:Name="ContentPanel" Background="#FF1E1E1E"/>
         </Grid>
 
         <!-- 底部组合条：标签条 + 地址栏（滚动感知整体滑出/滑入，动画见代码隐藏） -->
-        <Grid x:Name="BottomBar" Grid.Row="2">
+        <Grid x:Name="BottomBar" Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -57,7 +50,7 @@
         </Grid>
 
         <!-- 底部命令栏覆盖层（Windows 8.1 AppBar 形态；滑入/滑出动画见代码隐藏） -->
-        <metro:MetroAppBarControl x:Name="CommandBar" Grid.RowSpan="3"
+        <metro:MetroAppBarControl x:Name="CommandBar" Grid.RowSpan="2"
             VerticalAlignment="Bottom" Visibility="Collapsed"
             NewTabClicked="CommandBar_NewTabClicked"
             TabsClicked="CommandBar_TabsClicked"
@@ -67,22 +60,23 @@
             MoreClicked="CommandBar_MoreClicked"/>
 
         <!-- 页内查找栏覆盖层（Ctrl+F 唤出；位于底部组合条之上） -->
-        <metro:MetroFindBarControl x:Name="FindBar" Grid.RowSpan="3"
+        <metro:MetroFindBarControl x:Name="FindBar" Grid.RowSpan="2"
             VerticalAlignment="Bottom" Visibility="Collapsed"
             FindRequested="FindBar_FindRequested"
             CloseRequested="FindBar_CloseRequested"/>
 
         <!-- 设置面板覆盖层（Windows 8 形态：从右侧滑入，346px 全高） -->
-        <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="3"
+        <metro:MetroSettingsPanelControl x:Name="SettingsPanel" Grid.RowSpan="2"
             HorizontalAlignment="Right" VerticalAlignment="Stretch" Visibility="Collapsed"
             CloseRequested="SettingsPanel_CloseRequested"
             ZoomChanged="SettingsPanel_ZoomChanged"
             ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"
             InPrivateToggled="SettingsPanel_InPrivateToggled"
-            AlwaysShowChromeChanged="SettingsPanel_AlwaysShowChromeChanged"/>
+            AlwaysShowChromeChanged="SettingsPanel_AlwaysShowChromeChanged"
+            CircleButtonsChanged="SettingsPanel_CircleButtonsChanged"/>
 
         <!-- 收藏夹面板覆盖层（黑色 IE 面板；星标打开，点击遮罩/Esc 关闭） -->
-        <metro:MetroFavoritesPanelControl x:Name="FavoritesPanel" Grid.RowSpan="3"
+        <metro:MetroFavoritesPanelControl x:Name="FavoritesPanel" Grid.RowSpan="2"
             Visibility="Collapsed"
             CloseRequested="FavoritesPanel_CloseRequested"
             AddCurrentRequested="FavoritesPanel_AddCurrentRequested"
@@ -90,7 +84,7 @@
 
         <!-- 全屏缩略图网格覆盖层(常驻可见,Opacity=0+不命中:确保 ScrollViewer 在窗口
              显示时就完成首次真实布局——延迟到打开时才布局会在本 AppWindow 内冻结 UI 线程) -->
-        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="3"
+        <metro:MetroTabGridControl x:Name="TabGridOverlay" Grid.RowSpan="2"
             Opacity="0" IsHitTestVisible="False"
             TabSelected="TabGrid_TabSelected"
             TabCloseRequested="TabGrid_TabCloseRequested"

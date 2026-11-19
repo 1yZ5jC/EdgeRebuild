@@ -23,6 +23,10 @@ namespace EdgeRebuild.Metro
         public event Action? ClearHistoryRequested;
         public event Action<bool>? InPrivateToggled;       // P2-13：Metro 窗口 InPrivate 开关
         public event Action<bool>? AlwaysShowChromeChanged; // IE11：始终显示地址栏和标签
+        public event Action<bool>? CircleButtonsChanged;    // 按钮外围是否画圆圈
+
+        /// <summary>供宿主在面板关闭时补一次状态同步。</summary>
+        public bool CircleButtonsEnabled => CircleButtonsToggle.IsChecked == true;
 
         private static readonly double[] ZoomSteps =
             { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0 };
@@ -32,11 +36,24 @@ namespace EdgeRebuild.Metro
 
         private int _zoomIndex = 3;   // 100%
         private bool _loading = true;
+        private bool _zoomDragging;
 
         public MetroSettingsPanelControl()
         {
             InitializeComponent();
             BuildZoomBar();
+
+            // Button 的类处理会吞掉 PointerPressed，必须用 handledEventsToo 挂接，
+            // 否则点击/拖动缩放条不生效（XAML 事件只收未处理事件）。
+            ZoomBar.AddHandler(PointerPressedEvent,
+                new PointerEventHandler(ZoomBar_PointerPressed), true);
+            ZoomBar.AddHandler(PointerMovedEvent,
+                new PointerEventHandler(ZoomBar_PointerMoved), true);
+            ZoomBar.AddHandler(PointerReleasedEvent,
+                new PointerEventHandler(ZoomBar_PointerReleased), true);
+            ZoomBar.AddHandler(PointerCanceledEvent,
+                new PointerEventHandler(ZoomBar_PointerReleased), true);
+
             _ = LoadSettingsAsync();
         }
 
@@ -94,13 +111,36 @@ namespace EdgeRebuild.Metro
 
         private void ZoomBar_PointerPressed(object sender, PointerRoutedEventArgs e)
         {
+            _zoomDragging = true;
+            ZoomBar.CapturePointer(e.Pointer);
+            UpdateZoomFromPointer(e);
+            e.Handled = true;
+        }
+
+        private void ZoomBar_PointerMoved(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_zoomDragging) return;
+            UpdateZoomFromPointer(e);
+            e.Handled = true;
+        }
+
+        private void ZoomBar_PointerReleased(object sender, PointerRoutedEventArgs e)
+        {
+            if (!_zoomDragging) return;
+            _zoomDragging = false;
+            ZoomBar.ReleasePointerCapture(e.Pointer);
+            e.Handled = true;
+        }
+
+        private void UpdateZoomFromPointer(PointerRoutedEventArgs e)
+        {
             double width = ZoomBarSegments.ActualWidth;
+            if (width <= 0) width = ZoomBar.ActualWidth;
             if (width <= 0) return;
 
             double x = e.GetCurrentPoint(ZoomBarSegments).Position.X;
-            int index = (int)(x / width * ZoomSteps.Length);
+            int index = (int)Math.Floor(x / width * ZoomSteps.Length);
             SetZoomIndex(index, raiseEvent: true);
-            e.Handled = true;
         }
 
         private void ZoomBar_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -132,6 +172,14 @@ namespace EdgeRebuild.Metro
                 string? always = await SettingsManager.GetAsync("MetroAlwaysShowChrome");
                 AlwaysShowChromeToggle.IsChecked = always != "False";
                 AlwaysShowChromeToggle.Content = AlwaysShowChromeToggle.IsChecked == true ? "开" : "关";
+            }
+            catch { }
+
+            try
+            {
+                string? circles = await SettingsManager.GetAsync("MetroCircleButtons");
+                CircleButtonsToggle.IsChecked = circles != "False";
+                CircleButtonsToggle.Content = CircleButtonsToggle.IsChecked == true ? "开" : "关";
             }
             catch { }
 
@@ -180,6 +228,28 @@ namespace EdgeRebuild.Metro
             if (_loading) return;
             try { await SettingsManager.SetAsync("MetroAlwaysShowChrome", "False"); } catch { }
             AlwaysShowChromeChanged?.Invoke(false);
+        }
+
+        private void CircleButtonsToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            CircleButtonsToggle.Content = "开";
+            if (_loading) return;
+            CircleButtonsChanged?.Invoke(true);   // 先改 UI，再落盘
+            _ = SaveCircleButtonsAsync(true);
+        }
+
+        private void CircleButtonsToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            CircleButtonsToggle.Content = "关";
+            if (_loading) return;
+            CircleButtonsChanged?.Invoke(false);
+            _ = SaveCircleButtonsAsync(false);
+        }
+
+        private static async Task SaveCircleButtonsAsync(bool on)
+        {
+            try { await SettingsManager.SetAsync("MetroCircleButtons", on ? "True" : "False"); }
+            catch { }
         }
 
         private void AutoEncodingToggle_Checked(object sender, RoutedEventArgs e)

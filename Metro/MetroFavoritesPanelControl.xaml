@@ -152,7 +152,7 @@
     </UserControl.Resources>
 
     <Grid>
-        <Border x:Name="Scrim" Background="#66000000" PointerPressed="Scrim_PointerPressed"/>
+        <Border x:Name="Scrim" Background="#01000000" PointerPressed="Scrim_PointerPressed"/>
 
         <Border Width="360" HorizontalAlignment="Right" Background="#FF000000"
                 BorderBrush="#FF333333" BorderThickness="1,0,0,0">
@@ -180,7 +180,8 @@
 
                 <!-- 添加当前页 -->
                 <Button x:Name="AddCurrentBtn" Grid.Row="1" Style="{StaticResource PanelActionButtonStyle}"
-                        Margin="16,0,16,8" Click="AddCurrentBtn_Click"
+                        Margin="12,0,12,8" HorizontalAlignment="Stretch" MinWidth="300"
+                        Click="AddCurrentBtn_Click"
                         AutomationProperties.Name="添加当前页到收藏夹">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <FontIcon Glyph="&#xE710;" FontFamily="Segoe MDL2 Assets" FontSize="12"

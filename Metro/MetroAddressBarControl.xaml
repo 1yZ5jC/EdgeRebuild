@@ -4,7 +4,8 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <UserControl.Resources>
-        <!-- IE11 圆形导航按钮：36×36、2px 半透明白描边；hover/pressed 白色叠加 -->
+        <!-- IE11 圆形导航按钮：36×36、3px 半透明白描边；hover/pressed 白色叠加。
+             设置页可关闭外围圆圈（只保留图标）。 -->
         <Style x:Key="MetroCircleButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="36"/>
             <Setter Property="Height" Value="36"/>
@@ -14,10 +15,11 @@
             <Setter Property="MinHeight" Value="0"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="#B3FFFFFF"/>
-            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderThickness" Value="3"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -44,6 +46,9 @@
                                             <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Content" Storyboard.TargetProperty="Foreground">
                                                 <DiscreteObjectKeyFrame KeyTime="0" Value="#FF555555"/>
                                             </ObjectAnimationUsingKeyFrames>
+                                            <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Bg" Storyboard.TargetProperty="BorderBrush">
+                                                <DiscreteObjectKeyFrame KeyTime="0" Value="#33FFFFFF"/>
+                                            </ObjectAnimationUsingKeyFrames>
                                         </Storyboard>
                                     </VisualState>
                                 </VisualStateGroup>
@@ -55,6 +60,9 @@
                                 <ContentPresenter x:Name="Content" Content="{TemplateBinding Content}"
                                                   ContentTemplate="{TemplateBinding ContentTemplate}"
                                                   Foreground="{TemplateBinding Foreground}"
+                                                  FontFamily="{TemplateBinding FontFamily}"
+                                                  FontSize="{TemplateBinding FontSize}"
+                                                  FontWeight="{TemplateBinding FontWeight}"
                                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
                             </Border>
                         </Grid>
@@ -83,24 +91,54 @@
                 Click="ForwardBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="前进" AutomationProperties.Name="前进"/>
 
-        <!-- 地址栏：未聚焦为深色边框框；聚焦后白底黑字，右侧出现清除 X -->
+        <!-- 地址栏：左侧站点信息内嵌在输入框内；收藏星标已移到输入框外的圆形按钮区。
+             聚焦后白底黑字，显示清除 X，并弹出历史/收藏建议。 -->
         <Grid Grid.Column="2" VerticalAlignment="Center" Height="40" Margin="8,0">
             <Border x:Name="UrlFrame" Background="#FF1F1F1F" BorderBrush="#99FFFFFF"
                     BorderThickness="1" CornerRadius="2"/>
             <TextBox x:Name="UrlBox" FontFamily="Segoe UI" FontSize="17"
                      BorderThickness="0" Background="Transparent" Foreground="White"
-                     PlaceholderText="输入网址或搜索"
+                     PlaceholderText=""
                      GotFocus="UrlBox_GotFocus" LostFocus="UrlBox_LostFocus"
                      TextChanged="UrlBox_TextChanged"
-                     KeyDown="UrlBox_KeyDown" VerticalAlignment="Center"
+                     KeyDown="UrlBox_KeyDown" VerticalAlignment="Stretch"
                      VerticalContentAlignment="Center"
-                     Height="38" Padding="10,0,36,0"
-                     AutomationProperties.Name="地址栏"/>
+                     Padding="32,8,36,0"
+                     AutomationProperties.Name="地址栏">
+                <FlyoutBase.AttachedFlyout>
+                    <Flyout x:Name="SuggestionsFlyout" Placement="Top"
+                            Closed="SuggestionsFlyout_Closed">
+                        <Border x:Name="SuggestionBorder" Background="#FF1F1F1F"
+                                BorderBrush="#FF333333" BorderThickness="1"
+                                MinWidth="300" MaxHeight="280">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical"/>
+                            </ScrollViewer>
+                        </Border>
+                    </Flyout>
+                </FlyoutBase.AttachedFlyout>
+            </TextBox>
+            <!-- 站点信息图标叠在输入框上方，必须排在 TextBox 之后才能收到点击 -->
+            <Button x:Name="SiteInfoBtn" Width="30" Height="30" Padding="0"
+                    HorizontalAlignment="Left" VerticalAlignment="Center"
+                    Background="Transparent" BorderThickness="0"
+                    Click="SiteInfoBtn_Click"
+                    ToolTipService.ToolTip="站点信息" AutomationProperties.Name="站点信息">
+                <FontIcon x:Name="SiteInfoGlyph" Glyph="&#xE774;" FontSize="14"
+                          FontFamily="Segoe MDL2 Assets" Foreground="White"
+                          VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Button>
+            <!-- 聚焦白底时系统占位符是浅色，看不清；用自绘占位符覆盖 -->
+            <TextBlock x:Name="PlaceholderOverlay" Text="输入网址或搜索"
+                       FontFamily="Segoe UI" FontSize="17" Foreground="#FF8E8E8E"
+                       Margin="34,8,36,0" VerticalAlignment="Center"
+                       IsHitTestVisible="False" Visibility="Collapsed"/>
             <Button x:Name="ClearBtn" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
-                    FontSize="13" Foreground="#FF8E8E8E" Background="Transparent"
+                    FontSize="13" Foreground="#FF666666" Background="Transparent"
                     BorderThickness="0" Width="30" Height="30" MinWidth="0" MinHeight="0"
                     Padding="0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                    Margin="0,0,3,0" Visibility="Collapsed" Click="ClearBtn_Click"
+                    Margin="0,0,2,0" Visibility="Collapsed" Click="ClearBtn_Click"
                     ToolTipService.ToolTip="清除地址" AutomationProperties.Name="清除地址"/>
         </Grid>
 
@@ -108,9 +146,13 @@
         <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
                 Click="RefreshBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="刷新" AutomationProperties.Name="刷新"/>
-        <Button x:Name="FavoriteBtn" Grid.Column="4" Content="&#xE734;"
+        <Button x:Name="FavoriteBtn" Grid.Column="4"
                 Click="FavoriteBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
-                ToolTipService.ToolTip="添加到收藏夹" AutomationProperties.Name="添加到收藏夹"/>
+                ToolTipService.ToolTip="收藏夹" AutomationProperties.Name="收藏夹">
+            <FontIcon x:Name="FavGlyph" Glyph="&#xE734;" FontSize="18"
+                      FontFamily="Segoe MDL2 Assets" Foreground="White"
+                      VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        </Button>
         <Button x:Name="MoreBtn" Grid.Column="5" Content="&#xE712;"
                 Click="MoreBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="更多" AutomationProperties.Name="更多"/>

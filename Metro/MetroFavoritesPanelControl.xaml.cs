@@ -200,7 +200,10 @@ namespace EdgeRebuild.Metro
         private void Scrim_PointerPressed(object sender, Windows.UI.Xaml.Input.PointerRoutedEventArgs e)
         {
             if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                e.Handled = true;
                 CloseRequested?.Invoke();
+            }
         }
     }
 }

@@ -31,6 +31,48 @@ namespace EdgeRebuild.Metro
             InitializeComponent();
         }
 
+        /// <summary>设置页开关：关闭时去掉 +/… 按钮的外围圆圈。</summary>
+        public void SetCircleButtonsVisible(bool visible)
+        {
+            _showCircleButtons = visible;
+            ApplyCircleRing(NewTabBtn);
+            ApplyCircleRing(MoreBtn);
+        }
+
+        private bool _showCircleButtons = true;
+
+        private void ApplyCircleRing(Button button)
+        {
+            var thickness = _showCircleButtons ? new Thickness(3) : new Thickness(0);
+            var brush = new SolidColorBrush(_showCircleButtons
+                ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)
+                : Colors.Transparent);
+            button.BorderThickness = thickness;
+            button.BorderBrush = brush;
+
+            // 1809 上 TemplateBinding 对运行时本地值更新不稳定：模板已展开时
+            // 直接同步模板内 Border，保证开关立即生效。
+            var bg = FindDescendantBorder(button, "Bg");
+            if (bg != null)
+            {
+                bg.BorderThickness = thickness;
+                bg.BorderBrush = brush;
+            }
+        }
+
+        private static Border? FindDescendantBorder(DependencyObject root, string name)
+        {
+            int count = VisualTreeHelper.GetChildrenCount(root);
+            for (int i = 0; i < count; i++)
+            {
+                var child = VisualTreeHelper.GetChild(root, i);
+                if (child is Border border && border.Name == name) return border;
+                var found = FindDescendantBorder(child, name);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         public void Refresh(IReadOnlyList<TabViewItem>? tabs, TabViewItem? current)
         {
             Host.Children.Clear();
@@ -57,8 +99,8 @@ namespace EdgeRebuild.Metro
             {
                 Style = (Style)Resources["MetroTabButtonStyle"],
                 Tag = item,
-                MinWidth = 120,
-                MaxWidth = 180,
+                MinWidth = 160,
+                MaxWidth = 240,
                 Background = isCurrent
                     ? new SolidColorBrush(MetroColorPalette.TabActiveColor)
                     : new SolidColorBrush(Colors.Transparent),
@@ -78,23 +120,23 @@ namespace EdgeRebuild.Metro
             {
                 Glyph = "\xE774",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 12,
+                FontSize = 14,
                 Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 5, 0)
+                Margin = new Thickness(0, 0, 6, 0)
             };
             var faviconImage = new Image
             {
-                Width = 14,
-                Height = 14,
-                Margin = new Thickness(0, 0, 5, 0),
+                Width = 16,
+                Height = 16,
+                Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed
             };
             var title = new TextBlock
             {
                 Text = item.Tab.Title ?? "新标签页",
-                FontSize = 12,
+                FontSize = 14,
                 Foreground = new SolidColorBrush(Windows.UI.Colors.White),
                 VerticalAlignment = VerticalAlignment.Center,
                 HorizontalAlignment = HorizontalAlignment.Left,
@@ -104,12 +146,12 @@ namespace EdgeRebuild.Metro
             {
                 Content = "\xE711",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 9,
+                FontSize = 11,
                 Foreground = new SolidColorBrush(isCurrent ? Colors.White : MetroColorPalette.MutedColor),
                 Background = new SolidColorBrush(Colors.Transparent),
                 BorderThickness = new Thickness(0),
-                Width = 20,
-                Height = 20,
+                Width = 24,
+                Height = 24,
                 Padding = new Thickness(0),
                 Tag = item,
                 VerticalAlignment = VerticalAlignment.Center,

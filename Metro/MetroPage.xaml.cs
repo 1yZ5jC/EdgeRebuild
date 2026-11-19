@@ -38,7 +38,8 @@ namespace EdgeRebuild.Metro
         private double _edgeSwipeStartY;
         private bool _bottomBarHidden;
         private bool _alwaysShowChrome = true;
-        private double _bottomBarFullHeight = 82;   // 32px 标签条 + 50px 地址栏
+        private bool _showCircleButtons = true;
+        private double _bottomBarFullHeight = 90;   // 40px 标签条 + 50px 地址栏
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
@@ -90,6 +91,8 @@ namespace EdgeRebuild.Metro
             // AppWindow 模式：标题随标签切换经 _appWindow.Title 同步（见 OnTabChanged）
             Loaded += (s, e) =>
             {
+                // 原生视图路径在 Navigate 之后才 Activate，这里补一次标题栏配色
+                ApplyTitleBarChrome();
                 // FindBar 底边距 = 底部组合条实际高度（避免与布局常量硬编码耦合）
                 FindBar.Margin = new Thickness(0, 0, 0, BottomBar.ActualHeight);
                 _bottomBarFullHeight = BottomBar.ActualHeight;
@@ -118,6 +121,62 @@ namespace EdgeRebuild.Metro
                 _alwaysShowChrome = value != "False";
             }
             catch { _alwaysShowChrome = true; }
+
+            try
+            {
+                string? circles = await SettingsManager.GetAsync("MetroCircleButtons");
+                _showCircleButtons = circles != "False";
+            }
+            catch { _showCircleButtons = true; }
+
+            ApplyCircleButtonStyle();
+        }
+
+        private void ApplyCircleButtonStyle()
+        {
+            AddressBar.SetCircleButtonsVisible(_showCircleButtons);
+            TabStrip.SetCircleButtonsVisible(_showCircleButtons);
+        }
+
+        /// <summary>
+        /// Metro 窗口使用系统标题栏：黑色底 + 白色按钮，不再在页面内自绘标题条。
+        /// AppWindow 路径设置 AppWindowTitleBar；原生视图/1809 路径回退 ApplicationViewTitleBar。
+        /// </summary>
+        private void ApplyTitleBarChrome()
+        {
+            try
+            {
+                var metroBg = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
+                if (_appWindow != null && PlatformCompat.HasAppWindow)
+                {
+                    AppWindowCompat.SetTitle(_appWindow, "Metro IE");
+                    AppWindowCompat.ApplyTitleBarColors(
+                        _appWindow,
+                        extendContentIntoTitleBar: false,
+                        background: metroBg,
+                        inactiveBackground: metroBg,
+                        foreground: Windows.UI.Colors.White,
+                        buttonBackground: metroBg,
+                        buttonHoverBackground: Windows.UI.Color.FromArgb(0xFF, 0x33, 0x33, 0x33),
+                        buttonPressedBackground: Windows.UI.Color.FromArgb(0xFF, 0x55, 0x55, 0x55));
+                }
+                else
+                {
+                    var tb = Windows.UI.ViewManagement.ApplicationView.GetForCurrentView().TitleBar;
+                    var inactiveFg = Windows.UI.Color.FromArgb(0xFF, 0x99, 0x99, 0x99);
+                    tb.BackgroundColor = metroBg;
+                    tb.InactiveBackgroundColor = metroBg;
+                    tb.ForegroundColor = Windows.UI.Colors.White;
+                    tb.InactiveForegroundColor = inactiveFg;
+                    tb.ButtonBackgroundColor = metroBg;
+                    tb.ButtonInactiveBackgroundColor = metroBg;
+                    tb.ButtonForegroundColor = Windows.UI.Colors.White;
+                    tb.ButtonInactiveForegroundColor = inactiveFg;
+                    tb.ButtonHoverBackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x33, 0x33, 0x33);
+                    tb.ButtonPressedBackgroundColor = Windows.UI.Color.FromArgb(0xFF, 0x55, 0x55, 0x55);
+                }
+            }
+            catch { }
         }
 
         private void AttachStripRefresh(TabViewItem viewItem)
@@ -164,25 +223,8 @@ namespace EdgeRebuild.Metro
             _tabManager.TabScrolled += OnTabScrolled;                 // 滚动感知底栏自动隐藏（IE11 Modern 行为）
             SyncCtxPolling();   // R2-2：初始状态同步（首个标签可能就是 EdgeHTML）
 
-            // AppWindow 模式（18362+）：标题/标题栏经 AppWindow 定制
-            try
-            {
-                if (_appWindow != null && PlatformCompat.HasAppWindow)
-                {
-                    var metroBg = Windows.UI.Color.FromArgb(0xFF, 0x00, 0x00, 0x00);
-                    AppWindowCompat.SetTitle(_appWindow, "Metro IE");
-                    AppWindowCompat.ApplyTitleBarColors(
-                        _appWindow,
-                        extendContentIntoTitleBar: true,
-                        background: metroBg,
-                        inactiveBackground: metroBg,
-                        foreground: Windows.UI.Colors.White,
-                        buttonBackground: metroBg,
-                        buttonHoverBackground: Windows.UI.Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF),
-                        buttonPressedBackground: Windows.UI.Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF));
-                }
-            }
-            catch { }
+            // AppWindow 模式（18362+）：使用系统标题栏，黑色底 + 白色按钮
+            ApplyTitleBarChrome();
 
             _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
         }
@@ -203,11 +245,19 @@ namespace EdgeRebuild.Metro
             AddressBar.SetUrl(tab.CurrentUrl);
             AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
             UpdateFavoriteState();
-            TopBarTitle.Text = tab.Title ?? "Metro IE";
             ShowBottomBar();   // 切标签恢复底栏，避免新标签在无 chrome 状态下迷失
             if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
                 AppWindowCompat.SetTitle(_appWindow, tab.Title ?? "Metro IE");
+            }
+            else
+            {
+                try
+                {
+                    Windows.UI.ViewManagement.ApplicationView.GetForCurrentView().Title =
+                        tab.Title ?? "Metro IE";
+                }
+                catch { }
             }
             TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             RefreshGridIfOpen();
@@ -245,7 +295,6 @@ namespace EdgeRebuild.Metro
                     return;
                 }
                 _isFullscreen = !_isFullscreen;
-                TopBar.Visibility = _isFullscreen ? Visibility.Collapsed : Visibility.Visible;
                 if (_commandBarOpen) CommandBar.SetFullscreenText(_isFullscreen);
             }
             catch (Exception ex)
@@ -326,6 +375,12 @@ namespace EdgeRebuild.Metro
         {
             if (!_settingsOpen) return;
             _settingsOpen = false;
+
+            // 面板关闭时按开关实际状态补一次应用，避免开关事件在
+            // 慢速 SQLite 写入或模板未展开时漏掉视觉更新。
+            _showCircleButtons = SettingsPanel.CircleButtonsEnabled;
+            ApplyCircleButtonStyle();
+
             var sb = new Storyboard();
             var slide = new DoubleAnimation { From = 0, To = 346, Duration = TimeSpan.FromMilliseconds(120) };
             Storyboard.SetTarget(slide, SettingsPanel);
@@ -363,6 +418,8 @@ namespace EdgeRebuild.Metro
             if (_settingsOpen) CloseSettingsPanel();
             _favoritesOpen = true;
             ShowBottomBar();
+            // 面板停在地址栏上方，星标与地址栏保持可见（可再次点星标收起）
+            FavoritesPanel.Margin = new Thickness(0, 0, 0, _bottomBarFullHeight);
             FavoritesPanel.ResetToRoot();
             UpdateFavoriteState();
             FavoritesPanel.Refresh();
@@ -405,6 +462,12 @@ namespace EdgeRebuild.Metro
         {
             _alwaysShowChrome = on;
             if (on) ShowBottomBar();
+        }
+
+        private void SettingsPanel_CircleButtonsChanged(bool on)
+        {
+            _showCircleButtons = on;
+            ApplyCircleButtonStyle();
         }
 
         // P2-13：Metro 窗口 InPrivate——TabManager.IsInPrivateWindow 驱动
@@ -1026,9 +1089,8 @@ namespace EdgeRebuild.Metro
         // ---- 网页右键：空白 → 命令栏；链接/图片/选区 → 就近小菜单 ----
         private void OnTabContextMenuRequested(TabContextMenuEventArgs args)
         {
-            double dy = (TopBar.Visibility == Visibility.Visible) ? TopBar.ActualHeight : 0;
             ShowMetroContextMenu(args.MenuType, args.LinkUrl, args.ImageUrl, args.SelectionText,
-                new Point(args.Location.X, args.Location.Y + dy));
+                new Point(args.Location.X, args.Location.Y));
         }
 
         private async void CtxPollTimer_Tick(object? sender, object e)
@@ -1086,6 +1148,9 @@ namespace EdgeRebuild.Metro
                 case PageShortcutKey.NewTab:
                     _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
                     break;
+                case PageShortcutKey.RestoreClosedTab:
+                    RestoreClosedTab();
+                    break;
                 case PageShortcutKey.CloseTab:
                     var currentItem = FindViewItem(_tabManager.CurrentTab);
                     if (currentItem != null)
@@ -1122,17 +1187,16 @@ namespace EdgeRebuild.Metro
             string kind = parts[0];
             if (!double.TryParse(parts[1], out double x) || !double.TryParse(parts[2], out double y)) return;
             string val = parts.Length > 3 ? Uri.UnescapeDataString(parts[3]) : "";
-            double dy = (TopBar.Visibility == Visibility.Visible) ? TopBar.ActualHeight : 0;
             switch (kind)
             {
                 case "link":
-                    ShowMetroContextMenu(ContextMenuType.Link, val, null, "", new Point(x, y + dy));
+                    ShowMetroContextMenu(ContextMenuType.Link, val, null, "", new Point(x, y));
                     break;
                 case "image":
-                    ShowMetroContextMenu(ContextMenuType.Image, null, val, "", new Point(x, y + dy));
+                    ShowMetroContextMenu(ContextMenuType.Image, null, val, "", new Point(x, y));
                     break;
                 case "selection":
-                    ShowMetroContextMenu(ContextMenuType.Selection, null, null, val, new Point(x, y + dy));
+                    ShowMetroContextMenu(ContextMenuType.Selection, null, null, val, new Point(x, y));
                     break;
                 default:
                     OpenCommandBar();
@@ -1351,7 +1415,8 @@ namespace EdgeRebuild.Metro
                         break;
                     case VirtualKey.T:
                         e.Handled = true;
-                        _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+                        if (shift) RestoreClosedTab();
+                        else _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
                         break;
                     case VirtualKey.W:
                         e.Handled = true;
@@ -1378,6 +1443,11 @@ namespace EdgeRebuild.Metro
                         FindBar.Show();
                         break;
                 }
+            }
+            else if (e.Key == VirtualKey.F5)
+            {
+                e.Handled = true;
+                _ = _tabManager.CurrentTab?.RefreshAsync();
             }
             else if (e.Key == VirtualKey.F11)
             {
@@ -1423,6 +1493,14 @@ namespace EdgeRebuild.Metro
                     ToggleFullscreen();
                 }
             }
+        }
+
+        private void RestoreClosedTab()
+        {
+            if (_tabManager.TryReopenClosedTab(out EngineType engine, out string url, out _))
+                _ = _tabManager.CreateTabAsync(engine, url, false, true);
+            else
+                NotificationService.ShowToast("恢复标签", "没有可恢复的标签");
         }
 
         // Ctrl+Tab / Ctrl+Shift+Tab → 循环切换标签（与主窗口 ShortcutManager 一致）

@@ -766,6 +766,10 @@ namespace EdgeRebuild
                 case PageShortcutKey.ReaderMode:
                     ToggleReaderMode();
                     break;
+                case PageShortcutKey.RestoreClosedTab:
+                    if (_tabManager.TryReopenClosedTab(out EngineType reopenEngine, out string reopenUrl, out _))
+                        _ = _tabManager.CreateTabAsync(reopenEngine, reopenUrl);
+                    break;
                     // 主窗口无全屏模式，忽略
             }
         }

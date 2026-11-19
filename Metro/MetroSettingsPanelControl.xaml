@@ -234,7 +234,8 @@
                         AutomationProperties.Name="关闭设置"/>
             </Grid>
 
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" HorizontalScrollMode="Disabled">
                 <StackPanel Padding="20,8,20,24">
 
                     <!-- 删除浏览历史记录 -->
@@ -280,13 +281,16 @@
                         <TextBlock x:Name="ZoomPercentText" Text="100%" FontFamily="Segoe UI" FontSize="12"
                                    Foreground="#FF0078D7" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
-                    <Button x:Name="ZoomBar" Style="{StaticResource ZoomBarButtonStyle}" Height="18"
-                            Margin="0,8,0,0" PointerPressed="ZoomBar_PointerPressed" KeyDown="ZoomBar_KeyDown"
+                    <Button x:Name="ZoomBar" Style="{StaticResource ZoomBarButtonStyle}" Height="22"
+                            HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                            Margin="0,8,0,0" KeyDown="ZoomBar_KeyDown"
                             ToolTipService.ToolTip="缩放" AutomationProperties.Name="缩放"
-                            AutomationProperties.HelpText="使用左右方向键调整缩放">
-                        <Grid Height="14">
-                            <Border Background="#FFF2F2F2" BorderBrush="#FFD0D0D0" BorderThickness="1"/>
-                            <Grid x:Name="ZoomBarSegments" Height="12" Margin="1"/>
+                            AutomationProperties.HelpText="拖动或使用左右方向键调整缩放">
+                        <Grid Height="18" HorizontalAlignment="Stretch">
+                            <Border Background="#FFF2F2F2" BorderBrush="#FFD0D0D0" BorderThickness="1"
+                                    HorizontalAlignment="Stretch"/>
+                            <Grid x:Name="ZoomBarSegments" Height="16" Margin="1"
+                                  HorizontalAlignment="Stretch"/>
                         </Grid>
                     </Button>
 
@@ -348,6 +352,18 @@
                                       Content="开" IsChecked="True" HorizontalAlignment="Right" VerticalAlignment="Top"
                                       Checked="AlwaysShowChromeToggle_Checked" Unchecked="AlwaysShowChromeToggle_Unchecked"
                                       AutomationProperties.Name="始终显示地址栏和标签"/>
+                    </Grid>
+
+                    <Grid Margin="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="按钮圆圈" Style="{StaticResource RowLabelStyle}"/>
+                            <TextBlock Text="关闭后地址栏和标签条按钮只显示图标，不画外围圆圈。"
+                                       Style="{StaticResource BodyStyle}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <ToggleButton x:Name="CircleButtonsToggle" Style="{StaticResource MetroSwitchStyle}"
+                                      Content="开" IsChecked="True" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                      Checked="CircleButtonsToggle_Checked" Unchecked="CircleButtonsToggle_Unchecked"
+                                      AutomationProperties.Name="按钮圆圈"/>
                     </Grid>
 
                     <TextBlock Text="EdgeRebuild Pre-release · Metro IE 界面样式"

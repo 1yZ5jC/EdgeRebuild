@@ -68,8 +68,7 @@ namespace EdgeRebuild.Core
                 if (!(appWindow is AppWindow aw)) return;
 
                 var tb = aw.TitleBar;
-                if (extendContentIntoTitleBar)
-                    tb.ExtendsContentIntoTitleBar = true;
+                tb.ExtendsContentIntoTitleBar = extendContentIntoTitleBar;
 
                 tb.ForegroundColor = foreground;
                 tb.BackgroundColor = background;
