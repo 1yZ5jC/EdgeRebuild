@@ -13,6 +13,10 @@ namespace EdgeRebuild
 {
     sealed partial class App : Application
     {
+        // 应用已运行时，跳转菜单可能同时经 OnLaunched / OnActivated 到达；
+        // 用目标 + 时间窗去重，避免同一个跳转项被执行两次。
+        private static string? _lastJumpListTarget;
+        private static long _lastJumpListTicks;
         public App()
         {
             this.InitializeComponent();
@@ -55,6 +59,11 @@ namespace EdgeRebuild
             // 启动阶段计时：先量出 DB/设置/数据/主题/导航各占多少，再决定是否上
             // “会话标签懒加载”这类大改动。日志保留在 crash.log，便于 Release 对比。
             var startupSw = System.Diagnostics.Stopwatch.StartNew();
+
+            // 任务栏/开始菜单跳转菜单：订阅 TabManager 的关闭标签记录，
+            // 并刷新“最近关闭的标签页 / InPrivate”任务。失败不影响启动。
+            try { _ = JumpListService.InitializeAsync(); }
+            catch (Exception ex) { Services.Diagnostics.Log($"[JumpList] 初始化失败: {ex.Message}"); }
 
             // 真·多视图前提：禁用系统视图激活策略。打包应用默认由系统接管视图激活，
             // 此时 TryShowAsStandaloneAsync 的展示请求不会真正上屏（实测：调用挂起、
@@ -162,9 +171,33 @@ namespace EdgeRebuild
                     // OnNavigatedTo 里走主窗口分支 → 恢复 slot=0 会话 →
                     // RestoreSecondaryWindowsAsync 按持久化槽位重建副窗口。
                     // 多窗口测试页 DemoPage 由菜单「打开多窗口测试页」经 WindowManager 进入。
-                    rootFrame.Navigate(typeof(MainPage), e.Arguments);
+                    // 跳转菜单参数：InPrivate 任务走特殊标记，最近关闭项按短 ID 取回 URL
+                    string launchArguments = e.Arguments ?? "";
+                    object navParameter = launchArguments;
+                    string? jumpTarget = ResolveJumpListTarget(launchArguments);
+                    if (jumpTarget != null)
+                    {
+                        navParameter = jumpTarget;
+                        MarkJumpListHandled(jumpTarget);
+                        Services.Diagnostics.Log($"[JumpList] 冷启动 target={jumpTarget}");
+                    }
+                    else if (launchArguments.StartsWith(JumpListService.ArgumentPrefix, StringComparison.Ordinal))
+                    {
+                        // 最近关闭项已失效：按普通启动走（恢复会话/主页）
+                        navParameter = "";
+                    }
+
+                    rootFrame.Navigate(typeof(MainPage), navParameter);
                     Services.Diagnostics.Log($"[启动计时] MainPage导航={startupSw.ElapsedMilliseconds}ms");
                     startupSw.Restart();
+                }
+                else
+                {
+                    // 应用已在运行：系统只会激活现有窗口，不会再次走 Navigate。
+                    // 这里把跳转菜单目标转发给当前活动窗口。
+                    string? runningTarget = ResolveJumpListTarget(e.Arguments);
+                    if (runningTarget != null && TryBeginJumpListHandling(runningTarget))
+                        await HandleJumpListActivationAsync(runningTarget);
                 }
                 // 主窗口（slot=0）不经 NativeWindowManager.RegisterWindow，
                 // 关闭时不会有任何 [NativeWM] 窗口关闭 日志——这里补一条，
@@ -173,6 +206,86 @@ namespace EdgeRebuild
                     Services.Diagnostics.Log("[App] 主窗口 Closed（slot=0 未注册，进程随后退出属正常）");
                 Window.Current.Activate();
                 Services.Diagnostics.Log($"[启动计时] 激活完成={startupSw.ElapsedMilliseconds}ms");
+            }
+        }
+
+        /// <summary>
+        /// 应用运行中收到跳转菜单激活：部分状态下 OnLaunched 不会再次触发，
+        /// 由 OnActivated 兜底。冷启动仍由 OnLaunched 的 Navigate 处理。
+        /// </summary>
+        protected override async void OnActivated(IActivatedEventArgs e)
+        {
+            base.OnActivated(e);
+
+            if (e.Kind != ActivationKind.Launch) return;
+            if (!(e is ILaunchActivatedEventArgs launch)) return;
+
+            string? target = ResolveJumpListTarget(launch.Arguments);
+            if (target == null) return;
+            if (!TryBeginJumpListHandling(target)) return;
+
+            await HandleJumpListActivationAsync(target);
+        }
+
+        /// <summary>解析跳转菜单参数；非跳转参数返回 null。</summary>
+        private static string? ResolveJumpListTarget(string? arguments)
+        {
+            if (string.IsNullOrEmpty(arguments) ||
+                !arguments!.StartsWith(JumpListService.ArgumentPrefix, StringComparison.Ordinal))
+                return null;
+
+            string rest = arguments.Substring(JumpListService.ArgumentPrefix.Length);
+            if (rest == "inprivate")
+                return "inprivate:";
+
+            if (rest.StartsWith("reopen|", StringComparison.Ordinal))
+            {
+                string? url = JumpListService.ResolveClosedTab(rest.Substring("reopen|".Length));
+                return string.IsNullOrEmpty(url) ? null : url;
+            }
+
+            // “新建窗口”任务：运行中开新窗口，冷启动按普通启动处理
+            return "";
+        }
+
+        private static bool TryBeginJumpListHandling(string target)
+        {
+            long now = Environment.TickCount64;
+            if (string.Equals(target, _lastJumpListTarget, StringComparison.Ordinal) &&
+                now - _lastJumpListTicks < 1500)
+            {
+                return false;
+            }
+
+            _lastJumpListTarget = target;
+            _lastJumpListTicks = now;
+            return true;
+        }
+
+        private static void MarkJumpListHandled(string target)
+        {
+            _lastJumpListTarget = target;
+            _lastJumpListTicks = Environment.TickCount64;
+        }
+
+        private static async Task HandleJumpListActivationAsync(string target)
+        {
+            try
+            {
+                var rootFrame = Window.Current?.Content as Frame;
+                if (rootFrame?.Content == null)
+                    return;   // 冷启动由 OnLaunched 处理
+
+                bool handled = await WindowManager.TryHandleJumpListActivationAsync(target);
+                if (!handled && rootFrame.Content is MainPage mainPage)
+                    await mainPage.HandleJumpListActivationAsync(target);
+
+                Window.Current?.Activate();
+                Services.Diagnostics.Log($"[JumpList] 运行中激活 target={target}");
+            }
+            catch (Exception ex)
+            {
+                Services.Diagnostics.Log($"[JumpList] 运行中激活失败: {ex}");
             }
         }
 

@@ -6,6 +6,7 @@ using Windows.System;
 using Windows.UI;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 
@@ -42,6 +43,19 @@ namespace EdgeRebuild.Metro
         {
             InitializeComponent();
             BuildZoomBar();
+
+            // 1809 上自定义 ToggleButton 模板的 CheckStates 可能不触发，
+            // 这里在模板展开和开/关变化后直接刷新轨道/滑块，保证两种形态一定可见。
+            foreach (var toggle in new[]
+            {
+                LocationToggle, InPrivateToggle, FlipAheadToggle,
+                AutoEncodingToggle, AlwaysShowChromeToggle, CircleButtonsToggle
+            })
+            {
+                toggle.Loaded += (s, e) => MetroSwitchVisuals.Apply(s as ToggleButton);
+                toggle.Checked += (s, e) => MetroSwitchVisuals.Apply(s as ToggleButton);
+                toggle.Unchecked += (s, e) => MetroSwitchVisuals.Apply(s as ToggleButton);
+            }
 
             // Button 的类处理会吞掉 PointerPressed，必须用 handledEventsToo 挂接，
             // 否则点击/拖动缩放条不生效（XAML 事件只收未处理事件）。

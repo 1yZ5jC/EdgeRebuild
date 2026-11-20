@@ -73,6 +73,12 @@ namespace EdgeRebuild.Core
         public event Action<TabViewItem>? TabHoverEnded;
         public event Action<IBrowserTab, string>? TabScrolled;   // 页面滚动回报（Metro 底栏自动隐藏）
 
+        /// <summary>关闭标签时记录（url, title, engine）；任务栏跳转菜单使用。</summary>
+        public static event Action<string, string, EngineType>? ClosedTabRecorded;
+
+        /// <summary>关闭标签列表被清空；跳转菜单同步移除最近关闭项。</summary>
+        public static event Action? ClosedTabsCleared;
+
         public IReadOnlyList<TabViewItem> Tabs => _tabs;
         // 无标签时运行时为 null；保留非可空签名以匹配既有调用约定（调用方先看 TabCount/判空）。
         public IBrowserTab CurrentTab => _currentTab!;
@@ -710,9 +716,14 @@ namespace EdgeRebuild.Core
                     : (viewItem.FallbackUrl ?? "");
                 if (!string.IsNullOrEmpty(url) && url != "about:blank")
                 {
-                    _closedTabs.Push((url, viewItem.Tab.Title ?? viewItem.FallbackTitle ?? url, viewItem.Tab.Engine));
+                    string title = viewItem.Tab.Title ?? viewItem.FallbackTitle ?? url;
+                    _closedTabs.Push((url, title, viewItem.Tab.Engine));
                     while (_closedTabs.Count > MaxClosedTabs)
                         _closedTabs.Pop();
+
+                    // InPrivate 窗口的关闭标签不进入系统跳转菜单
+                    if (!IsInPrivateWindow)
+                        ClosedTabRecorded?.Invoke(url, title, viewItem.Tab.Engine);
                 }
             }
 
@@ -756,7 +767,18 @@ namespace EdgeRebuild.Core
             return false;
         }
 
-        public void ClearClosedTabs() => _closedTabs.Clear();
+        public void ClearClosedTabs() => ClearClosedTabs(true);
+
+        /// <summary>
+        /// 清空本窗口的关闭标签列表。notifyJumpList=false 用于 InPrivate 退出等
+        /// 只影响本窗口、不应连带清空系统跳转菜单的场景。
+        /// </summary>
+        public void ClearClosedTabs(bool notifyJumpList)
+        {
+            _closedTabs.Clear();
+            if (notifyJumpList)
+                ClosedTabsCleared?.Invoke();
+        }
 
         /// <summary>
         /// 立即调度一次会话保存（懒恢复完成后统一调用，避免批量建标签期间写入半截快照）。

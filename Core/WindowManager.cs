@@ -75,6 +75,10 @@ namespace EdgeRebuild.Core
         public static Task<bool> OpenDemoWindowAsync()
             => NativeWindowManager.OpenDemoWindowAsync();
 
+        /// <summary>运行中跳转菜单激活：转发给当前活动窗口（主窗口返回 false）。</summary>
+        public static Task<bool> TryHandleJumpListActivationAsync(string target)
+            => NativeWindowManager.TryHandleJumpListActivationAsync(target);
+
         /// <summary>已注册的副窗口数（Demo 界面诊断用）。</summary>
         public static int WindowCount => NativeWindowManager.WindowCount;
 

@@ -27,6 +27,7 @@ namespace EdgeRebuild.Metro
         private EngineType _defaultEngine;
         private object? _appWindow;   // AppWindow（18362+）；object 避免 17763 类型解析失败
         private TabManager _tabManager = null!;
+        private int _sessionSlot;
         private bool _gridOpen;
         private bool _commandBarOpen;
         private bool _settingsOpen;
@@ -78,6 +79,11 @@ namespace EdgeRebuild.Metro
         public MetroPage()
         {
             InitializeComponent();
+
+            // AppWindow（同线程）没有 Activated 事件：焦点变化时上报槽位，
+            // 让跳转菜单等全局激活能路由到最近使用的 Metro 窗口。
+            this.GotFocus += (s, e) => WindowManager.ReportSlotFocus(_sessionSlot);
+
             _ = LoadChromeSettingAsync();
             // 兜底：若 Unloaded 事件仍会触发（部分销毁路径），幂等标志保证清理只跑一次；
             // 主路径是 WindowManager.Closed → Shutdown()（窗口销毁后 Unloaded 不可靠）
@@ -103,6 +109,30 @@ namespace EdgeRebuild.Metro
                         Rect = new Rect(0, 0, e2.NewSize.Width, e2.NewSize.Height)
                     };
             };
+        }
+
+        /// <summary>
+        /// 应用运行中从任务栏/开始菜单跳转列表激活：在 Metro 窗口内打开目标。
+        /// target 为空 = 新建 Metro 窗口；“inprivate:” = 新建 InPrivate 窗口；其余为 URL。
+        /// </summary>
+        public async Task HandleJumpListActivationAsync(string target)
+        {
+            if (string.IsNullOrEmpty(target))
+            {
+                if (!await WindowManager.OpenMetroWindowAsync(_defaultEngine, "about:blank"))
+                    NotificationService.ShowToast("无法新建窗口", "窗口创建失败");
+                return;
+            }
+
+            if (string.Equals(target, "inprivate:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!await WindowManager.OpenInPrivateWindowAsync(_defaultEngine, "about:blank"))
+                    NotificationService.ShowToast("无法打开 InPrivate 窗口", "窗口创建失败");
+                return;
+            }
+
+            if (_tabManager == null) return;
+            await _tabManager.CreateTabAsync(_defaultEngine, target);
         }
 
         // 标签条内容变化（标题/图标/URL/加载态）防抖刷新，避免高频事件刷屏重建
@@ -194,6 +224,7 @@ namespace EdgeRebuild.Metro
             var args = e.Parameter as NewWindowArgs;
             _defaultEngine = args?.Engine ?? EngineType.WebView2;
             _appWindow = args?.AppWindow;
+            _sessionSlot = args?.SessionSlot ?? 0;
             string url = args?.Url ?? "about:blank";
             _tabManager = new TabManager(() => MetroColorPalette.GetSkinColors());
             _tabManager.ParticipatesInSession = false;   // Metro 独立窗口不写共享会话，避免覆盖主窗口恢复快照

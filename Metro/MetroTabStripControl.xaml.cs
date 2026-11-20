@@ -29,6 +29,10 @@ namespace EdgeRebuild.Metro
         public MetroTabStripControl()
         {
             InitializeComponent();
+
+            // 圆圈颜色跟随按钮可用状态：禁用时灰圈，启用时白圈。
+            foreach (var button in new[] { NewTabBtn, MoreBtn })
+                button.IsEnabledChanged += (s, e) => ApplyCircleRing((Button)s);
         }
 
         /// <summary>设置页开关：关闭时去掉 +/… 按钮的外围圆圈。</summary>
@@ -41,12 +45,15 @@ namespace EdgeRebuild.Metro
 
         private bool _showCircleButtons = true;
 
+        private static readonly Color RingEnabledColor = Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF);
+        private static readonly Color RingDisabledColor = Color.FromArgb(0xFF, 0x55, 0x55, 0x55);
+
         private void ApplyCircleRing(Button button)
         {
             var thickness = _showCircleButtons ? new Thickness(3) : new Thickness(0);
-            var brush = new SolidColorBrush(_showCircleButtons
-                ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)
-                : Colors.Transparent);
+            var brush = new SolidColorBrush(!_showCircleButtons
+                ? Colors.Transparent
+                : (button.IsEnabled ? RingEnabledColor : RingDisabledColor));
             button.BorderThickness = thickness;
             button.BorderBrush = brush;
 

@@ -28,6 +28,12 @@ namespace EdgeRebuild.Metro
         public MetroAddressBarControl()
         {
             InitializeComponent();
+
+            // 圆圈颜色跟随按钮可用状态：禁用时灰圈，启用时白圈。
+            // 仅靠模板 Disabled 视觉状态会被 SetCircleButtonsVisible 的本地值覆盖。
+            foreach (var button in new[] { BackBtn, ForwardBtn, RefreshBtn, FavoriteBtn, MoreBtn, GoBtn })
+                button.IsEnabledChanged += (s, e) => ApplyCircleRing((Button)s);
+
             UpdateNavButtons(false, false);
             ConfigureSuggestionsFlyout();
             UpdateAddressChrome();
@@ -62,12 +68,15 @@ namespace EdgeRebuild.Metro
 
         private bool _showCircleButtons = true;
 
+        private static readonly Color RingEnabledColor = Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF);
+        private static readonly Color RingDisabledColor = Color.FromArgb(0xFF, 0x55, 0x55, 0x55);
+
         private void ApplyCircleRing(Button button)
         {
             var thickness = _showCircleButtons ? new Thickness(3) : new Thickness(0);
-            var brush = new SolidColorBrush(_showCircleButtons
-                ? Color.FromArgb(0xB3, 0xFF, 0xFF, 0xFF)
-                : Colors.Transparent);
+            var brush = new SolidColorBrush(!_showCircleButtons
+                ? Colors.Transparent
+                : (button.IsEnabled ? RingEnabledColor : RingDisabledColor));
             button.BorderThickness = thickness;
             button.BorderBrush = brush;
 

@@ -108,6 +108,30 @@ namespace EdgeRebuild
             this.Unloaded += OnUnloaded;
         }
 
+        /// <summary>
+        /// 应用运行中从任务栏/开始菜单跳转列表激活：在当前窗口打开目标。
+        /// target 为空 = 新建窗口；“inprivate:” = 新建 InPrivate 窗口；其余为 URL。
+        /// </summary>
+        public async Task HandleJumpListActivationAsync(string target)
+        {
+            if (string.IsNullOrEmpty(target))
+            {
+                if (!await WindowManager.OpenNewWindowAsync(_defaultEngine, "about:blank"))
+                    NotificationService.ShowToast("无法新建窗口", "窗口创建失败");
+                return;
+            }
+
+            if (string.Equals(target, "inprivate:", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!await WindowManager.OpenInPrivateWindowAsync(_defaultEngine, "about:blank"))
+                    NotificationService.ShowToast("无法打开 InPrivate 窗口", "窗口创建失败");
+                return;
+            }
+
+            if (_tabManager == null) return;
+            await _tabManager.CreateTabAsync(_defaultEngine, target);
+        }
+
         protected override void OnNavigatedFrom(NavigationEventArgs e)
         {
             base.OnNavigatedFrom(e);
@@ -4525,7 +4549,12 @@ namespace EdgeRebuild
             }
             else if (e.Parameter is string url)
             {
-                _pendingUrl = url;
+                // 跳转菜单“新建 InPrivate 窗口”：主窗口以 InPrivate 状态启动，
+                // 不恢复会话；普通字符串仍按待打开 URL 处理。
+                if (string.Equals(url, "inprivate:", StringComparison.OrdinalIgnoreCase))
+                    _isInPrivate = true;
+                else
+                    _pendingUrl = url;
             }
         }
 
@@ -4554,7 +4583,7 @@ namespace EdgeRebuild
             else
             {
                 Services.Diagnostics.Log("[InPrivate] 已退出 InPrivate 模式，清除会话标签");
-                _tabManager.ClearClosedTabs();
+                _tabManager.ClearClosedTabs(notifyJumpList: false);
                 _ = ClearInPrivateTabsAsync();
             }
         }

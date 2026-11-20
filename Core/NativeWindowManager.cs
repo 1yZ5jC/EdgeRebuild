@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Windows.UI.Core;
 
 namespace EdgeRebuild.Core
 {
@@ -81,6 +82,60 @@ namespace EdgeRebuild.Core
         /// <summary>多窗口 Demo：开一个新的 DemoPage 独立窗口（不写会话）。</summary>
         public static async Task<bool> OpenDemoWindowAsync()
             => await OpenCoreAsync(EngineType.EdgeHtml, "", typeof(DemoPage), false, false);
+
+        /// <summary>
+        /// 应用运行中收到任务栏跳转菜单激活：把目标转发给当前活动窗口的页面，
+        /// 并把窗口带到前台。主窗口未注册（slot=0）时返回 false，由 App 处理根 Frame。
+        /// </summary>
+        public static async Task<bool> TryHandleJumpListActivationAsync(string target)
+        {
+            NativeWindow? active = null;
+            lock (_entries)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (entry.Slot == ActiveSlot)
+                    {
+                        active = entry.Window;
+                        break;
+                    }
+                }
+            }
+            if (active == null || active.IsClosed) return false;
+
+            var window = active;
+            bool handled = false;
+
+            void Dispatch()
+            {
+                var content = window.Frame?.Content;
+                if (content is MetroPage metro)
+                {
+                    handled = true;
+                    _ = metro.HandleJumpListActivationAsync(target);
+                }
+                else if (content is MainPage main)
+                {
+                    handled = true;
+                    _ = main.HandleJumpListActivationAsync(target);
+                }
+            }
+
+            if (window.Mode == NativeWindow.WindowMode.NativeView && window.CoreView != null)
+            {
+                await window.CoreView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, Dispatch);
+            }
+            else
+            {
+                Dispatch();
+            }
+
+            if (!handled) return false;
+
+            try { await window.ShowAsync(); }
+            catch (Exception ex) { Diagnostics.Log($"[NativeWM] 跳转菜单激活窗口失败: {ex.Message}"); }
+            return true;
+        }
 
         // ================================================================
         //  核心开窗流程
