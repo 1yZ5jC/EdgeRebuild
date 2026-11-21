@@ -128,7 +128,11 @@ namespace EdgeRebuild
                 return;
             }
 
-            if (_tabManager == null) return;
+            if (_tabManager == null)
+            {
+                _pendingUrl = target;   // 页面尚未完成加载：退化为启动后打开
+                return;
+            }
             await _tabManager.CreateTabAsync(_defaultEngine, target);
         }
 

@@ -131,7 +131,8 @@
                          Padding="32,8,32,0" VerticalAlignment="Stretch" FontSize="13"
                          AutomationProperties.Name="地址栏">
                     <FlyoutBase.AttachedFlyout>
-                        <Flyout x:Name="SuggestionsFlyout" Placement="Bottom">
+                        <Flyout x:Name="SuggestionsFlyout" Placement="Bottom"
+                                ShowMode="Transient" AllowFocusOnInteraction="False">
                             <Border x:Name="SuggestionBorder" Background="Transparent" BorderThickness="0" MinWidth="200" MaxHeight="200">
                                 <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical" />
                             </Border>

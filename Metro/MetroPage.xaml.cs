@@ -240,11 +240,14 @@ namespace EdgeRebuild.Metro
                     _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
             };
             _tabManager.TabChanged += viewItem => OnTabChanged(viewItem);
+            _tabManager.TabCanGoBackChanged += OnTabCanGoBackChanged;
+            _tabManager.TabCanGoForwardChanged += OnTabCanGoForwardChanged;
             _tabManager.TabUrlChanged += (tab, tabUrl) =>
             {
                 if (tab == _tabManager.CurrentTab)
                 {
                     AddressBar.SetUrl(tabUrl);
+                    AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
                     UpdateFavoriteState();
                 }
             };
@@ -293,6 +296,19 @@ namespace EdgeRebuild.Metro
             TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             RefreshGridIfOpen();
             FadeContentIn();
+        }
+
+        // 前进/后退可用状态跟随实际历史记录变化（导航完成、后退/前进、脚本改历史都会触发）
+        private void OnTabCanGoBackChanged(IBrowserTab tab, bool canGoBack)
+        {
+            if (tab == _tabManager?.CurrentTab)
+                AddressBar.UpdateNavButtons(canGoBack, tab.CanGoForward);
+        }
+
+        private void OnTabCanGoForwardChanged(IBrowserTab tab, bool canGoForward)
+        {
+            if (tab == _tabManager?.CurrentTab)
+                AddressBar.UpdateNavButtons(tab.CanGoBack, canGoForward);
         }
 
         // ---- 全屏（18362+ AppWindowPresenter；17763 回退 ApplicationView 全屏） ----

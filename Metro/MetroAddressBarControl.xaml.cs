@@ -339,7 +339,7 @@ namespace EdgeRebuild.Metro
             style.Setters.Add(new Setter(FlyoutPresenter.BackgroundProperty,
                 new SolidColorBrush(Color.FromArgb(0xFF, 0x1F, 0x1F, 0x1F))));
             style.Setters.Add(new Setter(FlyoutPresenter.BorderBrushProperty,
-                new SolidColorBrush(Color.FromArgb(0xFF, 0x33, 0x33, 0x33))));
+                new SolidColorBrush(Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3A))));
             style.Setters.Add(new Setter(FlyoutPresenter.BorderThicknessProperty, new Thickness(1)));
             SuggestionsFlyout.FlyoutPresenterStyle = style;
         }
@@ -352,7 +352,7 @@ namespace EdgeRebuild.Metro
             SuggestionsPanel.Children.Clear();
             if (_suggestions.Count == 0) return;
 
-            SuggestionBorder.Width = Math.Max(UrlBox.ActualWidth, 300);
+            SuggestionBorder.Width = Math.Max(UrlBox.ActualWidth, 360);
             for (int i = 0; i < _suggestions.Count; i++)
             {
                 if (i > 0)
@@ -360,8 +360,8 @@ namespace EdgeRebuild.Metro
                     SuggestionsPanel.Children.Add(new Border
                     {
                         Height = 1,
-                        Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x33, 0x33, 0x33)),
-                        Margin = new Thickness(8, 0, 8, 0)
+                        Background = new SolidColorBrush(Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3A)),
+                        Margin = new Thickness(12, 0, 12, 0)
                     });
                 }
                 SuggestionsPanel.Children.Add(CreateSuggestionItem(_suggestions[i]));
@@ -373,8 +373,8 @@ namespace EdgeRebuild.Metro
             var border = new Border
             {
                 Background = new SolidColorBrush(Colors.Transparent),
-                Height = 46,
-                Padding = new Thickness(12, 0, 12, 0)
+                Height = 54,
+                Padding = new Thickness(16, 0, 16, 0)
             };
 
             var grid = new Grid();
@@ -385,10 +385,10 @@ namespace EdgeRebuild.Metro
             {
                 Glyph = item.IsPopular ? "\uE721" : item.IsFavorite ? "\uE734" : "\uE81C",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
-                FontSize = 14,
+                FontSize = 16,
                 Foreground = new SolidColorBrush(item.IsFavorite ? MetroColorPalette.MetroBlue : MetroColorPalette.MutedColor),
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 10, 0)
+                Margin = new Thickness(0, 0, 12, 0)
             };
             Grid.SetColumn(icon, 0);
 
@@ -397,7 +397,7 @@ namespace EdgeRebuild.Metro
             {
                 Text = item.DisplayTitle,
                 FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 13,
+                FontSize = 15,
                 Foreground = new SolidColorBrush(Colors.White),
                 TextTrimming = TextTrimming.CharacterEllipsis
             });
@@ -405,10 +405,10 @@ namespace EdgeRebuild.Metro
             {
                 Text = item.Url,
                 FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 11,
+                FontSize = 12,
                 Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                Margin = new Thickness(0, 2, 0, 0)
+                Margin = new Thickness(0, 3, 0, 0)
             });
             Grid.SetColumn(text, 1);
 
@@ -510,7 +510,7 @@ namespace EdgeRebuild.Metro
         private void ShowSuggestions()
         {
             if (_suggestions.Count == 0) return;
-            SuggestionBorder.Width = Math.Max(UrlBox.ActualWidth, 300);
+            SuggestionBorder.Width = Math.Max(UrlBox.ActualWidth, 360);
             if (!SuggestionsFlyout.IsOpen)
                 SuggestionsFlyout.ShowAt(UrlBox);
         }

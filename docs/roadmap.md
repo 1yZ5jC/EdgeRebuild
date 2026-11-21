@@ -159,6 +159,17 @@
       从 598 清到 0（Debug|x86 构建 0 警告 0 错误），数据层单测 50 项通过。真实 Windows 10 1809
       回归按 `docs/win10-1809-regression-checklist.md` 执行，结果回填后再勾选本项。
 
+### R6 Metro IE 打磨（2026-11-21）
+- [x] R6-1 导航/建议交互修正（2026-11-21）：Metro 前进/后退订阅标签历史状态事件，
+      并在当前标签 URL 变化时同步，不再只在切换标签时刷新；Metro 与主窗口地址栏建议
+      Flyout 均启用 `ShowMode="Transient"` + `AllowFocusOnInteraction="False"`，边输入边弹
+      建议不再抢焦点；Metro 建议面板放大（最小宽 360、最大高 400、行高 54、标题 15px）。
+      临时输出 `Debug|x86` 构建通过，单测 50/50；用户实测焦点问题基本解决。
+- [ ] R6-2 可选底部全宽三列建议面板（C3 MVP）：新增设置项，默认保持紧凑 Flyout，
+      可切换“底部全宽三列”；三列先用本地数据——常用（收藏/主页）、搜索（各引擎查询
+      链接）、网页（历史+收藏匹配并去重）；仍由 Flyout 承载以规避 EdgeHTML airspace；
+      首批鼠标/触控 + Esc/Enter，键盘跨列导航后续补；不接在线搜索联想。
+
 ## P0 — 高价值低成本
 - [x] P0-4 多主窗口会话覆盖隐患：`SessionTabs` 单快照表，两个主窗口互踩（D1 同款）。方案：副窗口 `ParticipatesInSession=false`
 - [x] P0-1 阅读列表（旧版 Edge Reading List）：Hub 第四区 + `ReadingListManager`（复刻 FavoritesManager 模式）+ Metro「更多→稍后读」

@@ -107,10 +107,11 @@
                      AutomationProperties.Name="地址栏">
                 <FlyoutBase.AttachedFlyout>
                     <Flyout x:Name="SuggestionsFlyout" Placement="Top"
+                            ShowMode="Transient" AllowFocusOnInteraction="False"
                             Closed="SuggestionsFlyout_Closed">
                         <Border x:Name="SuggestionBorder" Background="#FF1F1F1F"
-                                BorderBrush="#FF333333" BorderThickness="1"
-                                MinWidth="300" MaxHeight="280">
+                                BorderBrush="#FF3A3A3A" BorderThickness="1"
+                                MinWidth="360" MaxHeight="400">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
                                 <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical"/>

@@ -97,6 +97,7 @@ namespace EdgeRebuild
 
             if (e.PrelaunchActivated == false)
             {
+                bool suppressMainActivation = false;
                 if (rootFrame.Content == null)
                 {
                     try
@@ -197,14 +198,15 @@ namespace EdgeRebuild
                     // 这里把跳转菜单目标转发给当前活动窗口。
                     string? runningTarget = ResolveJumpListTarget(e.Arguments);
                     if (runningTarget != null && TryBeginJumpListHandling(runningTarget))
-                        await HandleJumpListActivationAsync(runningTarget);
+                        suppressMainActivation = await HandleJumpListActivationAsync(runningTarget);
                 }
                 // 主窗口（slot=0）不经 NativeWindowManager.RegisterWindow，
                 // 关闭时不会有任何 [NativeWM] 窗口关闭 日志——这里补一条，
                 // 用来区分"主窗口被关掉（进程正常退出）"和"进程崩溃"
                 Window.Current.Closed += (s, a) =>
                     Services.Diagnostics.Log("[App] 主窗口 Closed（slot=0 未注册，进程随后退出属正常）");
-                Window.Current.Activate();
+                if (!suppressMainActivation)
+                    Window.Current.Activate();
                 Services.Diagnostics.Log($"[启动计时] 激活完成={startupSw.ElapsedMilliseconds}ms");
             }
         }
@@ -268,25 +270,37 @@ namespace EdgeRebuild
             _lastJumpListTicks = Environment.TickCount64;
         }
 
-        private static async Task HandleJumpListActivationAsync(string target)
+        private static async Task<bool> HandleJumpListActivationAsync(string target)
         {
             try
             {
                 var rootFrame = Window.Current?.Content as Frame;
                 if (rootFrame?.Content == null)
-                    return;   // 冷启动由 OnLaunched 处理
+                    return false;   // 冷启动由 OnLaunched 处理
 
-                bool handled = await WindowManager.TryHandleJumpListActivationAsync(target);
-                if (!handled && rootFrame.Content is MainPage mainPage)
+                bool handledBySecondary = await WindowManager.TryHandleJumpListActivationAsync(target);
+                if (handledBySecondary)
+                    return true;   // 副窗口已由 WindowManager 带到前台
+
+                if (rootFrame.Content is MainPage mainPage)
+                {
                     await mainPage.HandleJumpListActivationAsync(target);
 
-                Window.Current?.Activate();
+                    bool opensNewWindow = string.IsNullOrEmpty(target) ||
+                        string.Equals(target, "inprivate:", StringComparison.OrdinalIgnoreCase);
+                    if (opensNewWindow)
+                        return true;   // 新窗口自己上屏，不要把主窗口拉到前面
+
+                    Window.Current?.Activate();   // URL 在主窗口新标签打开
+                }
+
                 Services.Diagnostics.Log($"[JumpList] 运行中激活 target={target}");
             }
             catch (Exception ex)
             {
                 Services.Diagnostics.Log($"[JumpList] 运行中激活失败: {ex}");
             }
+            return false;
         }
 
         void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
