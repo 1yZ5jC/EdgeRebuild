@@ -77,6 +77,44 @@ namespace EdgeRebuild.Services
             }
         }
 
+        /// <summary>
+        /// 轻量检测当前页是否像文章页（不加载 Readability、不切换视图）。
+        /// 只做 DOM 结构 + 段落文本量判断；误判时进入阅读模式会给出提示。
+        /// </summary>
+        public static async Task<bool> IsArticleLikelyAsync(IBrowserTab tab)
+        {
+            const string detectScript = @"
+;(function(){
+    try {
+        if (!document.body) return 'false';
+        var ct = document.contentType || '';
+        if (ct && ct.indexOf('html') < 0) return 'false';
+        if (/\.(pdf|epub)([?#]|$)/i.test(location.href)) return 'false';
+        var nodes = document.querySelectorAll('article, main, [role=article], [itemprop=articleBody], .article, .post, .entry-content, .post-content');
+        var ps = document.querySelectorAll('p');
+        var textLen = 0;
+        for (var i = 0; i < ps.length && i < 120; i++) {
+            var t = ps[i].textContent || '';
+            textLen += t.replace(/\s+/g, ' ').length;
+        }
+        if (nodes.length > 0 && textLen >= 300) return 'true';
+        return textLen >= 1200 ? 'true' : 'false';
+    } catch (e) { return 'false'; }
+})()";
+
+            try
+            {
+                string result = await tab.ExecuteScriptAsync(detectScript);
+                return !string.IsNullOrEmpty(result)
+                    && result.IndexOf("true", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch (Exception ex)
+            {
+                Diagnostics.Log($"[阅读模式] 可用性检测异常: {ex.Message}");
+                return false;
+            }
+        }
+
         private static async Task<ArticleResult?> ExtractAsync(IBrowserTab tab, string readabilityJs)
         {
             const string extractScript = @"

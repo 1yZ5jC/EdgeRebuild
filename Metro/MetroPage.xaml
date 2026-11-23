@@ -45,6 +45,7 @@
                 RefreshRequested="AddressBar_RefreshRequested"
                 FavoriteRequested="AddressBar_FavoriteRequested"
                 MoreRequested="AddressBar_MoreRequested"
+                ReaderRequested="AddressBar_ReaderRequested"
                 UrlSubmitted="AddressBar_UrlSubmitted"
                 ContentAreaFocusRequested="AddressBar_ContentAreaFocusRequested"/>
         </Grid>
@@ -73,7 +74,8 @@
             ClearHistoryRequested="SettingsPanel_ClearHistoryRequested"
             InPrivateToggled="SettingsPanel_InPrivateToggled"
             AlwaysShowChromeChanged="SettingsPanel_AlwaysShowChromeChanged"
-            CircleButtonsChanged="SettingsPanel_CircleButtonsChanged"/>
+            CircleButtonsChanged="SettingsPanel_CircleButtonsChanged"
+            CompactSuggestionsChanged="SettingsPanel_CompactSuggestionsChanged"/>
 
         <!-- 收藏夹面板覆盖层（黑色 IE 面板；星标打开，点击遮罩/Esc 关闭） -->
         <metro:MetroFavoritesPanelControl x:Name="FavoritesPanel" Grid.RowSpan="2"

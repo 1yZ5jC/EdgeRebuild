@@ -20,6 +20,7 @@ namespace EdgeRebuild.Metro
         public event Action? BackRequested;
         public event Action? ForwardRequested;
         public event Action? RefreshRequested;
+        public event Action? ReaderRequested;
         public event Action? FavoriteRequested;
         public event Action? MoreRequested;
         public event Action<string>? UrlSubmitted;
@@ -29,9 +30,12 @@ namespace EdgeRebuild.Metro
         {
             InitializeComponent();
 
+            // 三列建议面板的列顺序：常用 / 搜索 / 网页（键盘 ←→ 按此顺序移动）
+            _wideColumns = new[] { _widePopular, _wideSearches, _widePages };
+
             // 圆圈颜色跟随按钮可用状态：禁用时灰圈，启用时白圈。
             // 仅靠模板 Disabled 视觉状态会被 SetCircleButtonsVisible 的本地值覆盖。
-            foreach (var button in new[] { BackBtn, ForwardBtn, RefreshBtn, FavoriteBtn, MoreBtn, GoBtn })
+            foreach (var button in new[] { BackBtn, ForwardBtn, RefreshBtn, ReaderBtn, FavoriteBtn, MoreBtn, GoBtn })
                 button.IsEnabledChanged += (s, e) => ApplyCircleRing((Button)s);
 
             UpdateNavButtons(false, false);
@@ -44,7 +48,32 @@ namespace EdgeRebuild.Metro
         private string _currentHost = "";
         private bool _currentSecure;
         private bool _currentLocal = true;
+        private bool _compactSuggestions;   // 调试开关；默认 false = 三列建议面板
         private readonly List<SuggestionItem> _suggestions = new List<SuggestionItem>();
+        private readonly List<SuggestionItem> _widePopular = new List<SuggestionItem>();
+        private readonly List<SuggestionItem> _wideSearches = new List<SuggestionItem>();
+        private readonly List<SuggestionItem> _widePages = new List<SuggestionItem>();
+        private readonly List<SuggestionItem>[] _wideColumns;
+        private readonly Dictionary<SuggestionItem, Border> _wideBorders = new Dictionary<SuggestionItem, Border>();
+        private Border? _selectedWideBorder;
+        private int _wideColumn = -1;
+        private int _wideRow = -1;
+
+        // 顺序即“常用”列里引擎主页的先后；当前搜索引擎会被提到最前。
+        private static readonly (string Name, string Home)[] SearchEngines =
+        {
+            ("Google", "https://www.google.com"),
+            ("Bing", "https://www.bing.com"),
+            ("DuckDuckGo", "https://duckduckgo.com")
+        };
+
+        /// <summary>调试开关：true = 旧版单列 Flyout；false（默认）= 底部全宽三列建议面板。</summary>
+        public void SetCompactSuggestionsEnabled(bool enabled)
+        {
+            if (_compactSuggestions == enabled) return;
+            _compactSuggestions = enabled;
+            if (SuggestionsFlyout.IsOpen) CloseSuggestions();
+        }
 
         public void UpdateNavButtons(bool canGoBack, bool canGoForward)
         {
@@ -61,6 +90,7 @@ namespace EdgeRebuild.Metro
             ApplyCircleRing(BackBtn);
             ApplyCircleRing(ForwardBtn);
             ApplyCircleRing(RefreshBtn);
+            ApplyCircleRing(ReaderBtn);
             ApplyCircleRing(FavoriteBtn);
             ApplyCircleRing(MoreBtn);
             ApplyCircleRing(GoBtn);
@@ -144,6 +174,17 @@ namespace EdgeRebuild.Metro
             ToolTipService.SetToolTip(FavoriteBtn, isFavorite ? "收藏夹（已收藏）" : "收藏夹");
         }
 
+        /// <summary>阅读按钮：文章页可用或正在阅读时显示；阅读中图标高亮。</summary>
+        public void SetReaderState(bool available, bool active)
+        {
+            bool show = available || active;
+            ReaderBtn.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            ReaderGlyph.Foreground = new SolidColorBrush(active ? MetroColorPalette.MetroBlue : Colors.White);
+            string tip = active ? "退出阅读模式" : "阅读模式";
+            ToolTipService.SetToolTip(ReaderBtn, tip);
+            AutomationProperties.SetName(ReaderBtn, tip);
+        }
+
         public void FocusUrl()
         {
             UrlBox.Focus(FocusState.Programmatic);
@@ -154,6 +195,7 @@ namespace EdgeRebuild.Metro
         private void BackBtn_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke();
         private void ForwardBtn_Click(object sender, RoutedEventArgs e) => ForwardRequested?.Invoke();
         private void RefreshBtn_Click(object sender, RoutedEventArgs e) => RefreshRequested?.Invoke();
+        private void ReaderBtn_Click(object sender, RoutedEventArgs e) => ReaderRequested?.Invoke();
         private void FavoriteBtn_Click(object sender, RoutedEventArgs e) => FavoriteRequested?.Invoke();
         private void MoreBtn_Click(object sender, RoutedEventArgs e) => MoreRequested?.Invoke();
         private void GoBtn_Click(object sender, RoutedEventArgs e) => SubmitUrl();
@@ -215,8 +257,13 @@ namespace EdgeRebuild.Metro
             }
 
             UpdateSuggestions();
-            if (_suggestions.Count > 0) ShowSuggestions();
+            if (HasAnySuggestions()) ShowSuggestions();
             else CloseSuggestions();
+        }
+
+        private bool HasAnySuggestions()
+        {
+            return _compactSuggestions ? _suggestions.Count > 0 : HasAnyWideItems();
         }
 
         private void UpdateAddressChrome()
@@ -243,7 +290,12 @@ namespace EdgeRebuild.Metro
         {
             if (e.Key == VirtualKey.Enter)
             {
-                if (SuggestionsFlyout.IsOpen && _suggestions.Count > 0)
+                // 三列模式有选中项时打开选中项；没有选中项时按输入内容解析，
+                // 避免把 github.com 这类网址当成搜索词。
+                string? selectedUrl = GetSelectedWideUrl();
+                if (selectedUrl != null)
+                    SubmitUrl(selectedUrl);
+                else if (_compactSuggestions && SuggestionsFlyout.IsOpen && _suggestions.Count > 0)
                     SubmitUrl(_suggestions[0].Url);
                 else
                     SubmitUrl();
@@ -251,17 +303,56 @@ namespace EdgeRebuild.Metro
             }
             else if (e.Key == VirtualKey.Down)
             {
-                UpdateSuggestions();
-                if (_suggestions.Count > 0) ShowSuggestions();
-                else CloseSuggestions();
+                if (_compactSuggestions)
+                {
+                    UpdateSuggestions();
+                    if (_suggestions.Count > 0) ShowSuggestions();
+                    else CloseSuggestions();
+                }
+                else
+                {
+                    HandleWideDownKey();
+                }
                 e.Handled = true;
             }
             else if (e.Key == VirtualKey.Tab)
             {
-                UpdateSuggestions();
-                if (_suggestions.Count > 0) ShowSuggestions();
-                else CloseSuggestions();
+                if (_compactSuggestions)
+                {
+                    UpdateSuggestions();
+                    if (_suggestions.Count > 0) ShowSuggestions();
+                    else CloseSuggestions();
+                }
+                else
+                {
+                    HandleWideDownKey();
+                }
                 e.Handled = true;
+            }
+            else if (!_compactSuggestions && e.Key == VirtualKey.Up)
+            {
+                if (HasWideSelection)
+                {
+                    MoveWideSelection(0, -1);
+                    e.Handled = true;
+                }
+            }
+            else if (!_compactSuggestions && e.Key == VirtualKey.Left)
+            {
+                // 只在已用 ↑↓ 选中建议时拦截；平时保留地址框内的光标移动。
+                if (HasWideSelection)
+                {
+                    MoveWideSelection(-1, 0);
+                    e.Handled = true;
+                }
+            }
+            else if (!_compactSuggestions && e.Key == VirtualKey.Right)
+            {
+                if (HasWideSelection)
+                {
+                    MoveWideSelection(1, 0);
+                    e.Handled = true;
+                }
             }
             else if (e.Key == VirtualKey.Escape)
             {
@@ -341,12 +432,23 @@ namespace EdgeRebuild.Metro
             style.Setters.Add(new Setter(FlyoutPresenter.BorderBrushProperty,
                 new SolidColorBrush(Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3A))));
             style.Setters.Add(new Setter(FlyoutPresenter.BorderThicknessProperty, new Thickness(1)));
+            // FlyoutPresenter 的主题样式可能带 MaxWidth/MaxHeight 限制；三列模式需要横跨窗口，
+            // 这里显式放开，尺寸由内容/地址栏宽度控制。
+            style.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 10000d));
+            style.Setters.Add(new Setter(FrameworkElement.MaxHeightProperty, 10000d));
             SuggestionsFlyout.FlyoutPresenterStyle = style;
         }
 
         private void UpdateSuggestions()
         {
             _suggestions.Clear();
+
+            if (!_compactSuggestions)
+            {
+                UpdateWideSuggestions();
+                return;
+            }
+
             _suggestions.AddRange(GetSuggestions(UrlBox.Text ?? ""));
 
             SuggestionsPanel.Children.Clear();
@@ -383,10 +485,13 @@ namespace EdgeRebuild.Metro
 
             var icon = new FontIcon
             {
-                Glyph = item.IsPopular ? "\uE721" : item.IsFavorite ? "\uE734" : "\uE81C",
+                Glyph = item.IsSearch ? "\uE721"
+                    : item.IsPopular ? "\uE721"
+                    : item.IsFavorite ? "\uE734" : "\uE81C",
                 FontFamily = new FontFamily("Segoe MDL2 Assets"),
                 FontSize = 16,
-                Foreground = new SolidColorBrush(item.IsFavorite ? MetroColorPalette.MetroBlue : MetroColorPalette.MutedColor),
+                Foreground = new SolidColorBrush(
+                    item.IsFavorite || item.IsSearch ? MetroColorPalette.MetroBlue : MetroColorPalette.MutedColor),
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 12, 0)
             };
@@ -401,15 +506,18 @@ namespace EdgeRebuild.Metro
                 Foreground = new SolidColorBrush(Colors.White),
                 TextTrimming = TextTrimming.CharacterEllipsis
             });
-            text.Children.Add(new TextBlock
+            if (item.ShowSubtitle)
             {
-                Text = item.Url,
-                FontFamily = new FontFamily("Segoe UI"),
-                FontSize = 12,
-                Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Margin = new Thickness(0, 3, 0, 0)
-            });
+                text.Children.Add(new TextBlock
+                {
+                    Text = item.Url,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Margin = new Thickness(0, 3, 0, 0)
+                });
+            }
             Grid.SetColumn(text, 1);
 
             grid.Children.Add(icon);
@@ -424,7 +532,9 @@ namespace EdgeRebuild.Metro
             border.PointerEntered += (s, e) =>
                 border.Background = new SolidColorBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
             border.PointerExited += (s, e) =>
-                border.Background = new SolidColorBrush(Colors.Transparent);
+                border.Background = ReferenceEquals(border, _selectedWideBorder)
+                    ? new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x78, 0xD7))
+                    : new SolidColorBrush(Colors.Transparent);
             AutomationProperties.SetName(border, "打开建议 " + item.DisplayTitle);
 
             return border;
@@ -507,12 +617,359 @@ namespace EdgeRebuild.Metro
             return results.Take(8).ToList();
         }
 
+        // ---- 底部全宽三列建议（可选模式；只使用本地收藏/历史，不接在线联想） ----
+        private void UpdateWideSuggestions()
+        {
+            string q = (UrlBox.Text ?? "").Trim();
+            ClearWideSelection();
+            _wideBorders.Clear();
+            _widePopular.Clear();
+            _wideSearches.Clear();
+            _widePages.Clear();
+
+            var favorites = GetFavoriteMatches(q);
+            var history = GetHistoryMatches(q);
+            var engines = GetOrderedEngines(GetSearchEngineName());
+
+            if (q.Length == 0)
+            {
+                // 常用：收藏；还没有收藏时显示空状态。
+                foreach (var favorite in favorites.Take(6))
+                    _widePopular.Add(CreateFavoriteSuggestion(favorite));
+
+                // 搜索：三家引擎主页，当前引擎排最前。
+                foreach (var engine in engines)
+                {
+                    _wideSearches.Add(new SuggestionItem
+                    {
+                        DisplayTitle = engine.Name + " 主页",
+                        Url = engine.Home,
+                        IsPopular = true
+                    });
+                }
+            }
+            else
+            {
+                foreach (var favorite in favorites.Take(6))
+                    _widePopular.Add(CreateFavoriteSuggestion(favorite));
+
+                foreach (var engine in engines)
+                {
+                    _wideSearches.Add(new SuggestionItem
+                    {
+                        DisplayTitle = string.Format("用 {0} 搜索“{1}”", engine.Name, q),
+                        Url = BuildSearchUrl(engine.Name, q),
+                        IsSearch = true,
+                        ShowSubtitle = false
+                    });
+                }
+            }
+
+            // 网页：历史匹配 + 剩余收藏匹配；按 URL 去重，并排除“常用”列已出现的项。
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in _widePopular)
+                seen.Add(UrlKey(item.Url));
+
+            if (q.Length > 0)
+            {
+                foreach (var favorite in favorites.Skip(6))
+                {
+                    if (_widePages.Count >= 12) break;
+                    AddWidePage(CreateFavoriteSuggestion(favorite), seen);
+                }
+            }
+
+            foreach (var entry in history)
+            {
+                if (_widePages.Count >= 12) break;
+                AddWidePage(new SuggestionItem
+                {
+                    DisplayTitle = string.IsNullOrWhiteSpace(entry.Title) ? entry.Url : entry.Title,
+                    Url = entry.Url,
+                    IsFavorite = false
+                }, seen);
+            }
+
+            _suggestions.AddRange(_widePopular);
+            _suggestions.AddRange(_wideSearches);
+            _suggestions.AddRange(_widePages);
+
+            PopulateWideColumn(WidePopularPanel, _widePopular,
+                q.Length == 0 ? "还没有收藏" : "没有匹配的收藏");
+            PopulateWideColumn(WideSearchPanel, _wideSearches, "没有可用的搜索引擎");
+            PopulateWideColumn(WidePagePanel, _widePages,
+                q.Length == 0 ? "暂无浏览记录" : "没有匹配的网页");
+        }
+
+        private void PopulateWideColumn(StackPanel panel, List<SuggestionItem> items, string emptyText)
+        {
+            panel.Children.Clear();
+            if (items.Count == 0)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = emptyText,
+                    FontFamily = new FontFamily("Segoe UI"),
+                    FontSize = 13,
+                    Foreground = new SolidColorBrush(MetroColorPalette.MutedColor),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(20, 6, 20, 0)
+                });
+                return;
+            }
+
+            foreach (var item in items)
+            {
+                var border = CreateSuggestionItem(item);
+                _wideBorders[item] = border;
+                panel.Children.Add(border);
+            }
+        }
+
+        private void AddWidePage(SuggestionItem item, HashSet<string> seen)
+        {
+            string key = UrlKey(item.Url);
+            if (key.Length == 0 || !seen.Add(key)) return;
+            _widePages.Add(item);
+        }
+
+        // ---- 三列面板键盘选择：↑↓ 列内循环，←→ 切换非空列，Enter 打开 ----
+        private bool HasWideSelection =>
+            _wideColumn >= 0 && _wideColumn < _wideColumns.Length &&
+            _wideRow >= 0 && _wideRow < _wideColumns[_wideColumn].Count;
+
+        private string? GetSelectedWideUrl()
+        {
+            if (_compactSuggestions || !HasWideSelection) return null;
+            return _wideColumns[_wideColumn][_wideRow].Url;
+        }
+
+        private void HandleWideDownKey()
+        {
+            if (!SuggestionsFlyout.IsOpen)
+            {
+                UpdateSuggestions();
+                if (HasAnyWideItems())
+                {
+                    ShowSuggestions();
+                    SelectFirstWideItem();
+                }
+                else
+                {
+                    CloseSuggestions();
+                }
+                return;
+            }
+
+            if (HasWideSelection)
+                MoveWideSelection(0, 1);
+            else
+                SelectFirstWideItem();
+        }
+
+        private bool HasAnyWideItems()
+        {
+            for (int c = 0; c < _wideColumns.Length; c++)
+                if (_wideColumns[c].Count > 0) return true;
+            return false;
+        }
+
+        private void SelectFirstWideItem()
+        {
+            for (int c = 0; c < _wideColumns.Length; c++)
+            {
+                if (_wideColumns[c].Count == 0) continue;
+                _wideColumn = c;
+                _wideRow = 0;
+                ApplyWideSelection();
+                return;
+            }
+            ClearWideSelection();
+        }
+
+        private void MoveWideSelection(int columnDelta, int rowDelta)
+        {
+            if (!HasWideSelection) return;
+
+            if (columnDelta != 0)
+            {
+                int c = _wideColumn + columnDelta;
+                while (c >= 0 && c < _wideColumns.Length)
+                {
+                    if (_wideColumns[c].Count > 0)
+                    {
+                        _wideColumn = c;
+                        _wideRow = Math.Min(_wideRow, _wideColumns[c].Count - 1);
+                        ApplyWideSelection();
+                        return;
+                    }
+                    c += columnDelta;
+                }
+                return;
+            }
+
+            if (rowDelta != 0)
+            {
+                int count = _wideColumns[_wideColumn].Count;
+                if (count == 0) return;
+                int r = _wideRow + rowDelta;
+                if (r < 0) r = count - 1;
+                else if (r >= count) r = 0;
+                _wideRow = r;
+                ApplyWideSelection();
+            }
+        }
+
+        private void ApplyWideSelection()
+        {
+            if (_selectedWideBorder != null)
+            {
+                _selectedWideBorder.Background = new SolidColorBrush(Colors.Transparent);
+                _selectedWideBorder = null;
+            }
+
+            if (!HasWideSelection) return;
+            if (!_wideBorders.TryGetValue(_wideColumns[_wideColumn][_wideRow], out var border))
+                return;
+
+            border.Background = new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x78, 0xD7));
+            _selectedWideBorder = border;
+            try { border.StartBringIntoView(); } catch { }
+        }
+
+        private void ClearWideSelection()
+        {
+            if (_selectedWideBorder != null)
+            {
+                _selectedWideBorder.Background = new SolidColorBrush(Colors.Transparent);
+                _selectedWideBorder = null;
+            }
+            _wideColumn = -1;
+            _wideRow = -1;
+        }
+
+        private static string GetSearchEngineName()
+        {
+            try { return SettingsManager.GetCached("SearchEngine") ?? "Google"; }
+            catch { return "Google"; }
+        }
+
+        private static List<(string Name, string Home)> GetOrderedEngines(string current)
+        {
+            var list = SearchEngines.ToList();
+            int index = list.FindIndex(e => e.Name.Equals(current, StringComparison.OrdinalIgnoreCase));
+            if (index > 0)
+            {
+                var engine = list[index];
+                list.RemoveAt(index);
+                list.Insert(0, engine);
+            }
+            return list;
+        }
+
+        private static string BuildSearchUrl(string engine, string query)
+        {
+            string encoded = Uri.EscapeDataString(query);
+            return engine switch
+            {
+                "Bing" => "https://www.bing.com/search?q=" + encoded,
+                "DuckDuckGo" => "https://duckduckgo.com/?q=" + encoded,
+                _ => "https://www.google.com/search?q=" + encoded
+            };
+        }
+
+        private static List<FavoriteItem> GetFavoriteMatches(string query)
+        {
+            try
+            {
+                var all = FavoritesManager.Instance.Favorites
+                    .Where(f => !string.IsNullOrWhiteSpace(f.Url))
+                    .ToList();
+
+                if (query.Length == 0)
+                {
+                    return all.OrderBy(f => f.SortOrder)
+                              .ThenByDescending(f => f.AddedDate)
+                              .ToList();
+                }
+
+                string lq = query.ToLowerInvariant();
+                return all.Where(f => Matches(f.Title, f.Url, lq))
+                          .OrderBy(f => f.SortOrder)
+                          .ThenByDescending(f => f.AddedDate)
+                          .ToList();
+            }
+            catch { return new List<FavoriteItem>(); }
+        }
+
+        private static List<HistoryItem> GetHistoryMatches(string query)
+        {
+            try
+            {
+                var all = HistoryManager.History
+                    .Where(h => !string.IsNullOrEmpty(h.Url) && h.Url != "about:blank");
+
+                if (query.Length == 0)
+                    return all.Take(30).ToList();
+
+                string lq = query.ToLowerInvariant();
+                return all.Where(h => Matches(h.Title, h.Url, lq)).Take(30).ToList();
+            }
+            catch { return new List<HistoryItem>(); }
+        }
+
+        private static bool Matches(string? title, string? url, string lowerQuery)
+            => (title ?? "").ToLowerInvariant().Contains(lowerQuery)
+            || (url ?? "").ToLowerInvariant().Contains(lowerQuery);
+
+        private static SuggestionItem CreateFavoriteSuggestion(FavoriteItem favorite) => new SuggestionItem
+        {
+            DisplayTitle = string.IsNullOrWhiteSpace(favorite.Title) ? favorite.Url : favorite.Title,
+            Url = favorite.Url,
+            IsFavorite = true
+        };
+
+        private static string UrlKey(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return "";
+            string key = url.Trim();
+            if (key.EndsWith("/") && !key.EndsWith("//"))
+                key = key.Substring(0, key.Length - 1);
+            return key;
+        }
+
         private void ShowSuggestions()
         {
-            if (_suggestions.Count == 0) return;
-            SuggestionBorder.Width = Math.Max(UrlBox.ActualWidth, 360);
+            if (!HasAnySuggestions()) return;
+
+            if (!_compactSuggestions)
+            {
+                SuggestionBorder.Visibility = Visibility.Collapsed;
+                WideSuggestionBorder.Visibility = Visibility.Visible;
+
+                // 面板与窗口同宽；用整条地址栏作为锚点，避免相对 URL 框居中导致左右溢出。
+                double width = ActualWidth > 0 ? ActualWidth - 2 : 800;
+                WideSuggestionBorder.Width = Math.Max(width, 480);
+
+                double height = 340;
+                try
+                {
+                    double windowHeight = Window.Current.Bounds.Height;
+                    if (windowHeight > 0)
+                        height = Math.Max(220, Math.Min(340, windowHeight - 140));
+                }
+                catch { }
+                WideSuggestionBorder.Height = height;
+            }
+            else
+            {
+                WideSuggestionBorder.Visibility = Visibility.Collapsed;
+                SuggestionBorder.Visibility = Visibility.Visible;
+                SuggestionBorder.Width = Math.Max(UrlBox.ActualWidth, 360);
+            }
+
             if (!SuggestionsFlyout.IsOpen)
-                SuggestionsFlyout.ShowAt(UrlBox);
+                SuggestionsFlyout.ShowAt(_compactSuggestions ? (FrameworkElement)UrlBox : AddressBarRoot);
         }
 
         private void CloseSuggestions()
@@ -523,7 +980,8 @@ namespace EdgeRebuild.Metro
 
         private void SuggestionsFlyout_Closed(object sender, object e)
         {
-            // 让下一次输入可以重新打开；无需清空列表。
+            // 关闭后清掉键盘选中态，下次打开从第一列重新开始。
+            ClearWideSelection();
         }
 
         private sealed class SuggestionItem
@@ -532,6 +990,8 @@ namespace EdgeRebuild.Metro
             public string Url { get; set; } = "";
             public bool IsFavorite { get; set; }
             public bool IsPopular { get; set; }
+            public bool IsSearch { get; set; }
+            public bool ShowSubtitle { get; set; } = true;
         }
     }
 }

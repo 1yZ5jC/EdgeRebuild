@@ -339,6 +339,20 @@
                                       AutomationProperties.Name="按钮圆圈"/>
                     </Grid>
 
+                    <!-- 调试选项：默认形态是三列建议面板，旧版单列 Flyout 仅用于对比/排查 -->
+                    <TextBlock Text="调试" Style="{StaticResource SectionHeaderStyle}" Margin="0,24,0,8"/>
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="旧版单列建议" Style="{StaticResource RowLabelStyle}"/>
+                            <TextBlock Text="调试选项：关闭默认的三列建议面板，恢复旧版单列建议浮层。"
+                                       Style="{StaticResource BodyStyle}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <ToggleButton x:Name="CompactSuggestionsToggle" Style="{StaticResource MetroSwitchStyle}"
+                                      Content="关" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                      Checked="CompactSuggestionsToggle_Checked" Unchecked="CompactSuggestionsToggle_Unchecked"
+                                      AutomationProperties.Name="旧版单列建议（调试）"/>
+                    </Grid>
+
                     <TextBlock Text="EdgeRebuild Pre-release · Metro IE 界面样式"
                                Style="{StaticResource HintStyle}" Margin="0,24,0,0"/>
                 </StackPanel>

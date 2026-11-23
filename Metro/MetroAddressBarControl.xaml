@@ -70,13 +70,23 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 三列建议面板的列标题 -->
+        <Style x:Key="WideSuggestionHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#FFFFFFFF"/>
+            <Setter Property="Margin" Value="20,14,20,8"/>
+        </Style>
     </UserControl.Resources>
 
-    <Grid Height="50" Background="#FF000000">
+    <Grid x:Name="AddressBarRoot" Height="50" Background="#FF000000">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
@@ -109,14 +119,72 @@
                     <Flyout x:Name="SuggestionsFlyout" Placement="Top"
                             ShowMode="Transient" AllowFocusOnInteraction="False"
                             Closed="SuggestionsFlyout_Closed">
-                        <Border x:Name="SuggestionBorder" Background="#FF1F1F1F"
-                                BorderBrush="#FF3A3A3A" BorderThickness="1"
-                                MinWidth="360" MaxHeight="400">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled">
-                                <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical"/>
-                            </ScrollViewer>
-                        </Border>
+                        <Grid>
+                            <Border x:Name="SuggestionBorder" Background="#FF1F1F1F"
+                                    BorderBrush="#FF3A3A3A" BorderThickness="1"
+                                    MinWidth="360" MaxHeight="400">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel x:Name="SuggestionsPanel" Orientation="Vertical"/>
+                                </ScrollViewer>
+                            </Border>
+
+                            <!-- 可选的底部全宽三列面板（C3 MVP）：常用 / 搜索 / 网页。
+                                 仍由 Flyout 承载，规避 EdgeHTML WebView 的 airspace 覆盖问题。 -->
+                            <Border x:Name="WideSuggestionBorder" Visibility="Collapsed"
+                                    Background="#FF1F1F1F" BorderBrush="#FF3A3A3A" BorderThickness="1"
+                                    Height="340">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="1"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="1"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Grid Grid.Column="0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="常用" Style="{StaticResource WideSuggestionHeaderStyle}"/>
+                                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel x:Name="WidePopularPanel" Orientation="Vertical"/>
+                                        </ScrollViewer>
+                                    </Grid>
+
+                                    <Border Grid.Column="1" Background="#FF3A3A3A" Margin="0,12"/>
+
+                                    <Grid Grid.Column="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="搜索" Style="{StaticResource WideSuggestionHeaderStyle}"/>
+                                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel x:Name="WideSearchPanel" Orientation="Vertical"/>
+                                        </ScrollViewer>
+                                    </Grid>
+
+                                    <Border Grid.Column="3" Background="#FF3A3A3A" Margin="0,12"/>
+
+                                    <Grid Grid.Column="4">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="网页" Style="{StaticResource WideSuggestionHeaderStyle}"/>
+                                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel x:Name="WidePagePanel" Orientation="Vertical"/>
+                                        </ScrollViewer>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </Grid>
                     </Flyout>
                 </FlyoutBase.AttachedFlyout>
             </TextBox>
@@ -143,21 +211,28 @@
                     ToolTipService.ToolTip="清除地址" AutomationProperties.Name="清除地址"/>
         </Grid>
 
-        <!-- 刷新 / 收藏 / 更多 / 前往 -->
+        <!-- 刷新 / 阅读模式 / 收藏 / 更多 / 前往 -->
         <Button x:Name="RefreshBtn" Grid.Column="3" Content="&#xE72C;"
                 Click="RefreshBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="刷新" AutomationProperties.Name="刷新"/>
-        <Button x:Name="FavoriteBtn" Grid.Column="4"
+        <Button x:Name="ReaderBtn" Grid.Column="4" Visibility="Collapsed"
+                Click="ReaderBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
+                ToolTipService.ToolTip="阅读模式" AutomationProperties.Name="阅读模式">
+            <FontIcon x:Name="ReaderGlyph" Glyph="&#xE736;" FontSize="18"
+                      FontFamily="Segoe MDL2 Assets" Foreground="White"
+                      VerticalAlignment="Center" HorizontalAlignment="Center"/>
+        </Button>
+        <Button x:Name="FavoriteBtn" Grid.Column="5"
                 Click="FavoriteBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="收藏夹" AutomationProperties.Name="收藏夹">
             <FontIcon x:Name="FavGlyph" Glyph="&#xE734;" FontSize="18"
                       FontFamily="Segoe MDL2 Assets" Foreground="White"
                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
         </Button>
-        <Button x:Name="MoreBtn" Grid.Column="5" Content="&#xE712;"
+        <Button x:Name="MoreBtn" Grid.Column="6" Content="&#xE712;"
                 Click="MoreBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="更多" AutomationProperties.Name="更多"/>
-        <Button x:Name="GoBtn" Grid.Column="6" Content="&#xE72A;"
+        <Button x:Name="GoBtn" Grid.Column="7" Content="&#xE72A;"
                 Click="GoBtn_Click" Style="{StaticResource MetroCircleButtonStyle}"
                 ToolTipService.ToolTip="前往" AutomationProperties.Name="前往"/>
     </Grid>

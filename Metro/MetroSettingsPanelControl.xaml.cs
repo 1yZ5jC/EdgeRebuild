@@ -25,6 +25,7 @@ namespace EdgeRebuild.Metro
         public event Action<bool>? InPrivateToggled;       // P2-13：Metro 窗口 InPrivate 开关
         public event Action<bool>? AlwaysShowChromeChanged; // IE11：始终显示地址栏和标签
         public event Action<bool>? CircleButtonsChanged;    // 按钮外围是否画圆圈
+        public event Action<bool>? CompactSuggestionsChanged; // 调试：旧版单列建议（默认三列）
 
         /// <summary>供宿主在面板关闭时补一次状态同步。</summary>
         public bool CircleButtonsEnabled => CircleButtonsToggle.IsChecked == true;
@@ -49,7 +50,8 @@ namespace EdgeRebuild.Metro
             foreach (var toggle in new[]
             {
                 LocationToggle, InPrivateToggle, FlipAheadToggle,
-                AutoEncodingToggle, AlwaysShowChromeToggle, CircleButtonsToggle
+                AutoEncodingToggle, AlwaysShowChromeToggle, CircleButtonsToggle,
+                CompactSuggestionsToggle
             })
             {
                 toggle.Loaded += (s, e) => MetroSwitchVisuals.Apply(s as ToggleButton);
@@ -197,6 +199,14 @@ namespace EdgeRebuild.Metro
             }
             catch { }
 
+            try
+            {
+                string? compact = await SettingsManager.GetAsync("MetroCompactSuggestions");
+                CompactSuggestionsToggle.IsChecked = compact == "True";
+                CompactSuggestionsToggle.Content = CompactSuggestionsToggle.IsChecked == true ? "开" : "关";
+            }
+            catch { }
+
             _loading = false;
         }
 
@@ -263,6 +273,28 @@ namespace EdgeRebuild.Metro
         private static async Task SaveCircleButtonsAsync(bool on)
         {
             try { await SettingsManager.SetAsync("MetroCircleButtons", on ? "True" : "False"); }
+            catch { }
+        }
+
+        private void CompactSuggestionsToggle_Checked(object sender, RoutedEventArgs e)
+        {
+            CompactSuggestionsToggle.Content = "开";
+            if (_loading) return;
+            CompactSuggestionsChanged?.Invoke(true);
+            _ = SaveCompactSuggestionsAsync(true);
+        }
+
+        private void CompactSuggestionsToggle_Unchecked(object sender, RoutedEventArgs e)
+        {
+            CompactSuggestionsToggle.Content = "关";
+            if (_loading) return;
+            CompactSuggestionsChanged?.Invoke(false);
+            _ = SaveCompactSuggestionsAsync(false);
+        }
+
+        private static async Task SaveCompactSuggestionsAsync(bool on)
+        {
+            try { await SettingsManager.SetAsync("MetroCompactSuggestions", on ? "True" : "False"); }
             catch { }
         }
 

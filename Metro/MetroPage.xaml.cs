@@ -10,6 +10,7 @@ using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Media.Animation;
@@ -32,6 +33,9 @@ namespace EdgeRebuild.Metro
         private bool _commandBarOpen;
         private bool _settingsOpen;
         private bool _favoritesOpen;
+        private bool _tabsPanelOpen;
+        private Flyout? _tabsPanelFlyout;
+        private MetroTabsPanelControl? _tabsPanel;
         private bool _isFullscreen;
         private bool _isReadingAloud;
         private double _zoomFactor = 1.0;
@@ -40,8 +44,11 @@ namespace EdgeRebuild.Metro
         private bool _bottomBarHidden;
         private bool _alwaysShowChrome = true;
         private bool _showCircleButtons = true;
+        private bool _compactSuggestions;
         private double _bottomBarFullHeight = 90;   // 40px 标签条 + 50px 地址栏
         private readonly Dictionary<IBrowserTab, string> _readerModeUrls = new Dictionary<IBrowserTab, string>();
+        private readonly Dictionary<IBrowserTab, string> _readerAvailableUrls = new Dictionary<IBrowserTab, string>();
+        private int _readerProbeGeneration;
         private readonly DispatcherTimer _stripRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
 
         // EdgeHTML 页面右键 marker 轮询（与 MainPage 同机制：UWP WebView 无控件级右键事件，
@@ -79,6 +86,7 @@ namespace EdgeRebuild.Metro
         public MetroPage()
         {
             InitializeComponent();
+            CreateTabsPanel();
 
             // AppWindow（同线程）没有 Activated 事件：焦点变化时上报槽位，
             // 让跳转菜单等全局激活能路由到最近使用的 Metro 窗口。
@@ -109,6 +117,40 @@ namespace EdgeRebuild.Metro
                         Rect = new Rect(0, 0, e2.NewSize.Width, e2.NewSize.Height)
                     };
             };
+        }
+
+        /// <summary>
+        /// 底部 Tabs 面板由 Flyout 承载：弹层在独立视觉树中，可以覆盖在 EdgeHTML WebView 上方，
+        /// 同时地址栏/标签条仍留在底部。
+        /// </summary>
+        private void CreateTabsPanel()
+        {
+            _tabsPanel = new MetroTabsPanelControl { Height = 210 };
+            _tabsPanel.TabSelected += TabsPanel_TabSelected;
+            _tabsPanel.TabCloseRequested += TabsPanel_TabCloseRequested;
+            _tabsPanel.NewTabRequested += TabsPanel_NewTabRequested;
+            _tabsPanel.ExpandRequested += TabsPanel_ExpandRequested;
+            _tabsPanel.CloseAllRequested += TabsPanel_CloseAllRequested;
+            _tabsPanel.DismissRequested += TabsPanel_DismissRequested;
+
+            var style = new Style(typeof(FlyoutPresenter));
+            style.Setters.Add(new Setter(FlyoutPresenter.PaddingProperty, new Thickness(0)));
+            style.Setters.Add(new Setter(FlyoutPresenter.CornerRadiusProperty, new CornerRadius(0)));
+            style.Setters.Add(new Setter(FlyoutPresenter.BackgroundProperty,
+                new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x0F, 0x0F, 0x0F))));
+            style.Setters.Add(new Setter(FlyoutPresenter.BorderBrushProperty,
+                new SolidColorBrush(Windows.UI.Color.FromArgb(0xFF, 0x3A, 0x3A, 0x3A))));
+            style.Setters.Add(new Setter(FlyoutPresenter.BorderThicknessProperty, new Thickness(1)));
+            style.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 10000d));
+            style.Setters.Add(new Setter(FrameworkElement.MaxHeightProperty, 10000d));
+
+            _tabsPanelFlyout = new Flyout
+            {
+                Placement = FlyoutPlacementMode.Top,
+                FlyoutPresenterStyle = style,
+                Content = _tabsPanel
+            };
+            _tabsPanelFlyout.Closed += (s, e) => _tabsPanelOpen = false;
         }
 
         /// <summary>
@@ -159,7 +201,15 @@ namespace EdgeRebuild.Metro
             }
             catch { _showCircleButtons = true; }
 
+            try
+            {
+                string? compact = await SettingsManager.GetAsync("MetroCompactSuggestions");
+                _compactSuggestions = compact == "True";
+            }
+            catch { _compactSuggestions = false; }
+
             ApplyCircleButtonStyle();
+            AddressBar.SetCompactSuggestionsEnabled(_compactSuggestions);
         }
 
         private void ApplyCircleButtonStyle()
@@ -215,7 +265,23 @@ namespace EdgeRebuild.Metro
             tab.TitleChanged += _ => RefreshStripSoon();
             tab.FaviconChanged += _ => RefreshStripSoon();
             tab.UrlChanged += _ => RefreshStripSoon();
-            tab.LoadingChanged += _ => RefreshStripSoon();
+            tab.LoadingChanged += loading =>
+            {
+                RefreshStripSoon();
+                if (tab != _tabManager?.CurrentTab) return;
+                if (loading)
+                {
+                    // 新页面开始加载：作废进行中的检测，并收起上一页的阅读按钮
+                    //（阅读视图自身除外）
+                    _readerProbeGeneration++;
+                    AddressBar.SetReaderState(false, _readerModeUrls.ContainsKey(tab));
+                }
+                else
+                {
+                    // 页面加载完成后检测是否像文章页，决定地址栏阅读按钮是否出现
+                    _ = UpdateReaderButtonAsync(tab);
+                }
+            };
         }
 
         protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -230,7 +296,11 @@ namespace EdgeRebuild.Metro
             _tabManager.ParticipatesInSession = false;   // Metro 独立窗口不写共享会话，避免覆盖主窗口恢复快照
             _tabManager.Initialize(null, ContentPanel);
             _tabManager.TabCreated += AttachStripRefresh;
-            _tabManager.TabClosed += viewItem => _readerModeUrls.Remove(viewItem.Tab);
+            _tabManager.TabClosed += viewItem =>
+            {
+                _readerModeUrls.Remove(viewItem.Tab);
+                _readerAvailableUrls.Remove(viewItem.Tab);
+            };
             _tabManager.TabCountChanged += count =>
             {
                 RefreshStripSoon();
@@ -279,7 +349,8 @@ namespace EdgeRebuild.Metro
             AddressBar.SetUrl(tab.CurrentUrl);
             AddressBar.UpdateNavButtons(tab.CanGoBack, tab.CanGoForward);
             UpdateFavoriteState();
-            ShowBottomBar();   // 切标签恢复底栏，避免新标签在无 chrome 状态下迷失
+            _ = UpdateReaderButtonAsync(tab);
+            if (!_isFullscreen) ShowBottomBar();   // 切标签恢复底栏；全屏保持无 chrome
             if (_appWindow != null && PlatformCompat.HasAppWindow)
             {
                 AppWindowCompat.SetTitle(_appWindow, tab.Title ?? "Metro IE");
@@ -295,6 +366,7 @@ namespace EdgeRebuild.Metro
             }
             TabStrip.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             RefreshGridIfOpen();
+            RefreshTabsPanelIfOpen();
             FadeContentIn();
         }
 
@@ -343,6 +415,21 @@ namespace EdgeRebuild.Metro
                 }
                 _isFullscreen = !_isFullscreen;
                 if (_commandBarOpen) CommandBar.SetFullscreenText(_isFullscreen);
+                if (_isFullscreen)
+                {
+                    // IE11 全屏没有任何 chrome：先收起所有面板与命令栏，再隐藏底栏。
+                    if (_settingsOpen) CloseSettingsPanel();
+                    if (_favoritesOpen) CloseFavoritesPanel();
+                    if (_tabsPanelOpen) CloseTabsPanel();
+                    if (_gridOpen) CloseGrid();
+                    if (_commandBarOpen) CloseCommandBar();
+                    HideBottomBar();
+                }
+                else
+                {
+                    // 退出全屏恢复到常显底栏，避免窗口化后无 chrome 可操作
+                    ShowBottomBar();
+                }
             }
             catch (Exception ex)
             {
@@ -355,6 +442,7 @@ namespace EdgeRebuild.Metro
         private void OpenCommandBar()
         {
             if (_commandBarOpen) return;
+            if (_tabsPanelOpen) CloseTabsPanel();
             _commandBarOpen = true;
             ShowBottomBar();
             CommandBar.UpdateTabCount(_tabManager.Tabs.Count);
@@ -399,6 +487,7 @@ namespace EdgeRebuild.Metro
         {
             if (_settingsOpen) return;
             if (_favoritesOpen) CloseFavoritesPanel();
+            if (_tabsPanelOpen) CloseTabsPanel();
             _settingsOpen = true;
             ShowBottomBar();
             SettingsPanel.UpdateZoomPercent((int)Math.Round(_zoomFactor * 100));
@@ -463,6 +552,7 @@ namespace EdgeRebuild.Metro
         {
             if (_favoritesOpen) return;
             if (_settingsOpen) CloseSettingsPanel();
+            if (_tabsPanelOpen) CloseTabsPanel();
             _favoritesOpen = true;
             ShowBottomBar();
             // 面板停在地址栏上方，星标与地址栏保持可见（可再次点星标收起）
@@ -517,6 +607,12 @@ namespace EdgeRebuild.Metro
             ApplyCircleButtonStyle();
         }
 
+        private void SettingsPanel_CompactSuggestionsChanged(bool on)
+        {
+            _compactSuggestions = on;
+            AddressBar.SetCompactSuggestionsEnabled(on);
+        }
+
         // P2-13：Metro 窗口 InPrivate——TabManager.IsInPrivateWindow 驱动
         // （新标签 SetInPrivate：不写历史、隐身主页；会话本就不参与）
         private void SettingsPanel_InPrivateToggled(bool on)
@@ -544,6 +640,7 @@ namespace EdgeRebuild.Metro
         private void AddressBar_BackRequested() => _ = _tabManager.CurrentTab?.GoBackAsync();
         private void AddressBar_ForwardRequested() => _ = _tabManager.CurrentTab?.GoForwardAsync();
         private void AddressBar_RefreshRequested() => _ = _tabManager.CurrentTab?.RefreshAsync();
+        private void AddressBar_ReaderRequested() => ToggleReaderMode();
         private void AddressBar_FavoriteRequested() => ToggleFavoritesPanel();
         private void AddressBar_MoreRequested()
         {
@@ -589,7 +686,7 @@ namespace EdgeRebuild.Metro
                 Text = "标签视图",
                 Icon = new FontIcon { Glyph = "\xE78C", FontFamily = new FontFamily("Segoe MDL2 Assets") }
             };
-            tabsItem.Click += (s, a) => ToggleGrid();
+            tabsItem.Click += (s, a) => ToggleTabsPanel();
             menu.Items.Add(tabsItem);
 
             var closeAllItem = new MenuFlyoutItem
@@ -637,7 +734,7 @@ namespace EdgeRebuild.Metro
         private void CommandBar_TabsClicked()
         {
             CloseCommandBar();
-            ToggleGrid();
+            ToggleTabsPanel();
         }
         private void CommandBar_RefreshClicked()
         {
@@ -764,6 +861,39 @@ namespace EdgeRebuild.Metro
         }
 
         // ---- 阅读模式（与主窗口同机制：ReaderService 注入阅读视图，可再点退出） ----
+        private async Task UpdateReaderButtonAsync(IBrowserTab tab)
+        {
+            if (tab == null) return;
+            int gen = ++_readerProbeGeneration;
+
+            if (_readerModeUrls.ContainsKey(tab))
+            {
+                AddressBar.SetReaderState(true, true);
+                return;
+            }
+
+            string url = tab.CurrentUrl ?? "";
+            if (string.IsNullOrEmpty(url) || url == "about:blank")
+            {
+                AddressBar.SetReaderState(false, false);
+                return;
+            }
+
+            if (_readerAvailableUrls.TryGetValue(tab, out var cached) && cached == url)
+            {
+                AddressBar.SetReaderState(true, false);
+                return;
+            }
+
+            bool available = await ReaderService.IsArticleLikelyAsync(tab);
+            if (gen != _readerProbeGeneration || tab != _tabManager?.CurrentTab) return;
+            if (tab.CurrentUrl != url) return;   // 检测期间又导航了，交给下一次加载完成
+
+            if (available) _readerAvailableUrls[tab] = url;
+            else _readerAvailableUrls.Remove(tab);
+            AddressBar.SetReaderState(available, false);
+        }
+
         private async void ToggleReaderMode()
         {
             var tab = _tabManager?.CurrentTab;
@@ -772,6 +902,7 @@ namespace EdgeRebuild.Metro
             if (_readerModeUrls.TryGetValue(tab, out var originalUrl))
             {
                 _readerModeUrls.Remove(tab);
+                AddressBar.SetReaderState(false, false);
                 if (!string.IsNullOrEmpty(originalUrl))
                     await tab.NavigateAsync(originalUrl);
                 return;
@@ -786,9 +917,14 @@ namespace EdgeRebuild.Metro
 
             bool entered = await ReaderService.EnterReaderModeAsync(tab);
             if (entered)
+            {
                 _readerModeUrls[tab] = currentUrl;
+                AddressBar.SetReaderState(true, true);
+            }
             else
+            {
                 NotificationService.ShowToast("无法使用阅读模式", "此页面没有可提取的正文内容");
+            }
         }
 
         // ---- 朗读（与主窗口同机制：ReaderService 提取 + ReadAloudService 播放） ----
@@ -1015,7 +1151,8 @@ namespace EdgeRebuild.Metro
         private void OnTabScrolled(IBrowserTab tab, string info)
         {
             if (tab != _tabManager?.CurrentTab) return;
-            if (_alwaysShowChrome)
+            // 全屏时忽略“始终显示”设置：进入即隐藏，滚动/手势可临时唤出
+            if (_alwaysShowChrome && !_isFullscreen)
             {
                 ShowBottomBar();
                 return;
@@ -1065,11 +1202,18 @@ namespace EdgeRebuild.Metro
             sb.Begin();
         }
 
-        // ---- 右键：设置面板/网格开着则先收面板，否则切换命令栏 ----
+        // ---- 右键：全屏先唤回底栏；设置面板/网格开着则先收面板，否则切换命令栏 ----
         private void Root_RightTapped(object sender, RightTappedRoutedEventArgs e)
         {
+            if (_isFullscreen && _bottomBarHidden)
+            {
+                ShowBottomBar();
+                e.Handled = true;
+                return;
+            }
             if (_favoritesOpen) CloseFavoritesPanel();
             else if (_settingsOpen) CloseSettingsPanel();
+            else if (_tabsPanelOpen) CloseTabsPanel();
             else if (!_gridOpen) ToggleCommandBar();   // 网格覆盖全屏，命令栏开在其下不可见
             e.Handled = true;
         }
@@ -1112,7 +1256,9 @@ namespace EdgeRebuild.Metro
             if (dy < -40)
             {
                 _edgeSwipePointerId = null;
-                OpenCommandBar();
+                // IE11 语义：底栏隐藏时，第一次上滑先把底栏叫出来；底栏已显示再上滑才开命令栏。
+                if (_bottomBarHidden) ShowBottomBar();
+                else OpenCommandBar();
             }
         }
 
@@ -1316,6 +1462,75 @@ namespace EdgeRebuild.Metro
             Services.Diagnostics.Log("[Metro] " + msg);
         }
 
+        // ---- 底部 Tabs 面板（IE11 形态；Flyout 承载以覆盖 WebView） ----
+        private void ToggleTabsPanel()
+        {
+            if (_tabsPanelOpen) CloseTabsPanel();
+            else OpenTabsPanel();
+        }
+
+        private void OpenTabsPanel()
+        {
+            if (_tabsPanelOpen || _tabsPanel == null || _tabsPanelFlyout == null) return;
+            if (_tabsPanelOpen) return;
+            if (_settingsOpen) CloseSettingsPanel();
+            if (_favoritesOpen) CloseFavoritesPanel();
+            if (_gridOpen) CloseGrid();
+            if (_commandBarOpen) CloseCommandBar();
+            ShowBottomBar();
+
+            _tabsPanelOpen = true;
+            _tabsPanel.Width = Math.Max(ActualWidth - 2, 480);
+            _tabsPanel.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
+            _tabsPanelFlyout.ShowAt(BottomBar);
+        }
+
+        private void CloseTabsPanel()
+        {
+            if (!_tabsPanelOpen) return;
+            _tabsPanelOpen = false;
+            _tabsPanelFlyout?.Hide();
+        }
+
+        private void TabsPanel_TabSelected(TabViewItem viewItem)
+        {
+            CloseTabsPanel();
+            _ = _tabManager.SwitchToTabAsync(viewItem);
+            FocusCurrentTabContent();
+        }
+
+        private async void TabsPanel_TabCloseRequested(TabViewItem viewItem)
+        {
+            await _tabManager.CloseTabAsync(viewItem);
+            if (!_tabsPanelOpen) return;
+            if (_tabManager.Tabs.Count == 0)
+            {
+                CloseTabsPanel();
+                return;
+            }
+            _tabsPanel?.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
+        }
+
+        private void TabsPanel_NewTabRequested()
+        {
+            CloseTabsPanel();
+            _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+        }
+
+        private void TabsPanel_ExpandRequested()
+        {
+            CloseTabsPanel();
+            OpenGrid();
+        }
+
+        private async void TabsPanel_CloseAllRequested()
+        {
+            CloseTabsPanel();
+            await CloseAllTabsAsync();
+        }
+
+        private void TabsPanel_DismissRequested() => CloseTabsPanel();
+
         private void ToggleGrid()
         {
             MetroDebug($"ToggleGrid: 当前状态={(_gridOpen ? "开" : "关")}");
@@ -1327,6 +1542,8 @@ namespace EdgeRebuild.Metro
         {
             MetroDebug($"OpenGrid: 标签数={_tabManager.Tabs.Count} 当前={(_tabManager.CurrentTab == null ? "null" : _tabManager.CurrentTab.Title)}");
             if (_favoritesOpen) CloseFavoritesPanel();
+            if (_tabsPanelOpen) CloseTabsPanel();
+            if (_settingsOpen) CloseSettingsPanel();
             _gridOpen = true;
             ShowBottomBar();   // 网格覆盖全屏时保持 chrome 一致
             // 覆盖层始终 Visible(构造即可见,窗口显示时完成首次布局——延迟可见化的
@@ -1377,6 +1594,12 @@ namespace EdgeRebuild.Metro
                 MetroDebug("RefreshGridIfOpen: 重建网格");
                 TabGridOverlay.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
             }
+        }
+
+        private void RefreshTabsPanelIfOpen()
+        {
+            if (_tabsPanelOpen)
+                _tabsPanel?.Refresh(_tabManager.Tabs, FindViewItem(_tabManager.CurrentTab));
         }
 
         // 标签视图开启期间收起全部网页容器(当前标签也收起,由 TabManager 的切换语义恢复),
@@ -1503,7 +1726,7 @@ namespace EdgeRebuild.Metro
             }
             else if (e.Key == VirtualKey.Escape)
             {
-                // Esc 逐层收起：查找栏 → 设置面板 → 命令栏 → 缩略图网格 → 全屏
+                // Esc 逐层收起：查找栏 → 设置面板 → 收藏夹 → 标签面板 → 命令栏 → 缩略图网格 → 全屏
                 if (FindBar.Visibility == Visibility.Visible)
                 {
                     e.Handled = true;
@@ -1519,6 +1742,11 @@ namespace EdgeRebuild.Metro
                     e.Handled = true;
                     CloseFavoritesPanel();
                 }
+                else if (_tabsPanelOpen)
+                {
+                    e.Handled = true;
+                    CloseTabsPanel();
+                }
                 else if (_commandBarOpen)
                 {
                     e.Handled = true;
@@ -1533,6 +1761,12 @@ namespace EdgeRebuild.Metro
                 {
                     e.Handled = true;
                     ToggleReaderMode();
+                }
+                else if (_isFullscreen && !_bottomBarHidden)
+                {
+                    // 全屏下 Esc 先收起临时唤出的底栏，再按一次才退出全屏
+                    e.Handled = true;
+                    HideBottomBar();
                 }
                 else if (_isFullscreen)
                 {
