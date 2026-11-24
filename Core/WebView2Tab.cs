@@ -56,7 +56,7 @@ namespace EdgeRebuild.Core
 
         // 页面内快捷键桥：焦点在网页内容内时键击被引擎吞掉、宿主收不到，
         // 注入监听脚本经 window.chrome.webview.postMessage 回传（ES5，双引擎通用）。
-        private const string PageKeyBridgeJs =
+        private static readonly string PageKeyBridgeJs =
             "(function(){ if (window.__edgPageKeyBridge) return; window.__edgPageKeyBridge = true;"
             + " function send(s){ try { window.chrome.webview.postMessage(s); } catch(e){ try { window.external.notify(s); } catch(e2){} } }"
             + " window.addEventListener('keydown', function(e){"
@@ -76,7 +76,9 @@ namespace EdgeRebuild.Core
             + " if (c && !s && k===87) { send('cw'); e.preventDefault(); return; }"
             + " if (c && !s && k===76) { send('cl'); e.preventDefault(); return; }"
             + " if (!c && !s && k===122) { send('f11'); e.preventDefault(); return; }"
-            + " }, false); })();";
+            + " }, false);"
+            + PageGestureBridge.BuildSwipeScript("send")
+            + " })();";
 
         private static PageShortcutKey? ParsePageKey(string msg) => PageKeyMarkers.Parse(msg);
 
@@ -145,6 +147,9 @@ namespace EdgeRebuild.Core
                 // 禁用浏览器加速键以免 Ctrl+F 弹出原生查找条；
                 // Ctrl+F/Ctrl+P/Ctrl+R 由应用层快捷键接管，F5 已在 ShortcutManager 注册。
                 core.Settings.AreBrowserAcceleratorKeysEnabled = false;
+                // 页面内滑动导航由 PageGestureBridge 统一处理（触摸 + 触摸板），
+                // 关闭 WebView2 原生 overscroll 手势，避免同一次滑动后退两次。
+                try { core.Settings.IsSwipeNavigationEnabled = false; } catch { }
                 // DoNotTrack 在引擎初始化时统一应用：懒恢复的标签首次激活也会经过这里，
                 // 不需要在 CreateTabAsync 里提前初始化 WebView2。
                 try

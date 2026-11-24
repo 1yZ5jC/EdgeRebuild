@@ -45,7 +45,7 @@ namespace EdgeRebuild.Core
         // ApplicationContentUriRules 白名单拦截（且不允许域通配），AddWebAllowedObject
         // 又要求独立 WinRT 组件程序集；故改用「写入全局 marker 变量 + 宿主定时轮询」：
         // 脚本只写 window.__edgKeyMarker，宿主用 InvokeScriptAsync 读取并清空。
-        private const string PageKeyBridgeJs =
+        private static readonly string PageKeyBridgeJs =
             "(function(){ if (window.__edgPageKeyBridge) return; window.__edgPageKeyBridge = true;"
             + " function mark(s){ window.__edgKeyMarker = s; }"
             + " window.addEventListener('keydown', function(e){"
@@ -65,7 +65,9 @@ namespace EdgeRebuild.Core
             + " if (c && !s && k===87) { mark('cw'); e.preventDefault(); return; }"
             + " if (c && !s && k===76) { mark('cl'); e.preventDefault(); return; }"
             + " if (!c && !s && k===122) { mark('f11'); e.preventDefault(); return; }"
-            + " }, false); })();";
+            + " }, false);"
+            + PageGestureBridge.BuildSwipeScript("mark")
+            + " })();";
 
         private void InjectPageKeyBridge()
         {

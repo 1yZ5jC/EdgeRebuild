@@ -184,6 +184,16 @@
       检测按标签 + URL 缓存可用结果，加载开始先收起。全屏进入时收起面板/命令栏并隐藏底栏，
       右键/底缘上滑临时唤出，Esc 先收底栏再退全屏，退出恢复常显；全屏下忽略“始终显示”常显设置。
       临时输出 `Debug|x86` 构建通过，单测 50/50。
+- [ ] R6-5 页面内左右滑动前进/后退（B2，代码完成 2026-11-24，待触摸/触摸板实机）：
+      新增 `PageGestureBridge`，WebView2 走 postMessage、EdgeHTML 写 marker 轮询，主窗口与 Metro
+      共用 `SwipeBack`/`SwipeForward` 处理。触摸：80px 水平 / 40px 垂直容差、900ms 内；
+      触摸板：横向 wheel 累计 ≥120px、≥2 次事件、350ms 内，700ms 冷却，负 deltaX 后退；
+      左右 24px 边缘不接管；跳过输入框、canvas/video、横向可滚动祖先与页面横向溢出；
+      本地 EPUB/PDF 阅读器与 HTML 全屏不接管；WebView2 原生滑动导航关闭避免双触发。
+      临时输出 `Debug|x86` 构建 0 错误 0 警告，单测 61/61；手势脚本经 WSH 语法与逻辑校验。
+- [ ] R6-6 Metro 地址栏提交导航当前标签（2026-11-24 修复，待实测）：
+      地址栏输入网址/搜索词或选择建议后调用当前标签 `NavigateAsync`，不再强制 `CreateTabAsync`；
+      仅在无活动标签时回退新建。底栏 `+` 与 Ctrl+T 仍用于新建标签。
 
 ## P0 — 高价值低成本
 - [x] P0-4 多主窗口会话覆盖隐患：`SessionTabs` 单快照表，两个主窗口互踩（D1 同款）。方案：副窗口 `ParticipatesInSession=false`

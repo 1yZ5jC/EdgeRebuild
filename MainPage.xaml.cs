@@ -798,7 +798,19 @@ namespace EdgeRebuild
                     if (_tabManager.TryReopenClosedTab(out EngineType reopenEngine, out string reopenUrl, out _))
                         _ = _tabManager.CreateTabAsync(reopenEngine, reopenUrl);
                     break;
-                    // 主窗口无全屏模式，忽略
+                // 主窗口无全屏模式，忽略 ToggleFullscreen
+                case PageShortcutKey.SwipeBack:
+                    {
+                        var backTab = _tabManager?.CurrentTab;
+                        if (backTab != null && backTab.CanGoBack) _ = backTab.GoBackAsync();
+                        break;
+                    }
+                case PageShortcutKey.SwipeForward:
+                    {
+                        var forwardTab = _tabManager?.CurrentTab;
+                        if (forwardTab != null && forwardTab.CanGoForward) _ = forwardTab.GoForwardAsync();
+                        break;
+                    }
             }
         }
 

@@ -588,7 +588,8 @@ namespace EdgeRebuild.Metro
             bool hasPage = tab != null
                 && !string.IsNullOrEmpty(tab.CurrentUrl)
                 && tab.CurrentUrl != "about:blank";
-            bool exists = hasPage && FavoritesManager.Instance.ContainsUrl(tab.CurrentUrl);
+            bool exists = hasPage && tab != null
+                && FavoritesManager.Instance.ContainsUrl(tab.CurrentUrl);
 
             AddressBar.SetFavoriteState(exists);
             if (_favoritesOpen)
@@ -655,7 +656,13 @@ namespace EdgeRebuild.Metro
             try { searchEngine = await SettingsManager.GetAsync("SearchEngine") ?? "Google"; } catch { }
             string? url = UrlInputResolver.Resolve(input, searchEngine);
             if (string.IsNullOrEmpty(url)) return;
-            _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
+            // 地址栏提交导航当前标签（与 IE11 Metro 一致）；只有没有活动标签时才新建，
+            // 新标签入口仍保留在底栏 + 和 Ctrl+T。
+            var current = _tabManager?.CurrentTab;
+            if (current != null)
+                _ = current.NavigateAsync(url);
+            else if (_tabManager != null)
+                _ = _tabManager.CreateTabAsync(_defaultEngine, url, false, true);
             FocusCurrentTabContent();   // 焦点还给页面，地址栏不再滞留
         }
 
@@ -846,7 +853,7 @@ namespace EdgeRebuild.Metro
                 Text = "主页",
                 Icon = new FontIcon { Glyph = "\xE80F", FontFamily = new FontFamily("Segoe MDL2 Assets") }
             };
-            homeItem.Click += (s, a) => _ = _tabManager.CreateTabAsync(_defaultEngine, "about:blank", false, true);
+            homeItem.Click += (s, a) => { _ = _tabManager?.CreateTabAsync(_defaultEngine, "about:blank", false, true); };
             menu.Items.Add(homeItem);
 
             var fullscreenItem = new MenuFlyoutItem
@@ -1359,6 +1366,18 @@ namespace EdgeRebuild.Metro
                 case PageShortcutKey.ReaderMode:
                     ToggleReaderMode();
                     break;
+                case PageShortcutKey.SwipeBack:
+                    {
+                        var backTab = _tabManager?.CurrentTab;
+                        if (backTab != null && backTab.CanGoBack) _ = backTab.GoBackAsync();
+                        break;
+                    }
+                case PageShortcutKey.SwipeForward:
+                    {
+                        var forwardTab = _tabManager?.CurrentTab;
+                        if (forwardTab != null && forwardTab.CanGoForward) _ = forwardTab.GoForwardAsync();
+                        break;
+                    }
             }
         }
 

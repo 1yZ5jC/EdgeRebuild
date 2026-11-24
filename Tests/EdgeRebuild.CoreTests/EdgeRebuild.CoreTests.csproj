@@ -19,6 +19,8 @@
     <Compile Include="..\..\Services\UrlInputResolver.cs" Link="Services\UrlInputResolver.cs" />
     <Compile Include="..\..\Core\SweptTabTime.cs" Link="Core\SweptTabTime.cs" />
     <Compile Include="..\..\Core\FavoriteFolderTree.cs" Link="Core\FavoriteFolderTree.cs" />
+    <Compile Include="..\..\Core\PageKeyMarkers.cs" Link="Core\PageKeyMarkers.cs" />
+    <Compile Include="..\..\Core\PageGestureBridge.cs" Link="Core\PageGestureBridge.cs" />
   </ItemGroup>
 
   <!-- 历史构建可能把中间目录设为 tempobj；其中的生成文件（AssemblyInfo 等）
